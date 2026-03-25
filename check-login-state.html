@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>检查登录状态</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .logged-in { background: #d4edda; color: #155724; }
+        .logged-out { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>登录状态检查</h1>
+    <div id="status"></div>
+    <button onclick="clearToken()">清除登录状态</button>
+    
+    <script>
+        function checkStatus() {
+            const token = localStorage.getItem('auth_token');
+            const statusDiv = document.getElementById('status');
+            
+            if (token) {
+                statusDiv.className = 'status logged-in';
+                statusDiv.innerHTML = `
+                    <strong>✅ 已登录</strong><br>
+                    Token: ${token.substring(0, 20)}...<br>
+                    <small>Header会显示"工作台"按钮</small>
+                `;
+            } else {
+                statusDiv.className = 'status logged-out';
+                statusDiv.innerHTML = `
+                    <strong>❌ 未登录</strong><br>
+                    <small>Header会显示"登录"和"开始使用"按钮</small>
+                `;
+            }
+        }
+        
+        function clearToken() {
+            localStorage.removeItem('auth_token');
+            alert('登录状态已清除，请刷新页面查看效果');
+            checkStatus();
+        }
+        
+        checkStatus();
+    </script>
+</body>
+</html>

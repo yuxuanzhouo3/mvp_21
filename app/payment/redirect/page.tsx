@@ -1,0 +1,82 @@
+"use client";
+
+import { useEffect, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Loader2 } from "lucide-react";
+import { useLanguage } from "@/components/language-provider";
+
+function PaymentRedirectContent() {
+  const searchParams = useSearchParams();
+  const formSubmitted = useRef(false);
+  const { language } = useLanguage();
+  const isEn = language === "en";
+
+  useEffect(() => {
+    if (formSubmitted.current) return;
+
+    const formHtml = searchParams.get("form");
+    if (!formHtml) {
+      console.error("No payment form provided");
+      return;
+    }
+
+    formSubmitted.current = true;
+
+    try {
+      const decodedHtml = atob(formHtml);
+
+      const container = document.createElement("div");
+      container.style.display = "none";
+      document.body.appendChild(container);
+      container.innerHTML = decodedHtml;
+
+      const form = container.querySelector("form");
+      if (form) {
+        setTimeout(() => {
+          form.submit();
+        }, 100);
+      } else {
+        console.error("Form not found in HTML");
+      }
+    } catch (error) {
+      console.error("Failed to process payment form:", error);
+    }
+  }, [searchParams]);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />
+          <CardTitle className="text-xl">{isEn ? "Redirecting to payment page..." : "正在跳转到支付页面..."}</CardTitle>
+        </CardHeader>
+        <CardContent className="text-center text-muted-foreground">
+          <p>{isEn ? "Please wait while we redirect you to the payment gateway." : "请稍候，即将跳转到支付宝收银台"}</p>
+          <p className="text-sm mt-2">
+            {isEn ? "If it takes too long, go back and retry." : "如果长时间未跳转，请返回重试"}
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function PaymentRedirectPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader className="text-center">
+              <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />
+              <CardTitle className="text-xl">Loading...</CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
+      }
+    >
+      <PaymentRedirectContent />
+    </Suspense>
+  );
+}

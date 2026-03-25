@@ -1,0 +1,194 @@
+{
+  "collections": [
+    {
+      "name": "users",
+      "description": "用户表",
+      "indexes": [
+        {
+          "name": "email_index",
+          "keys": [{ "field": "email", "order": "asc" }],
+          "unique": true
+        },
+        {
+          "name": "subscription_type_index",
+          "keys": [{ "field": "subscription_type", "order": "asc" }]
+        }
+      ],
+      "schema": {
+        "_id": "string",
+        "email": "string",
+        "phone": "string",
+        "password_hash": "string",
+        "nickname": "string",
+        "avatar": "string",
+        "subscription_type": "string",
+        "subscription_expire_at": "date",
+        "role": "string",
+        "created_at": "date",
+        "updated_at": "date"
+      }
+    },
+    {
+      "name": "contracts",
+      "description": "合同表",
+      "indexes": [
+        {
+          "name": "user_id_index",
+          "keys": [{ "field": "user_id", "order": "asc" }]
+        },
+        {
+          "name": "status_index",
+          "keys": [{ "field": "status", "order": "asc" }]
+        },
+        {
+          "name": "created_at_index",
+          "keys": [{ "field": "created_at", "order": "desc" }]
+        }
+      ],
+      "schema": {
+        "_id": "string",
+        "user_id": "string",
+        "title": "string",
+        "type": "string",
+        "content": "object",
+        "status": "string",
+        "source_type": "string",
+        "source_content": "string",
+        "ai_analysis": "object",
+        "created_at": "date",
+        "updated_at": "date"
+      }
+    },
+    {
+      "name": "orders",
+      "description": "订单表",
+      "indexes": [
+        {
+          "name": "user_id_index",
+          "keys": [{ "field": "user_id", "order": "asc" }]
+        },
+        {
+          "name": "order_no_index",
+          "keys": [{ "field": "order_no", "order": "asc" }],
+          "unique": true
+        },
+        {
+          "name": "status_index",
+          "keys": [{ "field": "status", "order": "asc" }]
+        }
+      ],
+      "schema": {
+        "_id": "string",
+        "user_id": "string",
+        "order_no": "string",
+        "plan_type": "string",
+        "amount": "number",
+        "currency": "string",
+        "payment_method": "string",
+        "status": "string",
+        "payment_id": "string",
+        "paid_at": "date",
+        "expire_at": "date",
+        "created_at": "date"
+      }
+    },
+    {
+      "name": "usage_logs",
+      "description": "使用日志表",
+      "indexes": [
+        {
+          "name": "user_id_index",
+          "keys": [{ "field": "user_id", "order": "asc" }]
+        },
+        {
+          "name": "created_at_index",
+          "keys": [{ "field": "created_at", "order": "desc" }]
+        }
+      ],
+      "schema": {
+        "_id": "string",
+        "user_id": "string",
+        "action": "string",
+        "resource_type": "string",
+        "resource_id": "string",
+        "device_type": "string",
+        "device_model": "string",
+        "os_version": "string",
+        "app_version": "string",
+        "ip": "string",
+        "metadata": "object",
+        "created_at": "date"
+      }
+    },
+    {
+      "name": "contract_templates",
+      "description": "合同模板表",
+      "indexes": [
+        {
+          "name": "type_index",
+          "keys": [{ "field": "type", "order": "asc" }]
+        }
+      ],
+      "schema": {
+        "_id": "string",
+        "name": "string",
+        "type": "string",
+        "content": "object",
+        "is_default": "boolean",
+        "created_at": "date"
+      }
+    },
+    {
+      "name": "ads",
+      "description": "广告位表",
+      "indexes": [
+        {
+          "name": "position_index",
+          "keys": [{ "field": "position", "order": "asc" }]
+        },
+        {
+          "name": "is_active_index",
+          "keys": [{ "field": "is_active", "order": "asc" }]
+        }
+      ],
+      "schema": {
+        "_id": "string",
+        "position": "string",
+        "title": "string",
+        "image_url": "string",
+        "link_url": "string",
+        "is_active": "boolean",
+        "start_at": "date",
+        "end_at": "date",
+        "created_at": "date"
+      }
+    },
+    {
+      "name": "app_versions",
+      "description": "应用版本表",
+      "indexes": [
+        {
+          "name": "platform_index",
+          "keys": [{ "field": "platform", "order": "asc" }]
+        },
+        {
+          "name": "is_active_index",
+          "keys": [{ "field": "is_active", "order": "asc" }]
+        }
+      ],
+      "schema": {
+        "_id": "string",
+        "platform": "string",
+        "version": "string",
+        "build_number": "number",
+        "file_url": "string",
+        "file_size": "number",
+        "changelog": "string",
+        "force_update": "boolean",
+        "is_active": "boolean",
+        "created_at": "date"
+      }
+    }
+  ],
+  "instructions": "使用腾讯云CloudBase控制台手动创建这些集合，或使用CloudBase SDK初始化。"
+}
