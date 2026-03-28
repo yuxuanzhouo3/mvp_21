@@ -92,7 +92,7 @@ npm run dev
 ### CloudBase (国内版)
 
 1. 访问腾讯云CloudBase控制台
-   - 环境ID: `yuan-1-5g74k3ot0cb39649`
+   - 环境ID: `contracthub-2go0kvke215f83c1`
 
 2. 创建集合(参考 cloudbase-collections.json):
    - users

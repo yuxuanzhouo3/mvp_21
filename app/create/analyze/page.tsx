@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertCircle,
@@ -26,7 +26,7 @@ import { AIAnalysisResult } from "@/lib/ai/types";
 import { CONTRACT_TYPE_NAMES } from "@/lib/ai/prompts/generate";
 import { cn } from "@/lib/utils";
 
-export default function AnalyzePage() {
+function AnalyzePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { language } = useLanguage();
@@ -299,5 +299,19 @@ export default function AnalyzePage() {
         </div>
       </div>
     </CreateFlowShell>
+  );
+}
+
+export default function AnalyzePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <AnalyzePageContent />
+    </Suspense>
   );
 }

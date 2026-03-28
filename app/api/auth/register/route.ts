@@ -95,8 +95,13 @@ export async function POST(request: NextRequest) {
 
     if (isChinaRegion()) {
       // 中国区域：直接调用统一的 /api/auth 端点
+      const internalBaseUrl =
+        process.env.APP_URL ||
+        process.env.NEXT_PUBLIC_APP_URL ||
+        request.nextUrl.origin ||
+        "http://localhost:3000";
       const response = await fetch(
-        `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/auth`,
+        `${internalBaseUrl}/api/auth`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

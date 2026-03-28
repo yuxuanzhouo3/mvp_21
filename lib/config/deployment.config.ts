@@ -72,7 +72,7 @@ function generateConfig(region: DeploymentRegion): DeploymentConfig {
 
   return {
     region,
-    appName: "MultiGPT Platform",
+    appName: "MornContract",
     version: "3.0.0",
 
     auth: {
@@ -117,8 +117,14 @@ function generateConfig(region: DeploymentRegion): DeploymentConfig {
  * - 未设置或其他值：默认为中国版 (CN)
  * - "INTL"：国际版
  */
+const rawRegion =
+  process.env.NEXT_PUBLIC_APP_REGION ||
+  process.env.APP_REGION ||
+  process.env.NEXT_PUBLIC_DEPLOYMENT_REGION ||
+  "CN";
+
 const DEPLOYMENT_REGION: DeploymentRegion =
-  process.env.NEXT_PUBLIC_DEPLOYMENT_REGION === "INTL" ? "INTL" : "CN";
+  rawRegion.toUpperCase() === "INTL" ? "INTL" : "CN";
 
 // 在运行时验证区域设置
 if (typeof window === "undefined") {
@@ -140,6 +146,18 @@ export const deploymentConfig: DeploymentConfig =
  * 导出部署区域
  */
 export const currentRegion: DeploymentRegion = DEPLOYMENT_REGION;
+
+export function getDefaultLanguage(): "zh" | "en" {
+  return DEPLOYMENT_REGION === "CN" ? "zh" : "en";
+}
+
+export function getAppDisplayName(): string {
+  return "MornContract";
+}
+
+export function isLanguageSwitchingEnabled(): boolean {
+  return false;
+}
 
 /**
  * 判断是否为中国区域

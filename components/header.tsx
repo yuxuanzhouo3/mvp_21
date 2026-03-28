@@ -8,10 +8,16 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { useLanguage } from "@/components/language-provider";
 import { UserMenu } from "@/components/user-menu";
 import { Button } from "@/components/ui/button";
+import {
+  getAppDisplayName,
+  isLanguageSwitchingEnabled,
+} from "@/lib/config/deployment.config";
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { language, setLanguage } = useLanguage();
+  const appName = getAppDisplayName();
+  const showLanguageSwitcher = isLanguageSwitchingEnabled();
 
   const labels = {
     console: language === "en" ? "Console" : "控制台",
@@ -29,7 +35,7 @@ export function Header() {
       <nav className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 md:px-6">
         <Link href="/" className="flex items-center gap-2">
           <FileText className="h-6 w-6 text-primary" />
-          <span className="text-xl font-semibold">ContractHub</span>
+          <span className="text-xl font-semibold">{appName}</span>
         </Link>
 
         <div className="hidden items-center gap-6 md:flex">
@@ -78,7 +84,12 @@ export function Header() {
         </div>
 
         <div className="hidden items-center gap-3 md:flex">
-          <LanguageSwitcher currentLocale={language} onLocaleChange={(locale) => setLanguage(locale)} />
+          {showLanguageSwitcher ? (
+            <LanguageSwitcher
+              currentLocale={language}
+              onLocaleChange={(locale) => setLanguage(locale)}
+            />
+          ) : null}
           <Button asChild>
             <Link href="/dashboard">{labels.openConsole}</Link>
           </Button>
@@ -147,7 +158,12 @@ export function Header() {
               {labels.customers}
             </Link>
             <div className="flex flex-col gap-2 border-t border-border pt-4">
-              <LanguageSwitcher currentLocale={language} onLocaleChange={(locale) => setLanguage(locale)} />
+              {showLanguageSwitcher ? (
+                <LanguageSwitcher
+                  currentLocale={language}
+                  onLocaleChange={(locale) => setLanguage(locale)}
+                />
+              ) : null}
               <Button asChild>
                 <Link href="/dashboard">{labels.openConsole}</Link>
               </Button>

@@ -1,6 +1,16 @@
 import { useEffect, useState } from "react";
+import type { Language } from "@/lib/i18n";
 
 export interface AuthConfig {
+  region: "CN" | "INTL";
+  defaultLanguage: Language;
+  authProvider: "cloudbase" | "supabase";
+  features: {
+    emailAuth: boolean;
+    wechatAuth: boolean;
+    googleAuth: boolean;
+    githubAuth: boolean;
+  };
   wechatAppId: string | undefined;
   appUrl: string | undefined;
   supabaseUrl: string | undefined;
@@ -10,6 +20,15 @@ export interface AuthConfig {
 
 export function useAuthConfig() {
   const [config, setConfig] = useState<AuthConfig>({
+    region: "CN",
+    defaultLanguage: "zh",
+    authProvider: "cloudbase",
+    features: {
+      emailAuth: true,
+      wechatAuth: true,
+      googleAuth: false,
+      githubAuth: false,
+    },
     wechatAppId: undefined,
     appUrl: undefined,
     supabaseUrl: undefined,

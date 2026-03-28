@@ -6,7 +6,9 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "production", "test"])
     .default("development"),
-  APP_NAME: z.string().min(1).default("MultiGPT Platform"),
+  APP_NAME: z.string().min(1).default("MornContract"),
+  APP_REGION: z.enum(["CN", "INTL"]).optional(),
+  NEXT_PUBLIC_APP_REGION: z.enum(["CN", "INTL"]).optional(),
   APP_URL: z.string().url().optional(),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
 

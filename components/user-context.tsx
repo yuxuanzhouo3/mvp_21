@@ -30,6 +30,22 @@ const PREVIEW_USER: UserProfile = {
   subscription_status: "active",
 };
 
+function mapSupabaseSessionUser(sessionUser: {
+  id: string;
+  email?: string | null;
+  user_metadata?: Record<string, any>;
+}): UserProfile {
+  return {
+    id: sessionUser.id,
+    email: sessionUser.email || "",
+    name:
+      sessionUser.user_metadata?.displayName ||
+      sessionUser.user_metadata?.full_name ||
+      "",
+    avatar: sessionUser.user_metadata?.avatar || "",
+  };
+}
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -149,13 +165,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
         } else {
           // ✅ INTL：优先从缓存读取,缓存miss再从Supabase读取
           console.log("🌍 [Auth] INTL 模式，检查缓存...");
-          const { getSupabaseUserCache } = await import(
+          const { getSupabaseUserCache, syncSupabaseAuthCookie } = await import(
             "@/lib/auth/auth-state-manager-intl"
           );
           const cachedUser = getSupabaseUserCache();
 
           if (cachedUser) {
             console.log(`📦 [Auth] 从缓存恢复用户: ${cachedUser.email}`);
+            syncSupabaseAuthCookie();
             authState = { user: cachedUser };
           } else {
             // 缓存miss，从 Supabase 读取
@@ -164,20 +181,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
             if (error) {
               console.error("❌ [Auth] Supabase getSession 失败:", error);
             } else if (data?.session?.user) {
+              const restoredUser = mapSupabaseSessionUser(data.session.user);
+              const { saveSupabaseUserCache } = await import(
+                "@/lib/auth/auth-state-manager-intl"
+              );
               console.log(
                 `✅ [Auth] 从 Supabase 恢复用户: ${data.session.user.email}`
               );
-              // 转换 Supabase 用户为 UserProfile 格式
+              saveSupabaseUserCache(restoredUser);
               authState = {
-                user: {
-                  id: data.session.user.id,
-                  email: data.session.user.email || "",
-                  name:
-                    data.session.user.user_metadata?.displayName ||
-                    data.session.user.user_metadata?.full_name ||
-                    "",
-                  avatar: data.session.user.user_metadata?.avatar || "",
-                },
+                user: restoredUser,
               };
             }
           }
@@ -285,18 +298,23 @@ export function UserProvider({ children }: { children: ReactNode }) {
         const { data, error } = await supabase.auth.getSession();
         if (error) {
           console.error("❌ [Auth] Supabase getSession 失败:", error);
+          const { clearSupabaseUserCache } = await import(
+            "@/lib/auth/auth-state-manager-intl"
+          );
+          clearSupabaseUserCache();
           setUser(null);
         } else if (data?.session?.user) {
-          setUser({
-            id: data.session.user.id,
-            email: data.session.user.email || "",
-            name:
-              data.session.user.user_metadata?.displayName ||
-              data.session.user.user_metadata?.full_name ||
-              "",
-            avatar: data.session.user.user_metadata?.avatar || "",
-          });
+          const syncedUser = mapSupabaseSessionUser(data.session.user);
+          const { saveSupabaseUserCache } = await import(
+            "@/lib/auth/auth-state-manager-intl"
+          );
+          saveSupabaseUserCache(syncedUser);
+          setUser(syncedUser);
         } else {
+          const { clearSupabaseUserCache } = await import(
+            "@/lib/auth/auth-state-manager-intl"
+          );
+          clearSupabaseUserCache();
           setUser(null);
         }
       }
@@ -348,17 +366,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
         if (session?.user) {
           console.log(`✅ [Auth] Supabase 用户登录: ${session.user.email}`);
-          setUser({
-            id: session.user.id,
-            email: session.user.email || "",
-            name:
-              session.user.user_metadata?.displayName ||
-              session.user.user_metadata?.full_name ||
-              "",
-            avatar: session.user.user_metadata?.avatar || "",
-          });
+          const syncedUser = mapSupabaseSessionUser(session.user);
+          const { saveSupabaseUserCache } = await import(
+            "@/lib/auth/auth-state-manager-intl"
+          );
+          saveSupabaseUserCache(syncedUser);
+          setUser(syncedUser);
         } else {
           console.log("❌ [Auth] Supabase 用户登出");
+          const { clearSupabaseUserCache } = await import(
+            "@/lib/auth/auth-state-manager-intl"
+          );
+          clearSupabaseUserCache();
           setUser(null);
         }
       });

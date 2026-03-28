@@ -163,7 +163,21 @@ class SupabaseAuthClient implements AuthClient {
   async refreshUserProfile(): Promise<void> {
     try {
       console.log("🔄 [Supabase] 主动刷新用户信息...");
-      const response = await fetch("/api/profile");
+      const {
+        data: { session },
+        error: sessionError,
+      } = await this.getSession();
+
+      if (sessionError || !session?.access_token) {
+        console.warn("Supabase session is unavailable, skipping profile refresh");
+        return;
+      }
+
+      const response = await fetch("/api/profile", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
 
       if (response.ok) {
         const fullProfile = await response.json();
@@ -677,8 +691,23 @@ class CloudBaseAuthClient implements AuthClient {
   async signOut(): Promise<{ error: Error | null }> {
     // 通过 API 调用登出
     try {
+      let headers: HeadersInit | undefined;
+
+      if (typeof window !== "undefined") {
+        const { getStoredAuthState } = await import(
+          "@/lib/auth/auth-state-manager"
+        );
+        const authState = getStoredAuthState();
+        if (authState?.accessToken) {
+          headers = {
+            Authorization: `Bearer ${authState.accessToken}`,
+          };
+        }
+      }
+
       const response = await fetch("/api/auth/logout", {
         method: "POST",
+        headers,
       });
       if (!response.ok) {
         throw new Error("Logout failed");

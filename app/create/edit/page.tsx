@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlignCenter,
@@ -35,7 +35,7 @@ import { CONTRACT_TYPE_NAMES } from "@/lib/ai/prompts/generate";
 
 type EditorTab = "edit" | "preview";
 
-export default function EditPage() {
+function EditPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { language } = useLanguage();
@@ -403,5 +403,19 @@ export default function EditPage() {
         </div>
       </div>
     </CreateFlowShell>
+  );
+}
+
+export default function EditPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <EditPageContent />
+    </Suspense>
   );
 }

@@ -68,7 +68,50 @@ function AuthPageContent() {
   const debugRegion = searchParams.get("debug");
   const requestedRedirect = searchParams.get("redirect");
   const { language } = useLanguage();
+  const isEnglish = language === "en";
   const t = useTranslations(language);
+  const authUiText = useMemo(
+    () => ({
+      privacyConsentRequired: isEnglish
+        ? "Please read and agree to the Privacy Policy and Terms."
+        : "请阅读并同意《隐私政策》和《服务条款》",
+      emailAlreadyRegistered: isEnglish
+        ? "This email is already registered."
+        : "该邮箱已被注册",
+      weakPassword: isEnglish
+        ? "Password is too weak. Please choose a stronger password."
+        : "密码强度不足，请使用更复杂的密码",
+      invalidEmailFormat: isEnglish ? "Invalid email format." : "邮箱格式不正确",
+      registerSuccessCn: isEnglish
+        ? "Registration successful. Please sign in with your email and password."
+        : "注册成功，请使用邮箱和密码登录。",
+      registerSuccessIntl: isEnglish
+        ? "Registration successful. We sent a confirmation email to your inbox. Please confirm your email to finish sign-up."
+        : "注册成功，我们已向您的邮箱发送确认邮件，请完成邮件确认。",
+      operationFailed: isEnglish
+        ? "Operation failed. Please try again later."
+        : "操作失败，请稍后重试",
+      wechatAppIdMissing: isEnglish
+        ? "WeChat App ID is not configured."
+        : "微信应用 ID 未配置",
+      appUrlMissing: isEnglish
+        ? "App URL is not configured."
+        : "应用 URL 未配置",
+      wechatLoginFailed: isEnglish
+        ? "WeChat login failed. Please try again later."
+        : "微信登录失败，请稍后重试",
+      otpVerifiedSetPassword: isEnglish
+        ? "Verification succeeded. Please set a new password."
+        : "验证码验证成功，请设置新密码。",
+      signingUp: isEnglish ? "Signing up..." : "注册中...",
+      wechatRedirecting: isEnglish
+        ? "Redirecting to WeChat..."
+        : "正在跳转到微信...",
+      privacyAgreementPrefix: isEnglish ? "I agree to the " : "我已阅读并同意",
+      privacyAgreementConnector: isEnglish ? " and " : "和",
+    }),
+    [isEnglish],
+  );
 
   // 辅助函数：构建包含debug参数的URL
   const buildUrl = useCallback(
@@ -622,6 +665,88 @@ function AuthPageContent() {
   };
 
   const buttonText = getButtonText();
+  const displayMessage = useMemo(() => {
+    if (!error) {
+      return "";
+    }
+
+    const normalized = error.trim();
+    const lower = normalized.toLowerCase();
+
+    if (normalized.includes("隐私政策")) return authUiText.privacyConsentRequired;
+    if (
+      normalized.includes("两次输入的密码不一致") ||
+      lower.includes("passwords do not match")
+    ) {
+      return t.auth.passwordMismatch;
+    }
+    if (
+      normalized.includes("密码长度至少为6位") ||
+      lower.includes("at least 6 characters")
+    ) {
+      return t.auth.passwordTooShort;
+    }
+    if (
+      normalized.includes("密码强度不足") ||
+      lower.includes("weak password") ||
+      lower.includes("security requirements")
+    ) {
+      return authUiText.weakPassword;
+    }
+    if (
+      normalized.includes("该邮箱已被注册") ||
+      lower.includes("already registered")
+    ) {
+      return authUiText.emailAlreadyRegistered;
+    }
+    if (
+      normalized.includes("邮箱格式不正确") ||
+      lower.includes("invalid email")
+    ) {
+      return authUiText.invalidEmailFormat;
+    }
+    if (
+      normalized.includes("注册成功") &&
+      normalized.includes("确认邮件")
+    ) {
+      return authUiText.registerSuccessIntl;
+    }
+    if (
+      normalized.includes("注册成功") &&
+      (normalized.includes("邮箱和密码登录") ||
+        normalized.includes("邮箱和密码"))
+    ) {
+      return authUiText.registerSuccessCn;
+    }
+    if (normalized.includes("验证码已发送")) return t.auth.otpSent;
+    if (normalized.includes("请输入验证码")) return t.auth.enterOtpRequired;
+    if (normalized.includes("验证码验证成功")) {
+      return authUiText.otpVerifiedSetPassword;
+    }
+    if (normalized.includes("密码重置成功")) return t.auth.passwordResetSuccess;
+    if (normalized.includes("发送验证码超时")) return t.auth.sendOtpTimeout;
+    if (normalized.includes("验证验证码超时")) return t.auth.verifyOtpTimeout;
+    if (
+      normalized.includes("设置密码超时") ||
+      normalized.includes("设置新密码超时")
+    ) {
+      return t.auth.setPasswordTimeout;
+    }
+    if (normalized.includes("发送验证码失败")) return t.auth.sendOtpFailed;
+    if (normalized.includes("验证码验证失败")) return t.auth.verifyOtpFailed;
+    if (normalized.includes("设置新密码失败")) return t.auth.setPasswordFailed;
+    if (normalized.includes("微信应用 ID")) return authUiText.wechatAppIdMissing;
+    if (normalized.includes("应用 URL")) return authUiText.appUrlMissing;
+    if (normalized.includes("微信登录失败")) return authUiText.wechatLoginFailed;
+    if (lower.includes("google") && lower.includes("failed")) {
+      return t.auth.googleLoginFailed;
+    }
+    if (normalized.includes("操作失败")) return authUiText.operationFailed;
+    if (normalized.includes("登录失败")) return t.auth.loginFailed;
+    if (normalized.includes("注册失败")) return t.auth.registerFailed;
+
+    return normalized;
+  }, [authUiText, error, t.auth]);
 
   const renderForgotPasswordForm = () => {
     if (forgotPasswordStep === "request") {
@@ -1035,9 +1160,9 @@ function AuthPageContent() {
                 </Button>
               )}
 
-              {error && (
+              {displayMessage && (
                 <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
+                  <AlertDescription>{displayMessage}</AlertDescription>
                 </Alert>
               )}
             </TabsContent>
@@ -1235,9 +1360,9 @@ function AuthPageContent() {
                 </Button>
               )}
 
-              {error && (
+              {displayMessage && (
                 <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
+                  <AlertDescription>{displayMessage}</AlertDescription>
                 </Alert>
               )}
             </TabsContent>

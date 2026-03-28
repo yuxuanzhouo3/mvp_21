@@ -24,8 +24,13 @@ export async function requireAuth(request: NextRequest): Promise<{
     if (isChinaRegion()) {
       // 中国地区：使用 CloudBase 认证，通过 /api/auth/me 验证
       try {
+        const internalBaseUrl =
+          process.env.APP_URL ||
+          process.env.NEXT_PUBLIC_APP_URL ||
+          request.nextUrl.origin ||
+          "http://localhost:3000";
         const response = await fetch(
-          `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/auth/me`,
+          `${internalBaseUrl}/api/auth/me`,
           {
             method: "GET",
             headers: {

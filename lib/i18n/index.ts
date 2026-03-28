@@ -14,6 +14,7 @@ export const translations = {
 
 // 导出类型
 export type Language = "zh" | "en";
+export type Locale = Language;
 export type Translations = typeof zh;
 
 /**
