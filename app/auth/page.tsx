@@ -141,6 +141,7 @@ function AuthPageContent() {
   };
 
   const [userRegion, setUserRegion] = useState<RegionType>(getInitialRegion());
+  const supportsOtpFlows = userRegion !== RegionType.CHINA;
 
   const postAuthPath = useMemo(() => {
     const normalizedRedirect = requestedRedirect?.split("?")[0] || "";
@@ -896,7 +897,7 @@ function AuthPageContent() {
     );
   };
 
-  const signinForm = forgotPassword ? (
+  const signinForm = supportsOtpFlows && forgotPassword ? (
     renderForgotPasswordForm()
   ) : (
     <form
@@ -940,20 +941,22 @@ function AuthPageContent() {
             </button>
           </div>
           {/* 忘记密码链接 */}
-          <div className="text-right">
-            <a
-              href="#"
-              className="text-sm text-blue-600 hover:underline"
-              onClick={(e) => {
-                e.preventDefault();
-                setForgotPassword(true);
-                resetForgotPasswordFlow();
-                setError("");
-              }}
-            >
-              {t.auth.forgotPassword}
-            </a>
-          </div>
+          {supportsOtpFlows && (
+            <div className="text-right">
+              <a
+                href="#"
+                className="text-sm text-blue-600 hover:underline"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setForgotPassword(true);
+                  resetForgotPasswordFlow();
+                  setError("");
+                }}
+              >
+                {t.auth.forgotPassword}
+              </a>
+            </div>
+          )}
         </div>
       ) : (
         <div>
