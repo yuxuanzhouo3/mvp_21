@@ -9,6 +9,7 @@ import {
   useMemo,
   ReactNode,
 } from "react";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import {
   getStoredAuthState,
   clearAuthState,
@@ -16,6 +17,7 @@ import {
   initAuthStateManager,
 } from "@/lib/auth/auth-state-manager";
 import { getAuthClient } from "@/lib/auth/client";
+import type { UserPreferences } from "@/lib/account/profile";
 import { isChinaRegion } from "@/lib/config/region";
 import { supabase } from "@/lib/integrations/supabase";
 
@@ -42,7 +44,11 @@ function mapSupabaseSessionUser(sessionUser: {
       sessionUser.user_metadata?.displayName ||
       sessionUser.user_metadata?.full_name ||
       "",
-    avatar: sessionUser.user_metadata?.avatar || "",
+    avatar:
+      sessionUser.user_metadata?.avatar ||
+      sessionUser.user_metadata?.avatar_url ||
+      "",
+    preferences: sessionUser.user_metadata?.preferences,
   };
 }
 
@@ -55,6 +61,7 @@ export interface UserProfile {
   subscription_status?: string;
   subscription_expires_at?: string;
   membership_expires_at?: string;
+  preferences?: UserPreferences;
 }
 
 interface UserContextType {
@@ -361,7 +368,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
       const {
         data: { subscription },
-      } = supabase.auth.onAuthStateChange(async (event, session) => {
+      } = supabase.auth.onAuthStateChange(
+        async (event: AuthChangeEvent, session: Session | null) => {
         console.log(`🔔 [Auth] Supabase 认证事件: ${event}`);
 
         if (session?.user) {

@@ -3,6 +3,8 @@
  * Only stores the minimum UI fields we actually need on the client.
  */
 
+import type { UserPreferences } from "@/lib/account/profile";
+
 export interface SupabaseUserProfile {
   id: string;
   email: string;
@@ -11,6 +13,7 @@ export interface SupabaseUserProfile {
   subscription_plan?: string;
   subscription_status?: string;
   membership_expires_at?: string;
+  preferences?: UserPreferences;
 }
 
 export interface SupabaseUserCache {
@@ -51,6 +54,7 @@ export function saveSupabaseUserCache(
       subscription_plan: user.subscription_plan,
       subscription_status: user.subscription_status,
       membership_expires_at: user.membership_expires_at,
+      preferences: user.preferences,
     };
 
     const cache: SupabaseUserCache = {

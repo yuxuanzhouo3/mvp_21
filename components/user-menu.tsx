@@ -1,6 +1,21 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  CreditCard,
+  LayoutDashboard,
+  LogIn,
+  LogOut,
+  Settings,
+  User,
+  UserPlus,
+} from "lucide-react";
+
+import { useLanguage } from "@/components/language-provider";
+import { useUser } from "@/components/user-context";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,260 +25,179 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import {
-  User,
-  Settings,
-  CreditCard,
-  LogOut,
-  LogIn,
-  UserPlus,
-  Crown,
-} from "lucide-react";
-import { useRouter, usePathname } from "next/navigation";
-import { useUser } from "./user-context";
-import { useLanguage } from "@/components/language-provider";
 import { useTranslations } from "@/lib/i18n";
 
 export function UserMenu() {
   const router = useRouter();
-  const pathname = usePathname();
-  const { user, loading, refreshUser, signOut } = useUser();
-  const [isLoading, setIsLoading] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { language } = useLanguage();
-
+  const { user, loading, refreshUser, signOut } = useUser();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const t = useTranslations(language);
 
-  // 当菜单打开时刷新用户数据
+  const labels = useMemo(
+    () =>
+      language === "zh"
+        ? {
+            dashboard: "控制台",
+            signIn: "登录",
+            signUp: "注册",
+            free: "免费版",
+            active: "生效中",
+            inactive: "未开通",
+          }
+        : {
+            dashboard: "Console",
+            signIn: "Sign In",
+            signUp: "Sign Up",
+            free: "Free plan",
+            active: "Active",
+            inactive: "Inactive",
+          },
+    [language],
+  );
+
+  const displayName = useMemo(() => {
+    if (user?.name?.trim()) {
+      return user.name.trim();
+    }
+
+    if (user?.email) {
+      return user.email.split("@")[0] || user.email;
+    }
+
+    return "User";
+  }, [user?.email, user?.name]);
+
+  const userInitial = useMemo(
+    () => displayName.trim().charAt(0).toUpperCase() || "U",
+    [displayName],
+  );
+
+  const planLabel =
+    user?.subscription_plan === "pro"
+      ? "Pro"
+      : user?.subscription_plan === "enterprise"
+        ? "Enterprise"
+        : labels.free;
+  const statusLabel =
+    user?.subscription_status === "active" ? labels.active : labels.inactive;
+
   const handleMenuOpenChange = async (open: boolean) => {
-    setIsMenuOpen(open);
+    setMenuOpen(open);
+
     if (open && user) {
       try {
         await refreshUser();
       } catch (error) {
-        console.error("Failed to refresh user data:", error);
+        console.error("[UserMenu] Failed to refresh user:", error);
       }
     }
   };
 
-  // 获取当前URL的debug参数
-  const currentDebugParam =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("debug")
-      : null;
-
-  // 辅助函数：构建包含debug参数的URL
-  const buildUrl = (path: string) => {
-    if (currentDebugParam) {
-      return `${path}?debug=${currentDebugParam}`;
-    }
-    return path;
-  };
-
-  // 获取显示名称：优先使用 name，如果为空或纯数字则使用 email 的用户名部分
-  const displayName = (() => {
-    // 如果name存在且不是纯数字，使用name
-    if (user?.name && user.name.trim()) {
-      const trimmedName = user.name.trim();
-      // 检查是否为纯数字（QQ号等）
-      if (!/^\d+$/.test(trimmedName)) {
-        return trimmedName;
-      }
-    }
-
-    if (user?.email) {
-      // 从邮箱中提取用户名部分（@前面的部分）
-      const emailParts = user.email.split("@");
-      if (emailParts[0]) {
-        return emailParts[0];
-      }
-    }
-
-    return "User";
-  })();
-
-  // 获取用户名首字母（支持中英文）
-  const userInitial = (() => {
-    const name = displayName;
-    if (name) {
-      // 获取第一个字符
-      const firstChar = name.charAt(0).toUpperCase();
-      // 如果是中文，直接返回
-      if (/[\u4e00-\u9fa5]/.test(firstChar)) {
-        return firstChar;
-      }
-      // 如果是字母，返回大写
-      if (/[a-zA-Z]/.test(firstChar)) {
-        return firstChar;
-      }
-      // 如果是数字或其他，返回第一个字母或U
-      const letters = name.match(/[a-zA-Z]/);
-      if (letters && letters.length > 0) {
-        return letters[0].toUpperCase();
-      }
-    }
-    return "U";
-  })();
-
-  const handleSignOut = async () => {
-    setIsLoading(true);
+  const handleLogout = async () => {
     try {
+      setLoggingOut(true);
       await signOut();
-      router.replace(buildUrl("/auth"));
+      router.replace("/auth");
     } catch (error) {
-      console.error(`${t.user.logoutFailed}:`, error);
+      console.error("[UserMenu] Failed to log out:", error);
     } finally {
-      setIsLoading(false);
+      setLoggingOut(false);
     }
   };
 
-  const handleSignIn = () => {
-    router.push(buildUrl("/auth"));
-  };
-
-  const handleSignUp = () => {
-    router.push(buildUrl("/auth?mode=signup"));
-  };
-
-  const getPlanBadge = (plan: string) => {
-    const planColors = {
-      free: "bg-gray-100 text-gray-800",
-      pro: "bg-blue-100 text-blue-800",
-      enterprise: "bg-purple-100 text-purple-800",
-    };
-
-    const planIcons = {
-      free: null,
-      pro: <Crown className="w-3 h-3" />,
-      enterprise: <Crown className="w-3 h-3" />,
-    };
-
-    return (
-      <Badge
-        variant="secondary"
-        className={`text-xs ${
-          planColors[plan as keyof typeof planColors] || planColors.free
-        }`}
-      >
-        {planIcons[plan as keyof typeof planIcons]}
-        <span className="ml-1">
-          {(t.payment?.plans as any)?.[plan]?.name || plan}
-        </span>
-      </Badge>
-    );
-  };
-
-  // 如果正在加载且没有用户，显示加载状态
   if (loading && !user) {
     return (
       <Button variant="ghost" size="sm" disabled>
-        <User className="w-4 h-4" />
+        <User className="h-4 w-4" />
       </Button>
     );
   }
 
-  // 如果没有用户（未登录状态），显示登录菜单
   if (!user) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="flex items-center space-x-2"
-          >
-            <User className="w-4 h-4" />
+          <Button variant="ghost" size="sm" className="flex items-center gap-2">
+            <User className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuItem
-            onSelect={handleSignIn}
-            className="flex items-center space-x-2"
-          >
-            <LogIn className="w-4 h-4" />
-            <span>{t.user.login}</span>
+          <DropdownMenuItem onSelect={() => router.push("/auth?mode=signin")}>
+            <LogIn className="mr-2 h-4 w-4" />
+            {labels.signIn}
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={handleSignUp}
-            className="flex items-center space-x-2"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>{t.user.register}</span>
+          <DropdownMenuItem onSelect={() => router.push("/auth?mode=signup")}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            {labels.signUp}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     );
   }
 
-  // 已登录状态
   return (
-    <DropdownMenu open={isMenuOpen} onOpenChange={handleMenuOpenChange}>
+    <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="flex items-center space-x-2"
-        >
-          <Avatar className="w-6 h-6">
+        <Button variant="ghost" size="sm" className="flex items-center gap-2">
+          <Avatar className="h-8 w-8">
             <AvatarImage src={user.avatar} alt={displayName} />
             <AvatarFallback className="text-xs">{userInitial}</AvatarFallback>
           </Avatar>
-          <span className="hidden md:inline text-sm">{displayName}</span>
+          <span className="hidden max-w-28 truncate text-sm md:inline">
+            {displayName}
+          </span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel className="flex items-center space-x-3 p-3">
-          <Avatar className="w-10 h-10">
-            <AvatarImage src={user.avatar} alt={displayName} />
-            <AvatarFallback>{userInitial}</AvatarFallback>
-          </Avatar>
-          <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium">{displayName}</p>
-            <p className="text-xs text-muted-foreground">{user.email}</p>
-            {user.membership_expires_at ? (
-              <p className="text-xs text-gray-600">
-                {t.user.expiresAt}:{" "}
-                {new Date(user.membership_expires_at).toLocaleDateString(
-                  language === "zh" ? "zh-CN" : "en-US",
-                  { year: "numeric", month: "long", day: "numeric" },
-                )}
-              </p>
-            ) : (
-              <p className="text-xs text-gray-500">{t.user.noMembership}</p>
-            )}
+      <DropdownMenuContent align="end" className="w-72">
+        <DropdownMenuLabel className="space-y-3 p-4">
+          <div className="flex items-center gap-3">
+            <Avatar className="h-11 w-11">
+              <AvatarImage src={user.avatar} alt={displayName} />
+              <AvatarFallback>{userInitial}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold">{displayName}</div>
+              <div className="truncate text-xs text-muted-foreground">
+                {user.email}
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="secondary">{planLabel}</Badge>
+            <Badge variant="outline">{statusLabel}</Badge>
           </div>
         </DropdownMenuLabel>
+
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onSelect={() => router.push(buildUrl("/profile"))}
-          className="flex items-center space-x-2"
-        >
-          <User className="w-4 h-4" />
-          <span>{t.user.profile}</span>
+
+        <DropdownMenuItem onSelect={() => router.push("/dashboard")}>
+          <LayoutDashboard className="mr-2 h-4 w-4" />
+          {labels.dashboard}
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => router.push(buildUrl("/settings"))}
-          className="flex items-center space-x-2"
-        >
-          <Settings className="w-4 h-4" />
-          <span>{t.user.settings}</span>
+        <DropdownMenuItem onSelect={() => router.push("/profile")}>
+          <User className="mr-2 h-4 w-4" />
+          {t.user.profile}
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => router.push(buildUrl("/payment"))}
-          className="flex items-center space-x-2"
-        >
-          <CreditCard className="w-4 h-4" />
-          <span>{t.user.billing}</span>
+        <DropdownMenuItem onSelect={() => router.push("/settings")}>
+          <Settings className="mr-2 h-4 w-4" />
+          {t.user.settings}
         </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => router.push("/payment")}>
+          <CreditCard className="mr-2 h-4 w-4" />
+          {t.user.billing}
+        </DropdownMenuItem>
+
         <DropdownMenuSeparator />
+
         <DropdownMenuItem
-          onSelect={handleSignOut}
-          className="flex items-center space-x-2 text-red-600 focus:text-red-600"
+          onSelect={handleLogout}
+          className="text-red-600 focus:text-red-600"
+          disabled={loggingOut}
         >
-          <LogOut className="w-4 h-4" />
-          <span>{t.user.logout}</span>
+          <LogOut className="mr-2 h-4 w-4" />
+          {loggingOut ? `${t.user.logout}...` : t.user.logout}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

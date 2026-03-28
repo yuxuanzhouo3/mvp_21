@@ -1,10 +1,26 @@
-﻿"use client";
+"use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ArrowLeft,
+  CreditCard,
+  LogOut,
+  Mail,
+  Phone,
+  Save,
+  Settings,
+  User,
+} from "lucide-react";
+
+import { normalizeAccountProfile, type AccountProfile } from "@/lib/account/profile";
+import { Header } from "@/components/header";
+import { useLanguage } from "@/components/language-provider";
+import { useUser } from "@/components/user-context";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -12,380 +28,418 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { getAuthClient } from "@/lib/auth/client";
-// import { getDatabase } from "@/lib/database/adapter";
-import { ArrowLeft, Save, User, Mail, Crown } from "lucide-react";
-import { Header } from "@/components/header";
-import { useApp } from "@/components/app-context";
-import { useUser } from "@/components/user-context";
-import { useTranslations } from "@/lib/i18n";
-
-const authClient = getAuthClient();
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function ProfilePage() {
-  const [user, setUser] = useState<any>(null);
+  const router = useRouter();
+  const { language } = useLanguage();
+  const { user: currentUser, loading: userLoading, refreshUser, signOut } = useUser();
+  const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const { language, activeView, setActiveView } = useApp();
-  const { user: currentUser, loading: userLoading } = useUser();
-  const t = useTranslations(language);
 
-  const userInitial = useMemo(() => {
-    const takeInitial = (value?: string | null) => {
-      if (!value) return "";
-      const trimmed = value.trim();
-      return trimmed ? trimmed.charAt(0).toUpperCase() : "";
-    };
-    if (!user) return "U";
-    return takeInitial(user.name) || takeInitial(user.email) || "U";
-  }, [user]);
-
-  const router = useRouter();
-  const currentDebugParam =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("debug")
-      : null;
-  const buildUrl = (path: string) =>
-    currentDebugParam ? `${path}?debug=${currentDebugParam}` : path;
+  const content = useMemo(
+    () =>
+      language === "zh"
+        ? {
+            title: "个人资料",
+            subtitle: "完善头像、姓名和联系方式，方便双方在签署合同前确认身份。",
+            loading: "正在加载资料...",
+            loginRequired: "请先登录后再查看个人资料。",
+            loginAction: "前往登录",
+            back: "返回",
+            name: "姓名",
+            namePlaceholder: "请输入您的姓名或企业联系人称呼",
+            email: "邮箱",
+            avatar: "头像 URL",
+            avatarPlaceholder: "请输入头像图片地址",
+            phone: "联系电话",
+            phonePlaceholder: "请输入联系电话",
+            membership: "会员状态",
+            membershipNone: "未开通会员",
+            save: "保存资料",
+            saving: "保存中...",
+            saved: "个人资料已更新",
+            loadFailed: "加载个人资料失败，请稍后重试。",
+            saveFailed: "保存失败，请稍后重试。",
+            settings: "设置",
+            billing: "账单与会员",
+            logout: "退出登录",
+            free: "免费版",
+            active: "生效中",
+            inactive: "未开通",
+          }
+        : {
+            title: "Profile",
+            subtitle:
+              "Complete your avatar, name, and contact details before contracts are shared for signature.",
+            loading: "Loading profile...",
+            loginRequired: "Please sign in before viewing your profile.",
+            loginAction: "Go to Sign In",
+            back: "Back",
+            name: "Full Name",
+            namePlaceholder: "Enter your name or primary contact",
+            email: "Email",
+            avatar: "Avatar URL",
+            avatarPlaceholder: "Enter an avatar image URL",
+            phone: "Phone",
+            phonePlaceholder: "Enter a contact phone number",
+            membership: "Membership",
+            membershipNone: "No active membership",
+            save: "Save Profile",
+            saving: "Saving...",
+            saved: "Profile updated",
+            loadFailed: "Failed to load profile. Please try again later.",
+            saveFailed: "Failed to save profile. Please try again later.",
+            settings: "Settings",
+            billing: "Billing",
+            logout: "Log out",
+            free: "Free plan",
+            active: "Active",
+            inactive: "Inactive",
+          },
+    [language],
+  );
 
   useEffect(() => {
-    const initializeProfile = async () => {
+    let cancelled = false;
+
+    async function loadProfile() {
+      if (!currentUser) {
+        if (!cancelled) {
+          setProfile(null);
+          setLoading(false);
+        }
+        return;
+      }
+
       try {
         setLoading(true);
+        setError("");
 
-        // 检查用户是否已登录
-        if (!currentUser) {
-          router.push(buildUrl("/auth"));
-          return;
-        }
-
-        // 从 API 获取用户资料
-        const { tokenManager } =
-          await import("@/lib/auth/frontend-token-manager");
+        const { tokenManager } = await import("@/lib/auth/frontend-token-manager");
         const headers = await tokenManager.getAuthHeaderAsync();
+
         if (!headers) {
-          router.push(buildUrl("/auth"));
+          router.push("/auth");
           return;
         }
 
         const response = await fetch("/api/profile", { headers });
         if (!response.ok) {
-          if (response.status === 401) {
-            // 未登录，重定向到登录页面
-            router.push(buildUrl("/auth"));
-            return;
-          }
-          throw new Error("获取用户资料失败");
+          throw new Error("Failed to load profile");
         }
-        const profile = await response.json();
 
-        // 规范化数据结构，确保 avatar 字段存在
-        const normalizedProfile = {
-          ...profile,
-          avatar: profile.avatar || "",
-        };
-
-        setUser(normalizedProfile);
-      } catch (error) {
-        console.error("加载用户资料失败:", error);
-        setError(t.profile.loadFailed);
+        if (!cancelled) {
+          setProfile(normalizeAccountProfile(await response.json()));
+        }
+      } catch (loadError) {
+        console.error("[ProfilePage] Failed to load profile:", loadError);
+        if (!cancelled) {
+          setError(content.loadFailed);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-    };
+    }
 
     if (!userLoading) {
-      initializeProfile();
+      void loadProfile();
     }
-  }, [currentUser, userLoading, router]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [content.loadFailed, currentUser, router, userLoading]);
+
+  const profileInitial = useMemo(() => {
+    const source = profile?.name || profile?.email || currentUser?.email || "U";
+    return source.trim().charAt(0).toUpperCase() || "U";
+  }, [currentUser?.email, profile?.email, profile?.name]);
+
+  const handleChange = (field: keyof Pick<AccountProfile, "name" | "avatar" | "phone">, value: string) => {
+    setProfile((prev) => (prev ? { ...prev, [field]: value } : prev));
+  };
 
   const handleSave = async () => {
-    if (!user) return;
-    console.log("💾 开始保存个人资料...");
-    setSaving(true);
-    setError("");
-    setSuccess("");
+    if (!profile) return;
+
     try {
-      const updates = {
-        id: user.id,
-        email: user.email,
-        name: user.name?.trim() || "",
-        avatar: user.avatar?.trim() || "",
-        subscription_plan: user.subscription_plan,
-        subscription_status: user.subscription_status,
-      };
+      setSaving(true);
+      setError("");
+      setSuccess("");
 
-      console.log("📤 发送更新数据:", updates);
-
-      const { tokenManager } =
-        await import("@/lib/auth/frontend-token-manager");
+      const { tokenManager } = await import("@/lib/auth/frontend-token-manager");
       const headers = await tokenManager.getAuthHeaderAsync();
+
       if (!headers) {
-        throw new Error(t.profile.loadFailed);
+        router.push("/auth");
+        return;
       }
 
-      // 添加 Content-Type 头
       headers["Content-Type"] = "application/json";
-      console.log("🔑 包含认证头");
 
       const response = await fetch("/api/profile", {
         method: "POST",
         headers,
         body: JSON.stringify({
-          name: updates.name,
-          avatar: updates.avatar,
+          name: profile.name.trim(),
+          avatar: profile.avatar.trim(),
+          phone: profile.phone.trim(),
         }),
       });
 
-      console.log("📡 API 响应状态:", response.status);
-
       if (!response.ok) {
-        const errorText = await response.text();
-        console.log("❌ API 错误响应:", errorText);
-        throw new Error(`保存失败 (${response.status}): ${errorText}`);
+        throw new Error("Failed to save profile");
       }
 
-      const result = await response.json();
-      console.log("✅ 保存成功:", result);
-      setUser(result);
-      setSuccess(t.profile.saved);
-
-      // 更新缓存和认证状态中的用户信息
-      if (typeof window !== "undefined") {
-        try {
-          const { isChinaRegion } = await import("@/lib/config/region");
-
-          if (isChinaRegion()) {
-            // 中国版：使用本地认证状态管理器
-            const { getStoredAuthState, saveAuthState } =
-              await import("@/lib/auth/auth-state-manager");
-            const authState = getStoredAuthState();
-
-            if (authState) {
-              // 更新用户信息
-              const updatedUser = {
-                ...authState.user,
-                name: result.name,
-                avatar: result.avatar,
-                email: result.email,
-                id: result.id,
-                subscription_plan: result.subscription_plan,
-                subscription_status: result.subscription_status,
-                subscription_expires_at: result.subscription_expires_at,
-                membership_expires_at: result.membership_expires_at,
-              };
-
-              // 重新保存认证状态
-              saveAuthState(
-                authState.accessToken,
-                authState.refreshToken,
-                updatedUser,
-                authState.tokenMeta,
-              );
-
-              console.log("✅ [CN] 已更新认证状态中的用户信息");
-            } else {
-              // 如果没有找到认证状态，尝试更新旧的localStorage键作为后备
-              const cachedUser = localStorage.getItem("auth-user");
-              if (cachedUser) {
-                const userData = JSON.parse(cachedUser);
-                userData.name = result.name;
-                userData.avatar = result.avatar;
-                userData.email = result.email;
-                userData.id = result.id;
-                userData.subscription_plan = result.subscription_plan;
-                userData.subscription_status = result.subscription_status;
-                userData.subscription_expires_at =
-                  result.subscription_expires_at;
-                userData.membership_expires_at = result.membership_expires_at;
-                localStorage.setItem("auth-user", JSON.stringify(userData));
-                console.log("✅ [CN] 已更新旧localStorage中的用户信息作为后备");
-              }
-            }
-          } else {
-            // 国际版：使用 Supabase 缓存管理器
-            const { saveSupabaseUserCache } =
-              await import("@/lib/auth/auth-state-manager-intl");
-            saveSupabaseUserCache(result);
-            console.log("✅ [INTL] 已更新国际版用户缓存，支持跨标签页同步");
-          }
-        } catch (e) {
-          console.error("❌ 更新缓存失败:", e);
-        }
-      }
-    } catch (err) {
-      console.error("❌ 保存失败:", err);
-      setError(t.profile.saveFailed);
+      const nextProfile = normalizeAccountProfile(await response.json());
+      setProfile(nextProfile);
+      await refreshUser();
+      setSuccess(content.saved);
+    } catch (saveError) {
+      console.error("[ProfilePage] Failed to save profile:", saveError);
+      setError(content.saveFailed);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleInputChange = (field: string, value: string) => {
-    setUser((prev: any) => ({ ...prev, [field]: value }));
+  const handleLogout = async () => {
+    try {
+      setLoggingOut(true);
+      await signOut();
+      router.replace("/auth");
+    } catch (logoutError) {
+      console.error("[ProfilePage] Failed to sign out:", logoutError);
+      setError(
+        language === "zh"
+          ? "退出登录失败，请稍后重试。"
+          : "Failed to log out. Please try again later.",
+      );
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
-  if (loading || userLoading)
+  if (loading || userLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Header activeView={activeView} setActiveView={setActiveView} />
+      <div className="min-h-screen bg-muted/20">
+        <Header />
         <div className="flex items-center justify-center py-20">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">{t.profile.loading}</p>
+            <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-primary" />
+            <p className="mt-4 text-muted-foreground">{content.loading}</p>
           </div>
         </div>
       </div>
     );
-  if (!currentUser)
+  }
+
+  if (!currentUser || !profile) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Header activeView={activeView} setActiveView={setActiveView} />
-        <div className="flex items-center justify-center py-20">
-          <div className="text-center">
-            <p className="text-gray-600">{t.profile.loginRequired}</p>
-            <Button
-              onClick={() => router.push(buildUrl("/auth"))}
-              className="mt-4"
-            >
-              {t.auth.signInButton}
-            </Button>
-          </div>
-        </div>
+      <div className="min-h-screen bg-muted/20">
+        <Header />
+        <main className="mx-auto w-full max-w-3xl px-4 py-10 md:px-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>{content.title}</CardTitle>
+              <CardDescription>{content.loginRequired}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button onClick={() => router.push("/auth")}>{content.loginAction}</Button>
+            </CardContent>
+          </Card>
+        </main>
       </div>
     );
-  if (!user)
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Header activeView={activeView} setActiveView={setActiveView} />
-        <div className="flex items-center justify-center py-20">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">{t.profile.loading}</p>
-          </div>
-        </div>
-      </div>
-    );
+  }
+
+  const membershipLabel =
+    profile.subscription_status === "active" ? content.active : content.inactive;
+  const planLabel =
+    profile.subscription_plan === "pro"
+      ? "Pro"
+      : profile.subscription_plan === "enterprise"
+        ? "Enterprise"
+        : content.free;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header activeView={activeView} setActiveView={setActiveView} />
-      <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-muted/20">
+      <Header />
+      <main className="mx-auto w-full max-w-6xl px-4 py-8 md:px-6 lg:px-8">
         <div className="mb-6">
-          <Button
-            variant="ghost"
-            onClick={() => router.back()}
-            className="flex items-center space-x-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>{t.profile.back}</span>
+          <Button variant="ghost" onClick={() => router.back()}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            {content.back}
           </Button>
         </div>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <User className="w-5 h-5" />
-              <span>{t.profile.title}</span>
-            </CardTitle>
-            <CardDescription>{t.profile.subtitle}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex items-center space-x-4">
-              <Avatar className="w-20 h-20">
-                <AvatarImage src={user.avatar} alt={user.name} />
-                <AvatarFallback className="text-lg">
-                  {userInitial}
-                </AvatarFallback>
-              </Avatar>
-              <div className="space-y-2">
-                <h3 className="text-lg font-semibold">{user.name}</h3>
-                <div className="flex items-center space-x-2 text-gray-600">
-                  <Mail className="w-4 h-4" />
-                  <span>{user.email}</span>
+
+        <div className="grid gap-6 xl:grid-cols-[1fr_1.35fr]">
+          <Card className="border-border/70 bg-card/95 shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                {content.title}
+              </CardTitle>
+              <CardDescription>{content.subtitle}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="flex items-center gap-4">
+                <Avatar className="h-20 w-20">
+                  <AvatarImage src={profile.avatar} alt={profile.name || profile.email} />
+                  <AvatarFallback className="text-lg">{profileInitial}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <div className="truncate text-lg font-semibold">
+                    {profile.name || profile.email}
+                  </div>
+                  <div className="truncate text-sm text-muted-foreground">
+                    {profile.email}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Badge variant="secondary">{planLabel}</Badge>
+                    <Badge variant="outline">{membershipLabel}</Badge>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="name">{t.profile.fullName}</Label>
-                <Input
-                  id="name"
-                  value={user.name}
-                  onChange={(e) => handleInputChange("name", e.target.value)}
-                  placeholder={t.profile.fullNamePlaceholder}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">{t.profile.email}</Label>
-                <Input id="email" type="email" value={user.email} disabled />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="avatar">{t.profile.avatarUrl}</Label>
-                <Input
-                  id="avatar"
-                  value={user.avatar || ""}
-                  onChange={(e) => handleInputChange("avatar", e.target.value)}
-                  placeholder={t.profile.avatarUrlPlaceholder}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>{t.profile.membershipExpires}</Label>
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm">
-                    {user.membership_expires_at
-                      ? new Date(user.membership_expires_at).toLocaleDateString(
-                          language === "zh" ? "zh-CN" : "en-US",
-                          { year: "numeric", month: "long", day: "numeric" },
-                        )
-                      : t.profile.noMembership}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => router.push(buildUrl("/payment"))}
-                  >
-                    {user.membership_expires_at
-                      ? t.profile.renew
-                      : t.profile.activateMembership}
-                  </Button>
+
+              <div className="space-y-3 rounded-xl border border-border/70 bg-muted/30 p-4">
+                <div className="text-sm font-medium">{content.membership}</div>
+                <div className="text-sm text-muted-foreground">
+                  {profile.membership_expires_at
+                    ? new Date(profile.membership_expires_at).toLocaleDateString(
+                        language === "zh" ? "zh-CN" : "en-US",
+                        {
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        },
+                      )
+                    : content.membershipNone}
                 </div>
               </div>
-            </div>
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            {success && (
-              <Alert>
-                <AlertDescription className="text-green-600">
-                  {success}
-                </AlertDescription>
-              </Alert>
-            )}
-            <div className="flex justify-end">
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    {t.profile.saving}
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4 mr-2" />
-                    {t.profile.saveChanges}
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+
+              <div className="grid gap-3">
+                <Button
+                  variant="outline"
+                  className="justify-start"
+                  onClick={() => router.push("/settings")}
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  {content.settings}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="justify-start"
+                  onClick={() => router.push("/payment")}
+                >
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  {content.billing}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="justify-start text-red-600 hover:text-red-700"
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                >
+                  <LogOut className="mr-2 h-4 w-4" />
+                  {loggingOut ? `${content.logout}...` : content.logout}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/70 bg-card/95 shadow-sm">
+            <CardHeader>
+              <CardTitle>{content.title}</CardTitle>
+              <CardDescription>{content.subtitle}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {error ? (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              ) : null}
+
+              {success ? (
+                <Alert>
+                  <AlertDescription className="text-green-600">
+                    {success}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              <div className="space-y-2">
+                <Label htmlFor="profile-name">{content.name}</Label>
+                <Input
+                  id="profile-name"
+                  value={profile.name}
+                  onChange={(event) => handleChange("name", event.target.value)}
+                  placeholder={content.namePlaceholder}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="profile-email">{content.email}</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="profile-email"
+                    type="email"
+                    value={profile.email}
+                    disabled
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="profile-avatar">{content.avatar}</Label>
+                <Input
+                  id="profile-avatar"
+                  value={profile.avatar}
+                  onChange={(event) => handleChange("avatar", event.target.value)}
+                  placeholder={content.avatarPlaceholder}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="profile-phone">{content.phone}</Label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="profile-phone"
+                    value={profile.phone}
+                    onChange={(event) => handleChange("phone", event.target.value)}
+                    placeholder={content.phonePlaceholder}
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <Button onClick={handleSave} disabled={saving}>
+                  {saving ? (
+                    content.saving
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      {content.save}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
     </div>
   );
 }

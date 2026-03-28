@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { Toaster } from "sonner";
 import { AppProvider } from "@/components/app-context";
 import { LanguageProvider } from "@/components/language-provider";
+import { ThemeProvider } from "@/components/theme-provider";
 import { UserProvider } from "@/components/user-context";
 import {
   getAppDisplayName,
@@ -49,11 +50,13 @@ export default function RootLayout({
       <body
         className={`font-sans ${GeistSans.variable} ${GeistMono.variable} antialiased`}
       >
-        <UserProvider>
-          <LanguageProvider>
-            <AppProvider>{children}</AppProvider>
-          </LanguageProvider>
-        </UserProvider>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <UserProvider>
+            <LanguageProvider>
+              <AppProvider>{children}</AppProvider>
+            </LanguageProvider>
+          </UserProvider>
+        </ThemeProvider>
         <Toaster position="top-center" richColors />
         <Analytics />
       </body>

@@ -18,7 +18,7 @@ import {
 
 import { useLanguage } from "@/components/language-provider";
 import { useUser } from "@/components/user-context";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -90,7 +90,7 @@ export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { language } = useLanguage();
-  const { signOut } = useUser();
+  const { user, signOut } = useUser();
   const t = useTranslations(language);
 
   const labels = t.platform?.consoleModules || {
@@ -121,6 +121,17 @@ export function AppSidebar() {
       router.push("/auth?mode=signin");
     }
   };
+
+  const displayName = user?.name?.trim() || user?.email?.split("@")[0] || labels.user;
+  const userInitial = displayName.trim().charAt(0).toUpperCase() || "U";
+  const planLabel =
+    user?.subscription_plan === "pro"
+      ? "Pro"
+      : user?.subscription_plan === "enterprise"
+        ? "Enterprise"
+        : language === "en"
+          ? "Free plan"
+          : "免费版";
 
   return (
     <Sidebar variant="inset">
@@ -215,11 +226,16 @@ export function AppSidebar() {
               <DropdownMenuTrigger asChild>
                 <SidebarMenuButton size="lg" className="w-full">
                   <Avatar className="h-8 w-8">
-                    <AvatarFallback>U</AvatarFallback>
+                    <AvatarImage src={user?.avatar} alt={displayName} />
+                    <AvatarFallback>{userInitial}</AvatarFallback>
                   </Avatar>
-                  <div className="flex flex-col items-start text-left">
-                    <span className="text-sm font-medium">{labels.user}</span>
-                    <span className="text-xs text-muted-foreground">{labels.proPlan}</span>
+                  <div className="min-w-0 flex flex-col items-start text-left">
+                    <span className="max-w-[10rem] truncate text-sm font-medium">
+                      {displayName}
+                    </span>
+                    <span className="max-w-[10rem] truncate text-xs text-muted-foreground">
+                      {planLabel}
+                    </span>
                   </div>
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
