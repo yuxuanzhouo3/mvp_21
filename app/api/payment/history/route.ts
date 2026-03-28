@@ -1,26 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { apiRateLimit } from "@/lib/security/rate-limit";
-import { logBusinessEvent, logError, logSecurityEvent } from "@/lib/utils/logger";
+
 import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
-import { getDatabase } from "@/lib/auth/auth-utils";
-import { isChinaRegion } from "@/lib/config/region";
+import { listPaymentsByUser } from "@/lib/data/billing-store";
+import { apiRateLimit } from "@/lib/security/rate-limit";
+import { logBusinessEvent, logError } from "@/lib/utils/logger";
 
 // GET /api/payment/history?page=1&pageSize=20
-// Requires Authorization: Bearer <supabase access token>
 export async function GET(request: NextRequest) {
-  // Apply API rate limiting
   return new Promise<NextResponse>((resolve) => {
     const mockRes = {
       status: (code: number) => ({
-        json: (data: any) => resolve(NextResponse.json(data, { status: code })),
+        json: (data: unknown) => resolve(NextResponse.json(data, { status: code })),
       }),
-      setHeader: () => { },
+      setHeader: () => {},
       getHeader: () => undefined,
     };
 
     apiRateLimit(request as any, mockRes as any, async () => {
-      // Rate limit not exceeded, handle the request
       resolve(await handlePaymentHistory(request));
     });
   });
@@ -29,150 +25,58 @@ export async function GET(request: NextRequest) {
 async function handlePaymentHistory(request: NextRequest) {
   const operationId = `payment_history_${Date.now()}_${Math.random()
     .toString(36)
-    .substr(2, 9)}`;
+    .slice(2, 11)}`;
 
   try {
-    // 验证用户认证
     const authResult = await requireAuth(request);
     if (!authResult) {
       return createAuthErrorResponse();
     }
 
-    const { user } = authResult;
-    const userId = user.id;
-
+    const userId = authResult.user.id;
     const { searchParams } = new URL(request.url);
     const page = Math.max(parseInt(searchParams.get("page") || "1", 10), 1);
     const pageSize = Math.min(
       Math.max(parseInt(searchParams.get("pageSize") || "20", 10), 1),
-      100
+      100,
     );
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+    const offset = (page - 1) * pageSize;
 
     logBusinessEvent("payment_history_requested", userId, {
       operationId,
       page,
       pageSize,
-      from,
-      to,
+      offset,
     });
 
-    // Query payments for this user with pagination
-    let payments: any[] = [];
-    let queryError: any = null;
+    const { payments, total } = await listPaymentsByUser({
+      userId,
+      limit: pageSize,
+      offset,
+    });
 
-    if (isChinaRegion()) {
-      // CloudBase 查询
-      try {
-        const db = getDatabase();
-        const result = await db
-          .collection("payments")
-          .where({ user_id: userId })
-          .orderBy("created_at", "desc")
-          .skip(from)
-          .limit(pageSize)
-          .get();
-
-        payments = result.data || [];
-      } catch (error) {
-        queryError = error;
-      }
-    } else {
-      // Supabase 查询
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      if (!supabaseUrl || !anonKey) {
-        logError(
-          "payment_history_config_error",
-          new Error("Missing Supabase environment variables"),
-          {
-            operationId,
-          }
-        );
-        return NextResponse.json(
-          { error: "Server misconfigured: missing Supabase env" },
-          { status: 500 }
-        );
-      }
-
-      // Use anon client with the caller's JWT so RLS enforces per-user access
-      const authHeader = request.headers.get("authorization") || "";
-      const token = authHeader.replace(/^Bearer\s+/i, ""); // Remove "Bearer " prefix if present
-
-      const supabase = createClient(supabaseUrl, anonKey, {
-        auth: { persistSession: false, autoRefreshToken: false },
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      });
-
-      const { data, error } = await supabase
-        .from("payments")
-        .select(
-          "id, created_at, amount, currency, status, payment_method, transaction_id, subscription_id"
-        )
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .range(from, to);
-
-      payments = data || [];
-      queryError = error;
-    }
-
-    if (queryError) {
-      logError(
-        "payment_history_fetch_error",
-        queryError instanceof Error
-          ? queryError
-          : new Error(String(queryError)),
-        {
-          operationId,
-          userId,
-          page,
-          pageSize,
-        }
-      );
-      return NextResponse.json(
-        { error: "Failed to fetch billing history" },
-        { status: 500 }
-      );
-    }
-
-    // Map DB rows to UI schema
-    const records = (payments || []).map((p: any) => {
-      // Normalize status for UI: completed -> paid
-      let uiStatus: "paid" | "pending" | "failed" | "refunded" = "pending";
-      switch (p.status) {
-        case "completed":
-          uiStatus = "paid";
-          break;
-        case "failed":
-          uiStatus = "failed";
-          break;
-        case "refunded":
-          uiStatus = "refunded";
-          break;
-        default:
-          uiStatus = "pending";
-      }
-
-      const method = (p.payment_method || "").toString();
+    const records = payments.map((payment) => {
+      const method = payment.paymentMethod.toLowerCase();
       const paymentMethod =
-        method.toLowerCase() === "stripe"
+        method === "stripe"
           ? "Stripe"
-          : method.toLowerCase() === "paypal"
+          : method === "paypal"
             ? "PayPal"
-            : method || "";
+            : method === "wechat"
+              ? "WeChat Pay"
+              : method === "alipay"
+                ? "Alipay"
+                : payment.paymentMethod;
 
       return {
-        id: p._id || p.id,
-        date: p.created_at,
-        amount: parseFloat(String(p.amount || "0")),
-        currency: p.currency || "USD",
-        status: uiStatus,
+        id: payment.id,
+        date: payment.createdAt,
+        amount: payment.amount,
+        currency: payment.currency || "USD",
+        status:
+          payment.status === "completed"
+            ? "paid"
+            : payment.status,
         description: "Subscription payment",
         paymentMethod,
         invoiceUrl: null as string | null,
@@ -183,6 +87,7 @@ async function handlePaymentHistory(request: NextRequest) {
       operationId,
       page,
       pageSize,
+      total,
       recordCount: records.length,
     });
 
@@ -190,21 +95,23 @@ async function handlePaymentHistory(request: NextRequest) {
       page,
       pageSize,
       count: records.length,
+      total,
       records,
     });
-  } catch (err) {
+  } catch (error) {
     logError(
       "payment_history_handler_error",
-      err instanceof Error ? err : new Error(String(err)),
+      error instanceof Error ? error : new Error(String(error)),
       {
         operationId,
-        error: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
-      }
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      },
     );
+
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -1,133 +1,197 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  FileText,
-  Plus,
   Download,
   Eye,
-  Trash2,
-  Filter,
-  Search,
+  FileText,
   Loader2,
+  Plus,
+  Search,
+  Trash2,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Header } from "@/components/header";
-import { useUser } from "@/components/user-context";
-import { useLanguage } from "@/components/language-provider";
 
-interface Contract {
-  id: string;
-  title: string;
-  employee_name: string;
-  position: string;
-  created_at: string;
-  status: "draft" | "signed" | "active" | "expired";
+import { Header } from "@/components/header";
+import { useLanguage } from "@/components/language-provider";
+import { useUser } from "@/components/user-context";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { deleteContractForCurrentUser, listContractsForCurrentUser, type ContractListItem } from "@/lib/contracts/client";
+import { useTranslations } from "@/lib/i18n";
+
+type ContractFilter = "all" | ContractListItem["status"];
+
+function formatDate(value?: string, locale = "zh-CN") {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(date);
 }
 
 export default function ContractsPage() {
   const router = useRouter();
   const { user, loading: userLoading } = useUser();
   const { language } = useLanguage();
-  const [contracts, setContracts] = useState<Contract[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  const t = useTranslations(language);
+  const isEn = language === "en";
+  const content = t.pages.contracts;
 
-  // 重定向未登录用户
+  const [contracts, setContracts] = useState<ContractListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filter, setFilter] = useState<ContractFilter>("all");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   useEffect(() => {
     if (!userLoading && !user) {
-      router.push("/auth?redirect=/contracts");
+      router.replace("/auth?redirect=/contracts");
     }
-  }, [user, userLoading, router]);
+  }, [router, user, userLoading]);
 
-  // 加载合同列表
   useEffect(() => {
+    let cancelled = false;
+
     async function loadContracts() {
-      if (!user) return;
+      if (!user) {
+        if (!cancelled) {
+          setLoading(false);
+        }
+        return;
+      }
 
       try {
-        // TODO: 从 API 加载合同列表
-        // 暂时使用模拟数据
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        setLoading(true);
+        setError("");
+        const nextContracts = await listContractsForCurrentUser();
 
-        const mockContracts: Contract[] = [
-          {
-            id: "1",
-            title: "劳动合同 - 张三",
-            employee_name: "张三",
-            position: "前端工程师",
-            created_at: "2024-01-15",
-            status: "active",
-          },
-          {
-            id: "2",
-            title: "劳动合同 - 李四",
-            employee_name: "李四",
-            position: "产品经理",
-            created_at: "2024-01-10",
-            status: "signed",
-          },
-        ];
-
-        setContracts(mockContracts);
-      } catch (error) {
-        console.error("加载合同失败:", error);
+        if (!cancelled) {
+          setContracts(nextContracts);
+        }
+      } catch (loadError) {
+        console.error("[ContractsPage] Failed to load contracts:", loadError);
+        if (!cancelled) {
+          setError(content.loadFailed);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    loadContracts();
-  }, [user]);
+    void loadContracts();
 
-  // 筛选合同
-  const filteredContracts = contracts.filter(
-    (contract) =>
-      contract.employee_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      contract.position.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
-
-  // 状态显示
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      draft: {
-        color: "bg-gray-100 text-gray-700",
-        text: language === "zh" ? "草稿" : "Draft",
-      },
-      signed: {
-        color: "bg-blue-100 text-blue-700",
-        text: language === "zh" ? "已签署" : "Signed",
-      },
-      active: {
-        color: "bg-green-100 text-green-700",
-        text: language === "zh" ? "生效中" : "Active",
-      },
-      expired: {
-        color: "bg-red-100 text-red-700",
-        text: language === "zh" ? "已过期" : "Expired",
-      },
+    return () => {
+      cancelled = true;
     };
+  }, [content.loadFailed, user]);
 
-    const config = statusConfig[status as keyof typeof statusConfig];
-    return (
-      <Badge className={config.color} variant="secondary">
-        {config.text}
-      </Badge>
-    );
+  const statusMeta: Record<
+    ContractListItem["status"],
+    { label: string; className: string }
+  > = {
+    draft: {
+      label: content.statusDraft,
+      className: "bg-muted text-muted-foreground",
+    },
+    pending: {
+      label: content.statusPending,
+      className: "bg-amber-100 text-amber-700",
+    },
+    active: {
+      label: content.statusActive,
+      className: "bg-blue-100 text-blue-700",
+    },
+    signed: {
+      label: content.statusSigned,
+      className: "bg-emerald-100 text-emerald-700",
+    },
+    completed: {
+      label: content.statusCompleted,
+      className: "bg-green-100 text-green-700",
+    },
+    expired: {
+      label: content.statusExpired,
+      className: "bg-red-100 text-red-700",
+    },
+    cancelled: {
+      label: content.statusCancelled,
+      className: "bg-slate-200 text-slate-700",
+    },
+  };
+
+  const filters: Array<{ value: ContractFilter; label: string }> = [
+    { value: "all", label: t.common.all },
+    { value: "draft", label: content.statusDraft },
+    { value: "pending", label: content.statusPending },
+    { value: "signed", label: content.statusSigned },
+    { value: "completed", label: content.statusCompleted },
+  ];
+
+  const filteredContracts = useMemo(() => {
+    const keyword = searchQuery.trim().toLowerCase();
+
+    return contracts.filter((contract) => {
+      const matchesFilter = filter === "all" ? true : contract.status === filter;
+      if (!matchesFilter) {
+        return false;
+      }
+
+      if (!keyword) {
+        return true;
+      }
+
+      const haystack = [
+        contract.title,
+        contract.region,
+        contract.parties.join(" "),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(keyword);
+    });
+  }, [contracts, filter, searchQuery]);
+
+  const handleDelete = async (contract: ContractListItem) => {
+    if (!window.confirm(content.deleteConfirm)) {
+      return;
+    }
+
+    try {
+      setDeletingId(contract.id);
+      await deleteContractForCurrentUser(contract.id);
+      setContracts((current) => current.filter((item) => item.id !== contract.id));
+      window.alert(content.deleteSuccess);
+    } catch (deleteError) {
+      console.error("[ContractsPage] Failed to delete contract:", deleteError);
+      window.alert(content.deleteFailed);
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   if (userLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">
-            {language === "zh" ? "加载中..." : "Loading..."}
-          </p>
+          <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-primary" />
+          <p className="text-muted-foreground">{content.loadingDescription}</p>
         </div>
       </div>
     );
@@ -141,149 +205,139 @@ export default function ContractsPage() {
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       <Header />
 
-      <main className="container mx-auto px-4 py-12 max-w-6xl">
-        {/* 页面标题 */}
-        <div className="flex items-center justify-between mb-8">
+      <main className="container mx-auto max-w-6xl px-4 py-12">
+        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-4xl font-bold mb-2">
-              {language === "zh" ? "我的合同" : "My Contracts"}
-            </h1>
-            <p className="text-gray-600">
-              {language === "zh"
-                ? "管理和查看所有合同"
-                : "Manage and view all contracts"}
-            </p>
+            <h1 className="text-4xl font-bold">{content.title}</h1>
+            <p className="mt-2 text-gray-600">{content.description}</p>
           </div>
-          <Button
-            onClick={() => router.push("/contracts/new")}
-            className="bg-primary hover:bg-primary/90"
-          >
-            <Plus className="h-5 w-5 mr-2" />
-            {language === "zh" ? "创建合同" : "Create Contract"}
+
+          <Button onClick={() => router.push("/contracts/new")}>
+            <Plus className="mr-2 h-5 w-5" />
+            {content.primaryAction}
           </Button>
         </div>
 
-        {/* 搜索和筛选 */}
-        <div className="flex gap-4 mb-6">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <div className="mb-6 space-y-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder={
-                language === "zh"
-                  ? "搜索员工姓名或岗位..."
-                  : "Search employee name or position..."
-              }
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={content.searchPlaceholder}
               className="pl-10"
             />
           </div>
-          <Button variant="outline">
-            <Filter className="h-4 w-4 mr-2" />
-            {language === "zh" ? "筛选" : "Filter"}
-          </Button>
-        </div>
 
-        {/* 合同列表 */}
-        {filteredContracts.length === 0 ? (
-          <Card>
-            <CardContent className="py-16 text-center">
-              <FileText className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-xl font-semibold mb-2">
-                {language === "zh" ? "还没有合同" : "No contracts yet"}
-              </h3>
-              <p className="text-gray-600 mb-6">
-                {language === "zh"
-                  ? "开始创建您的第一份合同吧！"
-                  : "Start creating your first contract!"}
-              </p>
-              <Button onClick={() => router.push("/contracts/new")}>
-                <Plus className="h-4 w-4 mr-2" />
-                {language === "zh" ? "创建合同" : "Create Contract"}
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-4">
-            {filteredContracts.map((contract) => (
-              <Card
-                key={contract.id}
-                className="hover:shadow-lg transition-shadow cursor-pointer"
+          <div className="flex flex-wrap gap-2">
+            {filters.map((item) => (
+              <Button
+                key={item.value}
+                variant={filter === item.value ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFilter(item.value)}
               >
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-start gap-4 flex-1">
-                      <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <FileText className="h-6 w-6 text-primary" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="font-semibold text-lg truncate">
-                            {contract.title}
-                          </h3>
-                          {getStatusBadge(contract.status)}
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-gray-600">
-                          <span>
-                            {language === "zh" ? "员工：" : "Employee: "}
-                            {contract.employee_name}
-                          </span>
-                          <span>•</span>
-                          <span>
-                            {language === "zh" ? "岗位：" : "Position: "}
-                            {contract.position}
-                          </span>
-                          <span>•</span>
-                          <span>
-                            {language === "zh" ? "创建于：" : "Created: "}
-                            {contract.created_at}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 ml-4">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => alert("查看功能开发中")}
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        {language === "zh" ? "查看" : "View"}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => alert("下载功能开发中")}
-                      >
-                        <Download className="h-4 w-4 mr-1" />
-                        {language === "zh" ? "下载" : "Download"}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-red-600 hover:text-red-700"
-                        onClick={() => {
-                          if (
-                            confirm(
-                              language === "zh"
-                                ? "确定要删除这份合同吗？"
-                                : "Are you sure you want to delete this contract?",
-                            )
-                          ) {
-                            alert("删除功能开发中");
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                {item.label}
+              </Button>
             ))}
           </div>
-        )}
+        </div>
+
+        {error ? (
+          <Card className="border-red-200 bg-red-50">
+            <CardContent className="py-4 text-sm text-red-700">
+              {error}
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {!error && filteredContracts.length === 0 ? (
+          <Card>
+            <CardContent className="py-16 text-center">
+              <FileText className="mx-auto mb-4 h-14 w-14 text-muted-foreground" />
+              <h2 className="text-xl font-semibold">
+                {contracts.length === 0 ? content.emptyTitle : content.noResultsTitle}
+              </h2>
+              <p className="mt-2 text-muted-foreground">
+                {contracts.length === 0
+                  ? content.emptyDescription
+                  : content.noResultsDescription}
+              </p>
+              {contracts.length === 0 ? (
+                <Button className="mt-6" onClick={() => router.push("/contracts/new")}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  {content.primaryAction}
+                </Button>
+              ) : null}
+            </CardContent>
+          </Card>
+        ) : null}
+
+        <div className="space-y-4">
+          {filteredContracts.map((contract) => (
+            <Card key={contract.id} className="transition-shadow hover:shadow-md">
+              <CardContent className="flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-3 flex flex-wrap items-center gap-3">
+                    <h2 className="truncate text-lg font-semibold">
+                      {contract.title || content.untitled}
+                    </h2>
+                    <Badge className={statusMeta[contract.status].className}>
+                      {statusMeta[contract.status].label}
+                    </Badge>
+                    {contract.region ? (
+                      <Badge variant="outline">
+                        {content.regionLabel}: {contract.region}
+                      </Badge>
+                    ) : null}
+                  </div>
+
+                  <div className="space-y-1 text-sm text-muted-foreground">
+                    <p>
+                      {content.contractParties}: {contract.parties.join(", ") || "-"}
+                    </p>
+                    <p>
+                      {content.createdAt}:{" "}
+                      {formatDate(
+                        contract.createdAt || contract.updatedAt,
+                        isEn ? "en-US" : "zh-CN",
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.alert(content.openComingSoon)}
+                  >
+                    <Eye className="mr-1 h-4 w-4" />
+                    {content.viewAction}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.alert(content.downloadComingSoon)}
+                  >
+                    <Download className="mr-1 h-4 w-4" />
+                    {content.downloadAction}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-red-600 hover:text-red-700"
+                    onClick={() => void handleDelete(contract)}
+                    disabled={deletingId === contract.id}
+                  >
+                    <Trash2 className="mr-1 h-4 w-4" />
+                    {content.deleteAction}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </main>
     </div>
   );

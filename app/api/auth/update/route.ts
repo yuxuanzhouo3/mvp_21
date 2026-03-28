@@ -1,47 +1,112 @@
-import { NextRequest, NextResponse } from "next/server";
-import { isChinaRegion } from "@/lib/config/region";
-import { logSecurityEvent } from "@/lib/utils/logger";
-import cloudbase from "@cloudbase/node-sdk";
 import bcrypt from "bcryptjs";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-// 更新请求验证schema
+import { normalizeUserPreferences } from "@/lib/account/profile";
+import {
+  loadChinaAccountProfile,
+  loadIntlAccountProfile,
+} from "@/lib/account/server-profile";
+import { verifyAuthToken, extractTokenFromHeader } from "@/lib/auth/auth-utils";
+import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
+import { isChinaRegion } from "@/lib/config/region";
+import { getSupabaseAdmin } from "@/lib/integrations/supabase-admin";
+import { logSecurityEvent } from "@/lib/utils/logger";
+
 const updateSchema = z.object({
   email: z.string().email().optional(),
   password: z.string().min(6).optional(),
   data: z.record(z.any()).optional(),
 });
 
-/**
- * POST /api/auth/update
- * 更新用户信息
- */
+function normalizeProfileMetadata(
+  existingMetadata: Record<string, any>,
+  data: Record<string, any> = {},
+) {
+  const nextMetadata: Record<string, unknown> = {
+    ...existingMetadata,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (data.name !== undefined) {
+    nextMetadata.displayName = data.name;
+    nextMetadata.full_name = data.name;
+    nextMetadata.name = data.name;
+  }
+
+  if (data.avatar !== undefined) {
+    nextMetadata.avatar = data.avatar;
+    nextMetadata.avatar_url = data.avatar;
+  }
+
+  if (data.phone !== undefined) {
+    nextMetadata.phone = data.phone;
+  }
+
+  if (data.preferences !== undefined) {
+    nextMetadata.preferences = normalizeUserPreferences({
+      ...existingMetadata.preferences,
+      ...data.preferences,
+    });
+  }
+
+  for (const [key, value] of Object.entries(data)) {
+    if (["name", "avatar", "phone", "preferences"].includes(key)) {
+      continue;
+    }
+    nextMetadata[key] = value;
+  }
+
+  return nextMetadata;
+}
+
+async function requireUserId(request: NextRequest) {
+  const authHeader = request.headers.get("authorization");
+  const { token, error: tokenError } = extractTokenFromHeader(authHeader);
+
+  if (tokenError || !token) {
+    return {
+      error: NextResponse.json(
+        {
+          error: tokenError || "No authentication token",
+          code: "NO_AUTH_TOKEN",
+        },
+        { status: 401 },
+      ),
+    };
+  }
+
+  const authResult = await verifyAuthToken(token);
+  if (!authResult.success || !authResult.userId) {
+    return {
+      error: NextResponse.json(
+        {
+          error: authResult.error || "Invalid token",
+          code: "INVALID_TOKEN",
+        },
+        { status: 401 },
+      ),
+    };
+  }
+
+  return { userId: authResult.userId };
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
     const clientIP =
       request.headers.get("x-forwarded-for") ||
       request.headers.get("x-real-ip") ||
       "unknown";
 
-    // 获取认证信息
-    const authHeader = request.headers.get("authorization");
-    const token = authHeader?.replace("Bearer ", "");
-
-    if (!token) {
-      return NextResponse.json(
-        {
-          error: "No authentication token",
-          code: "NO_AUTH_TOKEN",
-        },
-        { status: 401 }
-      );
+    const auth = await requireUserId(request);
+    if (auth.error) {
+      return auth.error;
     }
 
-    // 验证输入
-    const validationResult = updateSchema.safeParse(body);
+    const validationResult = updateSchema.safeParse(await request.json());
     if (!validationResult.success) {
-      logSecurityEvent("update_validation_failed", undefined, clientIP, {
+      logSecurityEvent("update_validation_failed", auth.userId, clientIP, {
         errors: validationResult.error.errors,
       });
 
@@ -51,73 +116,154 @@ export async function POST(request: NextRequest) {
           code: "VALIDATION_ERROR",
           details: validationResult.error.errors,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const { email, password, data } = validationResult.data;
+    const userId = auth.userId;
 
-    // 如果是中国区域
     if (isChinaRegion()) {
-      try {
-        const app = cloudbase.init({
-          env: process.env.NEXT_PUBLIC_WECHAT_CLOUDBASE_ID,
-          secretId: process.env.CLOUDBASE_SECRET_ID,
-          secretKey: process.env.CLOUDBASE_SECRET_KEY,
-        });
+      const db = getDatabase();
+      const userResult = await db.collection("web_users").doc(userId).get();
+      const existingUser = userResult?.data?.[0] as Record<string, any> | undefined;
 
-        // 简单实现：只返回成功响应
-        // 实际实现中应该验证 token，获取 userId，然后更新数据库
-
-        const updateData: Record<string, any> = {
-          updatedAt: new Date().toISOString(),
-        };
-
-        if (email) {
-          updateData.email = email;
-        }
-
-        if (password) {
-          updateData.password = await bcrypt.hash(password, 10);
-        }
-
-        if (data) {
-          Object.assign(updateData, data);
-        }
-
-        logSecurityEvent("user_updated", undefined, clientIP, {
-          updatedFields: Object.keys(updateData),
-        });
-
-        return NextResponse.json({
-          success: true,
-          message: "User updated successfully",
-          user: {
-            id: "user-id",
-            email: email || "user@example.com",
+      if (!existingUser) {
+        return NextResponse.json(
+          {
+            error: "User not found",
+            code: "USER_NOT_FOUND",
           },
-        });
-      } catch (error) {
-        console.error("Failed to update user:", error);
+          { status: 404 },
+        );
+      }
+
+      const updateData: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+
+      if (email !== undefined) {
+        updateData.email = email;
+      }
+
+      if (password !== undefined) {
+        updateData.password = await bcrypt.hash(password, 10);
+      }
+
+      if (data) {
+        if (data.name !== undefined) updateData.name = data.name;
+        if (data.avatar !== undefined) updateData.avatar = data.avatar;
+        if (data.phone !== undefined) updateData.phone = data.phone;
+        if (data.preferences !== undefined) {
+          updateData.preferences = normalizeUserPreferences({
+            ...existingUser.preferences,
+            ...data.preferences,
+          });
+        }
+
+        for (const [key, value] of Object.entries(data)) {
+          if (["name", "avatar", "phone", "preferences"].includes(key)) {
+            continue;
+          }
+          updateData[key] = value;
+        }
+      }
+
+      await db.collection("web_users").doc(userId).update(updateData);
+
+      const profile = await loadChinaAccountProfile(userId);
+      if (!profile) {
         return NextResponse.json(
           {
             error: "Failed to update user",
             code: "UPDATE_FAILED",
-            details: error instanceof Error ? error.message : "Unknown error",
           },
-          { status: 500 }
+          { status: 500 },
         );
       }
+
+      logSecurityEvent("user_updated", userId, clientIP, {
+        region: "CN",
+        updatedFields: Object.keys(updateData),
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "User updated successfully",
+        user: profile,
+      });
     }
 
-    // 国际版使用 Supabase
-    return NextResponse.json(
-      {
-        error: "Not implemented for international region",
-        code: "NOT_IMPLEMENTED",
-      },
-      { status: 400 }
-    );
+    const {
+      data: { user: existingUser },
+      error: existingUserError,
+    } = await getSupabaseAdmin().auth.admin.getUserById(userId);
+
+    if (existingUserError || !existingUser) {
+      return NextResponse.json(
+        {
+          error: "User not found",
+          code: "USER_NOT_FOUND",
+        },
+        { status: 404 },
+      );
+    }
+
+    const updatePayload: {
+      email?: string;
+      password?: string;
+      user_metadata?: Record<string, unknown>;
+    } = {
+      user_metadata: normalizeProfileMetadata(existingUser.user_metadata || {}, data),
+    };
+
+    if (email !== undefined) {
+      updatePayload.email = email;
+    }
+
+    if (password !== undefined) {
+      updatePayload.password = password;
+    }
+
+    const { data: updatedData, error } =
+      await getSupabaseAdmin().auth.admin.updateUserById(userId, updatePayload);
+
+    if (error || !updatedData.user) {
+      return NextResponse.json(
+        {
+          error: "Failed to update user",
+          code: "UPDATE_FAILED",
+          details: error?.message,
+        },
+        { status: 500 },
+      );
+    }
+
+    const profile = await loadIntlAccountProfile(userId, updatedData.user);
+    if (!profile) {
+      return NextResponse.json(
+        {
+          error: "Failed to update user",
+          code: "UPDATE_FAILED",
+        },
+        { status: 500 },
+      );
+    }
+
+    logSecurityEvent("user_updated", userId, clientIP, {
+      region: "INTL",
+      updatedFields: [
+        ...(email !== undefined ? ["email"] : []),
+        ...(password !== undefined ? ["password"] : []),
+        ...Object.keys(data || {}),
+      ],
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "User updated successfully",
+      user: profile,
+    });
   } catch (error) {
     console.error("Update user error:", error);
     logSecurityEvent(
@@ -126,7 +272,7 @@ export async function POST(request: NextRequest) {
       request.headers.get("x-forwarded-for") || "unknown",
       {
         error: error instanceof Error ? error.message : "Unknown error",
-      }
+      },
     );
 
     return NextResponse.json(
@@ -134,7 +280,7 @@ export async function POST(request: NextRequest) {
         error: "Internal server error",
         code: "INTERNAL_ERROR",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -1,58 +1,83 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { jwtVerify } from 'jose';
-import { getDb, TABLES } from '@/lib/db';
+import { NextRequest, NextResponse } from "next/server";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'contracthub-secret-key-change-in-production'
-);
+import {
+  deleteContractRecord,
+  getContractById,
+  updateContractRecord,
+} from "@/lib/data/contracts-store";
+import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-// 获取当前用户
-async function getCurrentUser(request: NextRequest) {
-  const token =
-    request.cookies.get('auth_token')?.value ||
-    request.headers.get('authorization')?.replace('Bearer ', '');
+async function requireCurrentUser(request: NextRequest) {
+  const authHeader = request.headers.get("authorization");
+  const { token, error: tokenError } = extractTokenFromHeader(authHeader);
 
-  if (!token) return null;
-
-  try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-    return { id: payload.sub as string, role: payload.role as string };
-  } catch {
-    return null;
+  if (tokenError || !token) {
+    return {
+      error: NextResponse.json(
+        { success: false, error: { message: "Please sign in first." } },
+        { status: 401 },
+      ),
+    };
   }
+
+  const authResult = await verifyAuthToken(token);
+  if (!authResult.success || !authResult.userId) {
+    return {
+      error: NextResponse.json(
+        {
+          success: false,
+          error: { message: authResult.error || "Invalid token." },
+        },
+        { status: 401 },
+      ),
+    };
+  }
+
+  const role =
+    authResult.user?.role ||
+    authResult.user?.user_metadata?.role ||
+    "user";
+
+  return {
+    user: {
+      id: authResult.userId,
+      role,
+    },
+  };
 }
 
-// 获取单个合同
+function assertContractAccess(
+  contractUserId: string,
+  currentUser: { id: string; role: string },
+) {
+  return contractUserId === currentUser.id || currentUser.role === "admin";
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const user = await getCurrentUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: { message: '请先登录' } },
-        { status: 401 }
-      );
+    const auth = await requireCurrentUser(request);
+    if (auth.error) {
+      return auth.error;
     }
 
     const { id } = await context.params;
-    const db = getDb();
-    const contract = await db.findById<any>(TABLES.CONTRACTS, id);
+    const contract = await getContractById(id);
 
     if (!contract) {
       return NextResponse.json(
-        { success: false, error: { message: '合同不存在' } },
-        { status: 404 }
+        { success: false, error: { message: "Contract not found." } },
+        { status: 404 },
       );
     }
 
-    // 检查权限
-    if (contract.user_id !== user.id && user.role !== 'admin') {
+    if (!assertContractAccess(contract.userId, auth.user)) {
       return NextResponse.json(
-        { success: false, error: { message: '无权访问该合同' } },
-        { status: 403 }
+        { success: false, error: { message: "You do not have access to this contract." } },
+        { status: 403 },
       );
     }
 
@@ -61,110 +86,107 @@ export async function GET(request: NextRequest, context: RouteContext) {
       data: { contract },
     });
   } catch (error) {
-    console.error('获取合同失败:', error);
+    console.error("Failed to load contract:", error);
     return NextResponse.json(
-      { success: false, error: { message: '获取合同失败' } },
-      { status: 500 }
+      { success: false, error: { message: "Failed to load contract." } },
+      { status: 500 },
     );
   }
 }
 
-// 更新合同
 export async function PUT(request: NextRequest, context: RouteContext) {
   try {
-    const user = await getCurrentUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: { message: '请先登录' } },
-        { status: 401 }
-      );
+    const auth = await requireCurrentUser(request);
+    if (auth.error) {
+      return auth.error;
     }
 
     const { id } = await context.params;
-    const body = await request.json();
-    const { title, type, status, content } = body;
-
-    const db = getDb();
-    const existing = await db.findById<any>(TABLES.CONTRACTS, id);
+    const existing = await getContractById(id);
 
     if (!existing) {
       return NextResponse.json(
-        { success: false, error: { message: '合同不存在' } },
-        { status: 404 }
+        { success: false, error: { message: "Contract not found." } },
+        { status: 404 },
       );
     }
 
-    // 检查权限
-    if (existing.user_id !== user.id && user.role !== 'admin') {
+    if (!assertContractAccess(existing.userId, auth.user)) {
       return NextResponse.json(
-        { success: false, error: { message: '无权修改该合同' } },
-        { status: 403 }
+        { success: false, error: { message: "You do not have permission to update this contract." } },
+        { status: 403 },
       );
     }
 
-    // 构建更新数据
-    const updateData: Record<string, any> = {};
-    if (title !== undefined) updateData.title = title;
-    if (type !== undefined) updateData.type = type;
-    if (status !== undefined) updateData.status = status;
-    if (content !== undefined) updateData.content = content;
-
-    const contract = await db.update(TABLES.CONTRACTS, id, updateData);
+    const body = await request.json();
+    const contract = await updateContractRecord(id, {
+      title: body.title,
+      type: body.type,
+      status: body.status,
+      content:
+        body.content && typeof body.content === "object" && !Array.isArray(body.content)
+          ? body.content
+          : undefined,
+      sourceType: body.sourceType,
+      sourceContent: body.sourceContent || body.source_text,
+      analysisResult: body.analysisResult || body.analysis_result,
+      parties: Array.isArray(body.parties) ? body.parties : undefined,
+      signatures: Array.isArray(body.signatures) ? body.signatures : undefined,
+      metadata:
+        body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
+          ? body.metadata
+          : undefined,
+      region: body.region,
+    });
 
     return NextResponse.json({
       success: true,
       data: { contract },
     });
   } catch (error) {
-    console.error('更新合同失败:', error);
+    console.error("Failed to update contract:", error);
     return NextResponse.json(
-      { success: false, error: { message: '更新合同失败' } },
-      { status: 500 }
+      { success: false, error: { message: "Failed to update contract." } },
+      { status: 500 },
     );
   }
 }
 
-// 删除合同
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    const user = await getCurrentUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: { message: '请先登录' } },
-        { status: 401 }
-      );
+    const auth = await requireCurrentUser(request);
+    if (auth.error) {
+      return auth.error;
     }
 
     const { id } = await context.params;
-    const db = getDb();
-    const existing = await db.findById<any>(TABLES.CONTRACTS, id);
+    const existing = await getContractById(id);
 
     if (!existing) {
       return NextResponse.json(
-        { success: false, error: { message: '合同不存在' } },
-        { status: 404 }
+        { success: false, error: { message: "Contract not found." } },
+        { status: 404 },
       );
     }
 
-    // 检查权限
-    if (existing.user_id !== user.id && user.role !== 'admin') {
+    if (!assertContractAccess(existing.userId, auth.user)) {
       return NextResponse.json(
-        { success: false, error: { message: '无权删除该合同' } },
-        { status: 403 }
+        { success: false, error: { message: "You do not have permission to delete this contract." } },
+        { status: 403 },
       );
     }
 
-    await db.delete(TABLES.CONTRACTS, id);
+    await deleteContractRecord(id);
 
     return NextResponse.json({
       success: true,
-      data: { message: '合同已删除' },
+      data: { message: "Contract deleted successfully." },
     });
   } catch (error) {
-    console.error('删除合同失败:', error);
+    console.error("Failed to delete contract:", error);
     return NextResponse.json(
-      { success: false, error: { message: '删除合同失败' } },
-      { status: 500 }
+      { success: false, error: { message: "Failed to delete contract." } },
+      { status: 500 },
     );
   }
 }

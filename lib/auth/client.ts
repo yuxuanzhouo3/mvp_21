@@ -635,9 +635,23 @@ class CloudBaseAuthClient implements AuthClient {
   }): Promise<{ data: { user: AuthUser | null }; error: Error | null }> {
     // 中国版支持用户信息更新 - 通过 API 调用后端
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      if (typeof window !== "undefined") {
+        const { getStoredAuthState } = await import(
+          "@/lib/auth/auth-state-manager"
+        );
+        const authState = getStoredAuthState();
+        if (authState?.accessToken) {
+          headers.Authorization = `Bearer ${authState.accessToken}`;
+        }
+      }
+
       const response = await fetch("/api/auth/update", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(params),
       });
 

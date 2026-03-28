@@ -1,75 +1,69 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { jwtVerify } from 'jose';
-import { getDb, TABLES } from '@/lib/db';
+import { NextRequest, NextResponse } from "next/server";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'contracthub-secret-key-change-in-production'
-);
+import {
+  createContractRecord,
+  listContracts,
+} from "@/lib/data/contracts-store";
+import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
 
-interface Contract {
-  id: string;
-  user_id: string;
-  title: string;
-  type: string;
-  status: string;
-  content: any;
-  source_text: string;
-  analysis_result: any;
-  created_at: string;
-  updated_at: string;
-}
+async function requireCurrentUser(request: NextRequest) {
+  const authHeader = request.headers.get("authorization");
+  const { token, error: tokenError } = extractTokenFromHeader(authHeader);
 
-// 获取当前用户
-async function getCurrentUser(request: NextRequest) {
-  const token =
-    request.cookies.get('auth_token')?.value ||
-    request.headers.get('authorization')?.replace('Bearer ', '');
-
-  if (!token) return null;
-
-  try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-    return { id: payload.sub as string, role: payload.role as string };
-  } catch {
-    return null;
+  if (tokenError || !token) {
+    return {
+      error: NextResponse.json(
+        { success: false, error: { message: "Please sign in first." } },
+        { status: 401 },
+      ),
+    };
   }
+
+  const authResult = await verifyAuthToken(token);
+  if (!authResult.success || !authResult.userId) {
+    return {
+      error: NextResponse.json(
+        {
+          success: false,
+          error: { message: authResult.error || "Invalid token." },
+        },
+        { status: 401 },
+      ),
+    };
+  }
+
+  const role =
+    authResult.user?.role ||
+    authResult.user?.user_metadata?.role ||
+    "user";
+
+  return {
+    user: {
+      id: authResult.userId,
+      role,
+    },
+  };
 }
 
-// 获取合同列表
 export async function GET(request: NextRequest) {
   try {
-    const user = await getCurrentUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: { message: '请先登录' } },
-        { status: 401 }
-      );
+    const auth = await requireCurrentUser(request);
+    if (auth.error) {
+      return auth.error;
     }
 
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
-    const status = searchParams.get('status') || '';
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const limit = parseInt(searchParams.get("limit") || "20", 10);
+    const status = searchParams.get("status") || "";
 
-    const db = getDb();
-
-    // 构建过滤条件
-    const filter: Record<string, any> = { user_id: user.id };
-    if (status && status !== 'all') filter.status = status;
-
-    // 管理员可以查看所有合同
-    if (user.role === 'admin') {
-      delete filter.user_id;
-    }
-
-    const contracts = await db.findMany<Contract>(TABLES.CONTRACTS, filter, {
+    const { contracts, total } = await listContracts({
+      userId: auth.user.id,
+      status,
+      isAdmin: auth.user.role === "admin",
       limit,
-      offset: (page - 1) * limit,
-      orderBy: 'created_at',
-      orderDir: 'desc',
+      offset: Math.max(page - 1, 0) * limit,
     });
-
-    const total = await db.count(TABLES.CONTRACTS, filter);
 
     return NextResponse.json({
       success: true,
@@ -84,79 +78,81 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('获取合同列表失败:', error);
+    console.error("Failed to load contracts:", error);
     return NextResponse.json(
-      { success: false, error: { message: '获取合同列表失败' } },
-      { status: 500 }
+      { success: false, error: { message: "Failed to load contracts." } },
+      { status: 500 },
     );
   }
 }
 
-// 创建合同
 export async function POST(request: NextRequest) {
   try {
-    const user = await getCurrentUser(request);
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: { message: '请先登录' } },
-        { status: 401 }
-      );
+    const auth = await requireCurrentUser(request);
+    if (auth.error) {
+      return auth.error;
     }
 
     const body = await request.json();
-    const { title, type, content, source_text, analysis_result } = body;
+    const {
+      title,
+      type,
+      status,
+      content,
+      sourceType,
+      sourceContent,
+      source_text,
+      analysisResult,
+      analysis_result,
+      parties,
+      signatures,
+      metadata,
+      region,
+    } = body;
 
-    if (!title) {
+    if (!title || typeof title !== "string") {
       return NextResponse.json(
-        { success: false, error: { message: '请输入合同标题' } },
-        { status: 400 }
+        {
+          success: false,
+          error: { message: "Please provide a contract title." },
+        },
+        { status: 400 },
       );
     }
 
-    const db = getDb();
-
-    // 检查用户额度
-    const userRecord = await db.findById<any>(TABLES.USERS, user.id);
-    if (userRecord) {
-      const monthlyLimit = userRecord.plan === 'free' ? 10 : Infinity;
-      if (userRecord.contracts_this_month >= monthlyLimit) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: { message: '本月额度已用完，请升级会员' },
-          },
-          { status: 403 }
-        );
-      }
-    }
-
-    const contract = await db.create(TABLES.CONTRACTS, {
-      user_id: user.id,
+    const contract = await createContractRecord({
+      userId: auth.user.id,
       title,
-      type: type || 'other',
-      status: 'draft',
-      content: content || {},
-      source_text: source_text || '',
-      analysis_result: analysis_result || null,
+      type: type || "custom",
+      status: status || "draft",
+      content:
+        content && typeof content === "object" && !Array.isArray(content)
+          ? content
+          : {},
+      sourceType: sourceType || "text",
+      sourceContent: sourceContent || source_text || "",
+      analysisResult:
+        analysisResult ||
+        analysis_result ||
+        null,
+      parties: Array.isArray(parties) ? parties : [],
+      signatures: Array.isArray(signatures) ? signatures : [],
+      metadata:
+        metadata && typeof metadata === "object" && !Array.isArray(metadata)
+          ? metadata
+          : {},
+      region,
     });
-
-    // 更新用户合同计数
-    if (userRecord) {
-      await db.update(TABLES.USERS, user.id, {
-        contracts_count: (userRecord.contracts_count || 0) + 1,
-        contracts_this_month: (userRecord.contracts_this_month || 0) + 1,
-      });
-    }
 
     return NextResponse.json({
       success: true,
       data: { contract },
     });
   } catch (error) {
-    console.error('创建合同失败:', error);
+    console.error("Failed to create contract:", error);
     return NextResponse.json(
-      { success: false, error: { message: '创建合同失败' } },
-      { status: 500 }
+      { success: false, error: { message: "Failed to create contract." } },
+      { status: 500 },
     );
   }
 }

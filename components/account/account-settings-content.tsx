@@ -16,9 +16,7 @@ import {
 } from "lucide-react";
 
 import type { AccountProfile, AccountTheme } from "@/lib/account/profile";
-import {
-  normalizeAccountProfile,
-} from "@/lib/account/profile";
+import { normalizeAccountProfile } from "@/lib/account/profile";
 import { useLanguage } from "@/components/language-provider";
 import { useUser } from "@/components/user-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -68,30 +66,31 @@ export function AccountSettingsContent({
       language === "zh"
         ? {
             title: "账户设置",
-            subtitle: "管理头像外观、通知偏好和账号基础安全设置。",
+            subtitle: "管理头像、通知偏好与基础账户安全设置。",
             loginRequired: "请先登录后再管理账户设置。",
             loginAction: "前往登录",
             overview: "账户概览",
-            overviewDesc: "查看当前账号状态并快速进入常用操作。",
+            overviewDesc: "查看当前账户状态并快速进入常用操作。",
             deployment: "部署配置",
-            deploymentDesc: "当前环境由部署区域锁定，保证国内版和国际版体验一致。",
+            deploymentDesc:
+              "这些值由部署区域固定，确保国内版与国际版体验保持一致。",
             region: "当前区域",
-            auth: "认证方案",
+            auth: "认证方式",
             language: "界面语言",
             languageLocked: "已由部署环境锁定",
             appearance: "外观",
-            appearanceDesc: "选择账户偏好的界面主题。",
+            appearanceDesc: "选择当前账户的主题偏好。",
             theme: "主题模式",
             notifications: "通知偏好",
-            notificationsDesc: "控制合同协作、提醒和产品消息。",
+            notificationsDesc: "控制合同协作提醒、产品通知与消息更新。",
             security: "工作流偏好",
-            securityDesc: "这些设置会跟随当前账号同步。",
+            securityDesc: "这些设置会跟随当前账户同步。",
             contractReminders: "签署提醒",
-            contractRemindersDesc: "在合同待签时发送提醒。",
+            contractRemindersDesc: "合同等待签署时发送提醒。",
             productEmails: "产品邮件",
-            productEmailsDesc: "接收版本更新、活动和上新通知。",
+            productEmailsDesc: "接收版本更新、活动与产品通知邮件。",
             inAppNotifications: "站内通知",
-            inAppNotificationsDesc: "接收合同状态、签署和协作提醒。",
+            inAppNotificationsDesc: "接收合同状态、签署与协作提醒。",
             autoSaveDrafts: "自动保存草稿",
             autoSaveDraftsDesc: "编辑合同时自动保存最新内容。",
             save: "保存设置",
@@ -101,7 +100,7 @@ export function AccountSettingsContent({
             billing: "账单与会员",
             logout: "退出登录",
             free: "免费版",
-            active: "生效中",
+            active: "有效",
             inactive: "未开通",
             cnRegion: "中国大陆 (CN)",
             intlRegion: "国际版 (INTL)",
@@ -110,6 +109,9 @@ export function AccountSettingsContent({
             themeLight: "浅色",
             themeDark: "深色",
             themeSystem: "跟随系统",
+            loadFailed: "加载设置失败，请稍后重试。",
+            saveFailed: "保存设置失败，请稍后重试。",
+            logoutFailed: "退出登录失败，请稍后重试。",
           }
         : {
             title: "Account Settings",
@@ -159,6 +161,9 @@ export function AccountSettingsContent({
             themeLight: "Light",
             themeDark: "Dark",
             themeSystem: "System",
+            loadFailed: "Failed to load settings. Please try again later.",
+            saveFailed: "Failed to save settings. Please try again later.",
+            logoutFailed: "Failed to log out. Please try again later.",
           },
     [language],
   );
@@ -200,11 +205,7 @@ export function AccountSettingsContent({
       } catch (loadError) {
         console.error("[AccountSettings] Failed to load profile:", loadError);
         if (!cancelled) {
-          setError(
-            language === "zh"
-              ? "加载设置失败，请稍后重试。"
-              : "Failed to load settings. Please try again later.",
-          );
+          setError(content.loadFailed);
         }
       } finally {
         if (!cancelled) {
@@ -220,7 +221,7 @@ export function AccountSettingsContent({
     return () => {
       cancelled = true;
     };
-  }, [currentUser, language, router, setTheme, userLoading]);
+  }, [content.loadFailed, currentUser, router, setTheme, userLoading]);
 
   const profileInitial = useMemo(() => {
     const source = profile?.name || profile?.email || currentUser?.email || "U";
@@ -258,7 +259,9 @@ export function AccountSettingsContent({
   };
 
   const handleSave = async () => {
-    if (!profile) return;
+    if (!profile) {
+      return;
+    }
 
     try {
       setSaving(true);
@@ -293,11 +296,7 @@ export function AccountSettingsContent({
       setSuccess(content.saved);
     } catch (saveError) {
       console.error("[AccountSettings] Failed to save settings:", saveError);
-      setError(
-        language === "zh"
-          ? "保存设置失败，请稍后重试。"
-          : "Failed to save settings. Please try again later.",
-      );
+      setError(content.saveFailed);
     } finally {
       setSaving(false);
     }
@@ -310,11 +309,7 @@ export function AccountSettingsContent({
       router.replace("/auth");
     } catch (logoutError) {
       console.error("[AccountSettings] Failed to sign out:", logoutError);
-      setError(
-        language === "zh"
-          ? "退出登录失败，请稍后重试。"
-          : "Failed to log out. Please try again later.",
-      );
+      setError(content.logoutFailed);
     } finally {
       setLoggingOut(false);
     }

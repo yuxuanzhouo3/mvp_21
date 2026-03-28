@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Download,
   Eye,
   FileText,
+  Loader2,
   MoreVertical,
   Plus,
   Search,
@@ -21,97 +22,128 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
+import {
+  deleteContractForCurrentUser,
+  listContractsForCurrentUser,
+  type ContractListItem,
+} from "@/lib/contracts/client";
+import { useTranslations } from "@/lib/i18n";
 
-type ContractStatus = "completed" | "pending" | "draft";
-type ContractFilter = "all" | ContractStatus;
+type ContractFilter = "all" | ContractListItem["status"];
 
-const contracts = [
-  {
-    id: 1,
-    title: "Service Agreement - TechBridge Inc.",
-    status: "completed" as ContractStatus,
-    date: "2026-01-05",
-    parties: ["Sarah Chen", "Li Wei"],
-    region: "US-CN",
-  },
-  {
-    id: 2,
-    title: "Non-Disclosure Agreement",
-    status: "pending" as ContractStatus,
-    date: "2026-01-08",
-    parties: ["Michael Rodriguez", "Wang Fang"],
-    region: "US-CN",
-  },
-  {
-    id: 3,
-    title: "Partnership Agreement",
-    status: "draft" as ContractStatus,
-    date: "2026-01-10",
-    parties: ["Global Trade Co."],
-    region: "US",
-  },
-  {
-    id: 4,
-    title: "供应商合同 (Supplier Contract)",
-    status: "completed" as ContractStatus,
-    date: "2026-01-03",
-    parties: ["Dragon Enterprises", "Zhang Ming"],
-    region: "CN",
-  },
-  {
-    id: 5,
-    title: "Employment Contract",
-    status: "pending" as ContractStatus,
-    date: "2026-01-09",
-    parties: ["TechBridge Inc.", "John Smith"],
-    region: "US",
-  },
-];
+function formatDate(value?: string, locale = "zh-CN") {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
 
 export function ContractList() {
   const { language } = useLanguage();
+  const t = useTranslations(language);
   const isEn = language === "en";
+  const content = t.pages.contracts;
+
+  const [contracts, setContracts] = useState<ContractListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [filter, setFilter] = useState<ContractFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadContracts() {
+      try {
+        setLoading(true);
+        setError("");
+        const nextContracts = await listContractsForCurrentUser();
+
+        if (!cancelled) {
+          setContracts(nextContracts);
+        }
+      } catch (loadError) {
+        console.error("[ContractList] Failed to load contracts:", loadError);
+        if (!cancelled) {
+          setError(content.loadFailed);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadContracts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [content.loadFailed]);
 
   const statusMeta: Record<
-    ContractStatus,
-    {
-      label: string;
-      className: string;
-    }
+    ContractListItem["status"],
+    { label: string; className: string }
   > = {
-    completed: {
-      label: isEn ? "Completed" : "已完成",
-      className: "bg-accent/10 text-accent border-accent/20",
+    draft: {
+      label: content.statusDraft,
+      className: "bg-muted text-muted-foreground border-border",
     },
     pending: {
-      label: isEn ? "Pending" : "待处理",
+      label: content.statusPending,
       className: "bg-chart-3/10 text-chart-3 border-chart-3/20",
     },
-    draft: {
-      label: isEn ? "Draft" : "草稿",
-      className: "bg-muted text-muted-foreground border-border",
+    active: {
+      label: content.statusActive,
+      className: "bg-blue-500/10 text-blue-700 border-blue-200",
+    },
+    signed: {
+      label: content.statusSigned,
+      className: "bg-green-500/10 text-green-700 border-green-200",
+    },
+    completed: {
+      label: content.statusCompleted,
+      className: "bg-accent/10 text-accent border-accent/20",
+    },
+    expired: {
+      label: content.statusExpired,
+      className: "bg-red-500/10 text-red-700 border-red-200",
+    },
+    cancelled: {
+      label: content.statusCancelled,
+      className: "bg-slate-200 text-slate-700 border-slate-300",
     },
   };
 
   const tabItems: Array<{ value: ContractFilter; label: string }> = [
-    { value: "all", label: isEn ? "All" : "全部" },
-    { value: "pending", label: isEn ? "Pending" : "待处理" },
-    { value: "completed", label: isEn ? "Completed" : "已完成" },
-    { value: "draft", label: isEn ? "Drafts" : "草稿" },
+    { value: "all", label: t.common.all },
+    { value: "pending", label: content.statusPending },
+    { value: "completed", label: content.statusCompleted },
+    { value: "draft", label: content.statusDraft },
+    { value: "signed", label: content.statusSigned },
   ];
-
-  const dateFormatter = new Intl.DateTimeFormat(isEn ? "en-US" : "zh-CN", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 
   const counts = useMemo(() => {
     return {
@@ -119,8 +151,9 @@ export function ContractList() {
       pending: contracts.filter((item) => item.status === "pending").length,
       completed: contracts.filter((item) => item.status === "completed").length,
       draft: contracts.filter((item) => item.status === "draft").length,
+      signed: contracts.filter((item) => item.status === "signed").length,
     };
-  }, []);
+  }, [contracts]);
 
   const filteredContracts = useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -128,32 +161,62 @@ export function ContractList() {
     return contracts
       .filter((contract) => (filter === "all" ? true : contract.status === filter))
       .filter((contract) => {
-        if (!normalizedSearch) return true;
-        return (
-          contract.title.toLowerCase().includes(normalizedSearch) ||
-          contract.parties.join(" ").toLowerCase().includes(normalizedSearch) ||
-          contract.region.toLowerCase().includes(normalizedSearch)
-        );
+        if (!normalizedSearch) {
+          return true;
+        }
+
+        return [
+          contract.title,
+          contract.region,
+          contract.parties.join(" "),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedSearch);
       })
-      .sort((left, right) => (left.date < right.date ? 1 : -1));
-  }, [filter, searchQuery]);
+      .sort((left, right) =>
+        (left.createdAt || left.updatedAt || "") <
+        (right.createdAt || right.updatedAt || "")
+          ? 1
+          : -1,
+      );
+  }, [contracts, filter, searchQuery]);
+
+  const handleDelete = async (contract: ContractListItem) => {
+    if (!window.confirm(content.deleteConfirm)) {
+      return;
+    }
+
+    try {
+      setDeletingId(contract.id);
+      await deleteContractForCurrentUser(contract.id);
+      setContracts((current) => current.filter((item) => item.id !== contract.id));
+      window.alert(content.deleteSuccess);
+    } catch (deleteError) {
+      console.error("[ContractList] Failed to delete contract:", deleteError);
+      window.alert(content.deleteFailed);
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <Card className="border-border/70 bg-card/95">
       <CardHeader className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-lg">{isEn ? "Contracts" : "合同列表"}</CardTitle>
+          <CardTitle className="text-lg">{content.title}</CardTitle>
           <Button size="sm" asChild>
             <Link href="/dashboard/contracts/new">
               <Plus className="mr-2 h-4 w-4" />
-              {isEn ? "New Contract" : "新建合同"}
+              {content.primaryAction}
             </Link>
           </Button>
         </div>
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <Tabs value={filter} onValueChange={(value) => setFilter(value as ContractFilter)}>
-            <TabsList className="grid w-full grid-cols-2 sm:w-auto sm:grid-cols-4">
+            <TabsList className="grid w-full grid-cols-2 sm:w-auto sm:grid-cols-5">
               {tabItems.map((tabItem) => (
                 <TabsTrigger key={tabItem.value} value={tabItem.value}>
                   {tabItem.label} ({counts[tabItem.value]})
@@ -162,12 +225,12 @@ export function ContractList() {
             </TabsList>
           </Tabs>
 
-          <div className="relative w-full md:w-72">
+          <div className="relative w-full md:w-80">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={isEn ? "Search contracts..." : "搜索合同..."}
+              placeholder={content.searchPlaceholder}
               className="pl-9"
             />
           </div>
@@ -175,17 +238,28 @@ export function ContractList() {
       </CardHeader>
 
       <CardContent>
-        {filteredContracts.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-16 text-muted-foreground">
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            {content.loadingDescription}
+          </div>
+        ) : error ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        ) : filteredContracts.length === 0 ? (
           <Empty className="border-border/70 bg-muted/10">
             <EmptyMedia variant="icon">
               <FileText />
             </EmptyMedia>
             <EmptyHeader>
-              <EmptyTitle>{isEn ? "No matching contracts" : "未找到匹配合同"}</EmptyTitle>
+              <EmptyTitle>
+                {contracts.length === 0 ? content.emptyTitle : content.noResultsTitle}
+              </EmptyTitle>
               <EmptyDescription>
-                {isEn
-                  ? "Try another keyword or switch status tabs."
-                  : "请尝试其他关键词或切换状态标签。"}
+                {contracts.length === 0
+                  ? content.emptyDescription
+                  : content.noResultsDescription}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -203,15 +277,23 @@ export function ContractList() {
                       <FileText className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-foreground">{contract.title}</p>
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {contract.title || content.untitled}
+                      </p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {dateFormatter.format(new Date(contract.date))} • {contract.parties.join(", ")}
+                        {formatDate(
+                          contract.createdAt || contract.updatedAt,
+                          isEn ? "en-US" : "zh-CN",
+                        )}{" "}
+                        · {contract.parties.join(", ") || "-"}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 self-end sm:self-center">
-                    <Badge variant="outline">{contract.region}</Badge>
+                    {contract.region ? (
+                      <Badge variant="outline">{contract.region}</Badge>
+                    ) : null}
                     <Badge className={cn("border", meta.className)}>{meta.label}</Badge>
 
                     <DropdownMenu>
@@ -221,17 +303,21 @@ export function ContractList() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => window.alert(content.openComingSoon)}>
                           <Eye className="mr-2 h-4 w-4" />
-                          {isEn ? "View" : "查看"}
+                          {content.viewAction}
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => window.alert(content.downloadComingSoon)}>
                           <Download className="mr-2 h-4 w-4" />
-                          {isEn ? "Download" : "下载"}
+                          {content.downloadAction}
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive focus:text-destructive">
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          disabled={deletingId === contract.id}
+                          onClick={() => void handleDelete(contract)}
+                        >
                           <Trash2 className="mr-2 h-4 w-4" />
-                          {isEn ? "Delete" : "删除"}
+                          {content.deleteAction}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
