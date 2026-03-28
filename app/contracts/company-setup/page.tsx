@@ -1,18 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { useEffect, useState, type ChangeEvent } from "react";
 import {
-  Camera,
-  Upload,
-  Sparkles,
-  Building2,
   ArrowRight,
+  Building2,
   Check,
+  Loader2,
+  Sparkles,
+  Upload,
 } from "lucide-react";
+import { toast } from "sonner";
+
+import { Header } from "@/components/header";
+import { useLanguage } from "@/components/language-provider";
+import { useUser } from "@/components/user-context";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -20,11 +25,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Header } from "@/components/header";
-import { useLanguage } from "@/components/language-provider";
-import { useUser } from "@/components/user-context";
-import Image from "next/image";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useTranslations, type Language } from "@/lib/i18n";
 
 interface CompanyInfo {
   companyName: string;
@@ -36,16 +39,17 @@ interface CompanyInfo {
   contactEmail: string;
 }
 
-export default function CompanySetupPage() {
-  const router = useRouter();
-  const { language } = useLanguage();
-  const { user } = useUser();
-  const [step, setStep] = useState<"upload" | "edit">("upload");
-  const [uploading, setUploading] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [companyInfo, setCompanyInfo] = useState<CompanyInfo>({
+const SUPPORTED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
+
+function buildEmptyCompanyInfo(
+  user?: { name?: string; email?: string } | null,
+): CompanyInfo {
+  return {
     companyName: "",
     creditCode: "",
     legalPerson: "",
@@ -53,36 +57,201 @@ export default function CompanySetupPage() {
     contactPerson: user?.name || "",
     contactPhone: "",
     contactEmail: user?.email || "",
-  });
+  };
+}
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+function mergeCompanyInfo(
+  current: CompanyInfo,
+  incoming?: Partial<CompanyInfo> | null,
+): CompanyInfo {
+  return {
+    companyName: incoming?.companyName ?? current.companyName,
+    creditCode: incoming?.creditCode ?? current.creditCode,
+    legalPerson: incoming?.legalPerson ?? current.legalPerson,
+    address: incoming?.address ?? current.address,
+    contactPerson: incoming?.contactPerson ?? current.contactPerson,
+    contactPhone: incoming?.contactPhone ?? current.contactPhone,
+    contactEmail: incoming?.contactEmail ?? current.contactEmail,
+  };
+}
+
+async function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function compressImage(file: File): Promise<string> {
+  const dataUrl = await readFileAsDataUrl(file);
+
+  return new Promise((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => {
+      const maxWidth = 1600;
+      const scale = Math.min(1, maxWidth / image.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+
+      const context = canvas.getContext("2d");
+      if (!context) {
+        reject(new Error("Canvas is not available"));
+        return;
+      }
+
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", 0.88));
+    };
+    image.onerror = () => reject(new Error("Failed to decode image"));
+    image.src = dataUrl;
+  });
+}
+
+async function fileToPreviewUrl(file: File): Promise<string> {
+  if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
+    throw new Error("invalid_type");
+  }
+
+  if (file.size > MAX_UPLOAD_SIZE) {
+    throw new Error("file_too_large");
+  }
+
+  return compressImage(file);
+}
+
+export default function CompanySetupPage() {
+  const router = useRouter();
+  const { language } = useLanguage();
+  const { user } = useUser();
+  const t = useTranslations(language as Language);
+  const content = t.companySetup;
+
+  const [step, setStep] = useState<"upload" | "edit">("upload");
+  const [uploading, setUploading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo>(
+    buildEmptyCompanyInfo(user),
+  );
+
+  useEffect(() => {
+    setCompanyInfo((current) =>
+      mergeCompanyInfo(current, {
+        contactPerson: current.contactPerson || user?.name || "",
+        contactEmail: current.contactEmail || user?.email || "",
+      }),
+    );
+  }, [user?.email, user?.name]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCompanyProfile = async () => {
+      try {
+        const { tokenManager } = await import("@/lib/auth/frontend-token-manager");
+        const headers = await tokenManager.getAuthHeaderAsync();
+
+        if (!headers) {
+          setLoadingProfile(false);
+          return;
+        }
+
+        const response = await fetch("/api/company-info", { headers });
+        if (!response.ok) {
+          throw new Error(`Failed to load company profile: ${response.status}`);
+        }
+
+        const result = await response.json();
+        const existing =
+          result?.data ||
+          (result?.hasCompanyInfo
+            ? {
+                companyName: result.companyName,
+                creditCode: result.creditCode,
+                legalPerson: result.legalPerson,
+                address: result.address,
+                contactPerson: result.contactPerson,
+                contactPhone: result.contactPhone,
+                contactEmail: result.contactEmail,
+              }
+            : null);
+
+        if (cancelled || !existing) {
+          return;
+        }
+
+        setCompanyInfo((current) => mergeCompanyInfo(current, existing));
+
+        if (
+          existing.companyName ||
+          existing.creditCode ||
+          existing.legalPerson ||
+          existing.address
+        ) {
+          setStep("edit");
+        }
+      } catch (error) {
+        console.error("[company-setup] Failed to load company profile:", error);
+        if (!cancelled) {
+          toast.error(content.loadFailed);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingProfile(false);
+        }
+      }
+    };
+
+    loadCompanyProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [content.loadFailed]);
+
+  const handleFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
 
     setUploading(true);
 
-    // 预览图片
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setPreviewImage(e.target?.result as string);
+    try {
+      const preview = await fileToPreviewUrl(file);
+      setPreviewImage(preview);
+    } catch (error) {
+      if (error instanceof Error && error.message === "invalid_type") {
+        toast.error(content.uploadInvalidType);
+      } else if (error instanceof Error && error.message === "file_too_large") {
+        toast.error(content.uploadTooLarge);
+      } else {
+        toast.error(content.uploadInvalidType);
+      }
+    } finally {
       setUploading(false);
-    };
-    reader.readAsDataURL(file);
+      event.target.value = "";
+    }
   };
 
   const handleStartOCR = async () => {
-    if (!previewImage) return;
+    if (!previewImage) {
+      return;
+    }
 
     setAnalyzing(true);
 
     try {
-      // 调用 OCR API 识别营业执照
-      const { tokenManager } =
-        await import("@/lib/auth/frontend-token-manager");
+      const { tokenManager } = await import("@/lib/auth/frontend-token-manager");
       const headers = await tokenManager.getAuthHeaderAsync();
 
       if (!headers) {
-        throw new Error("无法获取认证信息");
+        throw new Error("auth_required");
       }
 
       const response = await fetch("/api/ocr/business-license", {
@@ -94,29 +263,27 @@ export default function CompanySetupPage() {
         body: JSON.stringify({ imageBase64: previewImage }),
       });
 
-      if (!response.ok) {
-        throw new Error("OCR 识别失败");
-      }
-
       const result = await response.json();
-
-      if (result.success && result.data) {
-        // 使用识别结果填充表单
-        setCompanyInfo({
-          ...companyInfo,
-          companyName: result.data.companyName || "",
-          creditCode: result.data.creditCode || "",
-          legalPerson: result.data.legalPerson || "",
-          address: result.data.address || "",
-        });
-        setStep("edit");
-      } else {
-        throw new Error("OCR 识别失败");
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || "ocr_failed");
       }
+
+      setCompanyInfo((current) =>
+        mergeCompanyInfo(current, {
+          companyName: result.data?.companyName || "",
+          creditCode: result.data?.creditCode || "",
+          legalPerson: result.data?.legalPerson || "",
+          address: result.data?.address || "",
+        }),
+      );
+      setStep("edit");
     } catch (error) {
-      console.error("OCR 识别失败:", error);
-      alert("识别失败，请手动填写或重新上传清晰的营业执照照片");
-      // 识别失败，仍然进入编辑步骤，但不填充数据
+      console.error("[company-setup] OCR failed:", error);
+      toast.error(
+        error instanceof Error && error.message === "auth_required"
+          ? content.authRequired
+          : content.ocrFailed,
+      );
       setStep("edit");
     } finally {
       setAnalyzing(false);
@@ -124,20 +291,27 @@ export default function CompanySetupPage() {
   };
 
   const handleSave = async () => {
+    if (
+      !companyInfo.companyName ||
+      !companyInfo.creditCode ||
+      !companyInfo.legalPerson ||
+      !companyInfo.address
+    ) {
+      toast.error(content.requiredFields);
+      return;
+    }
+
     setSaving(true);
 
     try {
-      // 获取认证 token
-      const { tokenManager } =
-        await import("@/lib/auth/frontend-token-manager");
+      const { tokenManager } = await import("@/lib/auth/frontend-token-manager");
       const headers = await tokenManager.getAuthHeaderAsync();
 
       if (!headers) {
-        alert(language === "zh" ? "无法获取认证信息" : "Cannot get auth info");
+        toast.error(content.authRequired);
         return;
       }
 
-      // 保存企业信息到数据库
       const response = await fetch("/api/company-info", {
         method: "POST",
         headers: {
@@ -147,25 +321,16 @@ export default function CompanySetupPage() {
         body: JSON.stringify(companyInfo),
       });
 
-      if (response.ok) {
-        // 保存成功，跳转到合同创建页面
-        router.push("/contracts/new");
-      } else {
-        const errorData = await response.json();
-        console.error("保存失败:", errorData);
-        alert(
-          language === "zh"
-            ? "保存失败，请重试"
-            : "Save failed, please try again",
-        );
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.error || "save_failed");
       }
+
+      toast.success(content.saveSuccess);
+      router.push("/contracts/new");
     } catch (error) {
-      console.error("保存失败:", error);
-      alert(
-        language === "zh"
-          ? "保存失败，请重试"
-          : "Save failed, please try again",
-      );
+      console.error("[company-setup] Save failed:", error);
+      toast.error(content.saveFailed);
     } finally {
       setSaving(false);
     }
@@ -173,25 +338,17 @@ export default function CompanySetupPage() {
 
   const handleSkip = () => {
     setStep("edit");
-    setCompanyInfo({
-      ...companyInfo,
-      companyName: "",
-      creditCode: "",
-      legalPerson: "",
-      address: "",
-    });
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
       <Header />
 
-      <main className="container mx-auto px-4 py-12 max-w-4xl">
-        {/* 步骤指示器 */}
-        <div className="flex items-center justify-center gap-4 mb-8">
+      <main className="container mx-auto max-w-4xl px-4 py-12">
+        <div className="mb-8 flex items-center justify-center gap-4">
           <div className="flex items-center gap-2">
             <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+              className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${
                 step === "upload"
                   ? "bg-primary text-white"
                   : "bg-green-500 text-white"
@@ -199,16 +356,14 @@ export default function CompanySetupPage() {
             >
               {step === "edit" ? <Check className="h-5 w-5" /> : "1"}
             </div>
-            <span
-              className={step === "upload" ? "font-medium" : "text-gray-500"}
-            >
-              {language === "zh" ? "上传营业执照" : "Upload License"}
+            <span className={step === "upload" ? "font-medium" : "text-gray-500"}>
+              {content.stepUpload}
             </span>
           </div>
-          <div className="w-16 h-0.5 bg-gray-200" />
+          <div className="h-0.5 w-16 bg-gray-200" />
           <div className="flex items-center gap-2">
             <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+              className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${
                 step === "edit"
                   ? "bg-primary text-white"
                   : "bg-gray-200 text-gray-500"
@@ -217,334 +372,235 @@ export default function CompanySetupPage() {
               2
             </div>
             <span className={step === "edit" ? "font-medium" : "text-gray-500"}>
-              {language === "zh" ? "确认信息" : "Confirm Info"}
+              {content.stepConfirm}
             </span>
           </div>
         </div>
 
-        {/* 页面标题 */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold mb-3">
-            {language === "zh" ? "📸 企业信息建档" : "📸 Company Profile Setup"}
-          </h1>
-          <p className="text-gray-600">
-            {language === "zh"
-              ? "拍摄或上传营业执照，AI 自动识别，仅需 5 秒！"
-              : "Take a photo or upload business license, AI auto-recognizes in 5 seconds!"}
-          </p>
+        <div className="mb-8 text-center">
+          <h1 className="mb-3 text-3xl font-bold">{content.title}</h1>
+          <p className="text-gray-600">{content.subtitle}</p>
         </div>
 
-        {step === "upload" ? (
-          /* 上传步骤 */
-          <div className="space-y-6">
-            <Card>
-              <CardHeader className="text-center">
-                <CardTitle>
-                  {language === "zh"
-                    ? "上传营业执照"
-                    : "Upload Business License"}
-                </CardTitle>
-                <CardDescription>
-                  {language === "zh"
-                    ? "AI 将自动识别公司名称、统一社会信用代码、法定代表人等信息"
-                    : "AI will auto-recognize company name, credit code, legal person, etc."}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* 上传区域 */}
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-primary transition-colors">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="license-upload"
-                  />
+        {loadingProfile ? (
+          <Card>
+            <CardContent className="flex items-center justify-center gap-3 py-12 text-gray-600">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span>{content.loadingProfile}</span>
+            </CardContent>
+          </Card>
+        ) : step === "upload" ? (
+          <Card>
+            <CardHeader className="text-center">
+              <CardTitle>{content.uploadTitle}</CardTitle>
+              <CardDescription>{content.uploadDescription}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border-2 border-dashed border-gray-300 p-8 text-center transition-colors hover:border-primary">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  id="license-upload"
+                />
 
-                  {uploading ? (
-                    <div className="flex flex-col items-center justify-center py-12 gap-3">
-                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-                      <span className="text-sm text-gray-600">
-                        {language === "zh" ? "上传中..." : "Uploading..."}
-                      </span>
+                {uploading ? (
+                  <div className="flex flex-col items-center justify-center gap-3 py-12">
+                    <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                    <span className="text-sm text-gray-600">
+                      {content.uploading}
+                    </span>
+                  </div>
+                ) : previewImage ? (
+                  <div className="space-y-4">
+                    <div className="relative mx-auto w-full max-w-md">
+                      <Image
+                        src={previewImage}
+                        alt={content.previewAlt}
+                        width={400}
+                        height={300}
+                        className="rounded-lg border"
+                      />
                     </div>
-                  ) : previewImage ? (
-                    <div className="space-y-4">
-                      <div className="relative w-full max-w-md mx-auto">
-                        <Image
-                          src={previewImage}
-                          alt="营业执照预览"
-                          width={400}
-                          height={300}
-                          className="rounded-lg border"
-                        />
+
+                    {analyzing ? (
+                      <div className="flex items-center justify-center gap-2 text-primary">
+                        <Sparkles className="h-5 w-5 animate-pulse" />
+                        <span className="font-medium">{content.analyzing}</span>
                       </div>
-                      {analyzing ? (
-                        <div className="flex items-center justify-center gap-2 text-primary">
-                          <Sparkles className="h-5 w-5 animate-pulse" />
-                          <span className="font-medium">
-                            {language === "zh"
-                              ? "AI 识别中..."
-                              : "AI Analyzing..."}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center gap-3">
-                          <Button
-                            onClick={handleStartOCR}
-                            size="lg"
-                            className="bg-primary hover:bg-primary/90"
-                          >
-                            <Sparkles className="h-5 w-5 mr-2" />
-                            {language === "zh"
-                              ? "开始识别"
-                              : "Start Recognition"}
-                          </Button>
-                          <label
-                            htmlFor="license-upload"
-                            className="text-sm text-gray-500 cursor-pointer hover:text-primary"
-                          >
-                            {language === "zh" ? "重新上传" : "Re-upload"}
-                          </label>
-                        </div>
-                      )}
+                    ) : (
+                      <div className="flex flex-col items-center gap-3">
+                        <Button
+                          onClick={handleStartOCR}
+                          size="lg"
+                          className="bg-primary hover:bg-primary/90"
+                        >
+                          <Sparkles className="mr-2 h-5 w-5" />
+                          {content.startRecognition}
+                        </Button>
+                        <label
+                          htmlFor="license-upload"
+                          className="cursor-pointer text-sm text-gray-500 hover:text-primary"
+                        >
+                          {content.reupload}
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
+                      <Upload className="h-8 w-8 text-blue-600" />
                     </div>
-                  ) : (
-                    <>
-                      <div className="w-16 h-16 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center">
-                        <Upload className="h-8 w-8 text-blue-600" />
-                      </div>
-                      <label
-                        htmlFor="license-upload"
-                        className="cursor-pointer text-primary font-medium hover:underline"
-                      >
-                        {language === "zh" ? "点击上传" : "Click to Upload"}
-                      </label>
-                      <p className="text-sm text-gray-500 mt-2">
-                        {language === "zh"
-                          ? "或拖拽文件到此处（支持 JPG、PNG）"
-                          : "or drag and drop (JPG, PNG supported)"}
-                      </p>
-                    </>
-                  )}
-                </div>
+                    <label
+                      htmlFor="license-upload"
+                      className="cursor-pointer font-medium text-primary hover:underline"
+                    >
+                      {content.clickToUpload}
+                    </label>
+                    <p className="mt-2 text-sm text-gray-500">{content.dragHint}</p>
+                  </>
+                )}
+              </div>
 
-                {/* 示例图片 */}
-                <Alert>
-                  <Building2 className="h-4 w-4" />
-                  <AlertDescription>
-                    {language === "zh"
-                      ? "💡 提示：请确保营业执照文字清晰可见，光线充足，避免反光"
-                      : "💡 Tip: Ensure the license text is clear, well-lit, and avoid glare"}
-                  </AlertDescription>
-                </Alert>
+              <Alert>
+                <Building2 className="h-4 w-4" />
+                <AlertDescription>{content.tip}</AlertDescription>
+              </Alert>
 
-                {/* 跳过按钮 */}
-                <div className="text-center pt-4">
-                  <Button variant="ghost" onClick={handleSkip}>
-                    {language === "zh"
-                      ? "跳过，手动填写"
-                      : "Skip, Manual Input"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+              <div className="pt-4 text-center">
+                <Button variant="ghost" onClick={handleSkip}>
+                  {content.skipManual}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         ) : (
-          /* 编辑步骤 */
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>
-                  {language === "zh"
-                    ? "✅ AI 识别完成，请确认信息"
-                    : "✅ AI Recognition Complete, Please Confirm"}
-                </CardTitle>
-                <CardDescription>
-                  {language === "zh"
-                    ? "已自动填充识别结果，您可以手动修改"
-                    : "Auto-filled with recognition results, you can edit manually"}
-                </CardDescription>
+                <CardTitle>{content.editTitle}</CardTitle>
+                <CardDescription>{content.editDescription}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="companyName">
-                      {language === "zh" ? "公司名称 *" : "Company Name *"}
-                    </Label>
+                    <Label htmlFor="companyName">{content.companyName}</Label>
                     <Input
                       id="companyName"
                       value={companyInfo.companyName}
-                      onChange={(e) =>
-                        setCompanyInfo({
-                          ...companyInfo,
-                          companyName: e.target.value,
-                        })
+                      onChange={(event) =>
+                        setCompanyInfo((current) => ({
+                          ...current,
+                          companyName: event.target.value,
+                        }))
                       }
-                      placeholder={
-                        language === "zh"
-                          ? "请输入公司名称"
-                          : "Enter company name"
-                      }
+                      placeholder={content.companyNamePlaceholder}
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="creditCode">
-                      {language === "zh"
-                        ? "统一社会信用代码 *"
-                        : "Credit Code *"}
-                    </Label>
+                    <Label htmlFor="creditCode">{content.creditCode}</Label>
                     <Input
                       id="creditCode"
                       value={companyInfo.creditCode}
-                      onChange={(e) =>
-                        setCompanyInfo({
-                          ...companyInfo,
-                          creditCode: e.target.value,
-                        })
+                      onChange={(event) =>
+                        setCompanyInfo((current) => ({
+                          ...current,
+                          creditCode: event.target.value,
+                        }))
                       }
-                      placeholder={
-                        language === "zh"
-                          ? "18位统一社会信用代码"
-                          : "18-digit credit code"
-                      }
+                      placeholder={content.creditCodePlaceholder}
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="legalPerson">
-                      {language === "zh" ? "法定代表人 *" : "Legal Person *"}
-                    </Label>
+                    <Label htmlFor="legalPerson">{content.legalPerson}</Label>
                     <Input
                       id="legalPerson"
                       value={companyInfo.legalPerson}
-                      onChange={(e) =>
-                        setCompanyInfo({
-                          ...companyInfo,
-                          legalPerson: e.target.value,
-                        })
+                      onChange={(event) =>
+                        setCompanyInfo((current) => ({
+                          ...current,
+                          legalPerson: event.target.value,
+                        }))
                       }
-                      placeholder={
-                        language === "zh"
-                          ? "请输入法定代表人姓名"
-                          : "Enter legal person name"
-                      }
+                      placeholder={content.legalPersonPlaceholder}
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="contactPerson">
-                      {language === "zh" ? "联系人" : "Contact Person"}
-                    </Label>
+                    <Label htmlFor="contactPerson">{content.contactPerson}</Label>
                     <Input
                       id="contactPerson"
                       value={companyInfo.contactPerson}
-                      onChange={(e) =>
-                        setCompanyInfo({
-                          ...companyInfo,
-                          contactPerson: e.target.value,
-                        })
+                      onChange={(event) =>
+                        setCompanyInfo((current) => ({
+                          ...current,
+                          contactPerson: event.target.value,
+                        }))
                       }
-                      placeholder={
-                        language === "zh"
-                          ? "请输入联系人姓名"
-                          : "Enter contact person"
-                      }
+                      placeholder={content.contactPersonPlaceholder}
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="contactPhone">
-                      {language === "zh" ? "联系电话" : "Contact Phone"}
-                    </Label>
+                    <Label htmlFor="contactPhone">{content.contactPhone}</Label>
                     <Input
                       id="contactPhone"
                       value={companyInfo.contactPhone}
-                      onChange={(e) =>
-                        setCompanyInfo({
-                          ...companyInfo,
-                          contactPhone: e.target.value,
-                        })
+                      onChange={(event) =>
+                        setCompanyInfo((current) => ({
+                          ...current,
+                          contactPhone: event.target.value,
+                        }))
                       }
-                      placeholder={
-                        language === "zh"
-                          ? "请输入联系电话"
-                          : "Enter contact phone"
-                      }
+                      placeholder={content.contactPhonePlaceholder}
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="contactEmail">
-                      {language === "zh" ? "联系邮箱" : "Contact Email"}
-                    </Label>
+                    <Label htmlFor="contactEmail">{content.contactEmail}</Label>
                     <Input
                       id="contactEmail"
                       type="email"
                       value={companyInfo.contactEmail}
-                      onChange={(e) =>
-                        setCompanyInfo({
-                          ...companyInfo,
-                          contactEmail: e.target.value,
-                        })
+                      onChange={(event) =>
+                        setCompanyInfo((current) => ({
+                          ...current,
+                          contactEmail: event.target.value,
+                        }))
                       }
-                      placeholder={
-                        language === "zh"
-                          ? "请输入联系邮箱"
-                          : "Enter contact email"
-                      }
+                      placeholder={content.contactEmailPlaceholder}
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="address">
-                    {language === "zh" ? "注册地址 *" : "Registered Address *"}
-                  </Label>
+                  <Label htmlFor="address">{content.address}</Label>
                   <Input
                     id="address"
                     value={companyInfo.address}
-                    onChange={(e) =>
-                      setCompanyInfo({
-                        ...companyInfo,
-                        address: e.target.value,
-                      })
+                    onChange={(event) =>
+                      setCompanyInfo((current) => ({
+                        ...current,
+                        address: event.target.value,
+                      }))
                     }
-                    placeholder={
-                      language === "zh"
-                        ? "请输入公司注册地址"
-                        : "Enter registered address"
-                    }
+                    placeholder={content.addressPlaceholder}
                   />
                 </div>
               </CardContent>
             </Card>
 
-            {/* 操作按钮 */}
             <div className="flex justify-between">
               <Button variant="outline" onClick={() => setStep("upload")}>
-                {language === "zh" ? "返回" : "Back"}
+                {content.back}
               </Button>
-              <Button
-                onClick={handleSave}
-                disabled={
-                  !companyInfo.companyName || !companyInfo.creditCode || saving
-                }
-                size="lg"
-              >
-                {saving ? (
-                  language === "zh" ? (
-                    "保存中..."
-                  ) : (
-                    "Saving..."
-                  )
-                ) : (
-                  <>
-                    {language === "zh" ? "保存并继续" : "Save & Continue"}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
+              <Button onClick={handleSave} disabled={saving} size="lg">
+                {saving ? content.saving : content.saveAndContinue}
+                {!saving && <ArrowRight className="ml-2 h-4 w-4" />}
               </Button>
             </div>
           </div>

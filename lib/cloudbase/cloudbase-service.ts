@@ -262,6 +262,44 @@ export function getDatabase() {
   return app.database();
 }
 
+export function getCloudBaseApp() {
+  return initCloudBase();
+}
+
+export async function uploadFileToCloudBase(
+  cloudPath: string,
+  fileContent: Buffer
+): Promise<{ fileID: string }> {
+  const app: any = initCloudBase();
+  const result = await app.uploadFile({
+    cloudPath,
+    fileContent,
+  });
+
+  const fileID =
+    result?.fileID ||
+    result?.fileId ||
+    result?.fileIDList?.[0] ||
+    result?.fileList?.[0];
+
+  if (!fileID || typeof fileID !== "string") {
+    throw new Error("CloudBase upload succeeded but no fileID was returned");
+  }
+
+  return { fileID };
+}
+
+export async function deleteFileFromCloudBase(fileList: string[]) {
+  if (!fileList.length) {
+    return;
+  }
+
+  const app: any = initCloudBase();
+  await app.deleteFile({
+    fileList,
+  });
+}
+
 export async function verifyToken(token: string): Promise<boolean> {
   try {
     const userId = extractUserIdFromToken(token);

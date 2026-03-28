@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -11,14 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Download,
-  TrendingUp,
-  Users,
-  FileText,
-  DollarSign,
-  Loader2,
-} from 'lucide-react';
+import { Download, TrendingUp, Users, FileText, DollarSign, Loader2 } from 'lucide-react';
 import {
   LineChart,
   Line,
@@ -59,6 +52,44 @@ export default function AnalyticsPage() {
   const { language } = useLanguage();
   const isEn = language === 'en';
   const locale = isEn ? 'en-US' : 'zh-CN';
+  const currencyPrefix = isEn ? '$' : '¥';
+
+  const mapSubscriptionName = (value: string) => {
+    if (value === 'free') {
+      return isEn ? 'Free' : '免费版';
+    }
+    if (value === 'pro') {
+      return 'Pro';
+    }
+    if (value === 'enterprise') {
+      return isEn ? 'Enterprise' : '企业版';
+    }
+    return value;
+  };
+
+  const mapContractTypeName = (value: string) => {
+    const labels: Record<string, { zh: string; en: string }> = {
+      labor: { zh: '劳动合同', en: 'Labor' },
+      service: { zh: '服务合同', en: 'Service' },
+      cooperation: { zh: '合作协议', en: 'Cooperation' },
+      nda: { zh: '保密协议', en: 'NDA' },
+      custom: { zh: '自定义', en: 'Custom' },
+    };
+    const matched = labels[value];
+    return matched ? (isEn ? matched.en : matched.zh) : value;
+  };
+
+  const mapPaymentMethodName = (value: string) => {
+    const labels: Record<string, string> = {
+      stripe: 'Stripe',
+      paypal: 'PayPal',
+      alipay: 'Alipay',
+      wechat: isEn ? 'WeChat Pay' : '微信支付',
+      card: isEn ? 'Card' : '银行卡',
+      manual: isEn ? 'Manual' : '人工处理',
+    };
+    return labels[value] || value;
+  };
 
   useEffect(() => {
     fetchAnalytics();
@@ -80,34 +111,71 @@ export default function AnalyticsPage() {
     }
   };
 
+  const totalContracts = useMemo(
+    () => data?.contractTrend.reduce((sum, item) => sum + item.count, 0) || 0,
+    [data],
+  );
+  const totalRevenue = useMemo(
+    () => data?.revenueTrend.reduce((sum, item) => sum + item.amount, 0) || 0,
+    [data],
+  );
+  const totalNewUsers = useMemo(
+    () => data?.userTrend.reduce((sum, item) => sum + item.count, 0) || 0,
+    [data],
+  );
+  const localizedSubscriptionChart = useMemo(
+    () =>
+      data?.subscriptionChart.map((item) => ({
+        ...item,
+        name: mapSubscriptionName(item.name),
+      })) || [],
+    [data, isEn],
+  );
+  const localizedContractTypeChart = useMemo(
+    () =>
+      data?.contractTypeChart.map((item) => ({
+        ...item,
+        name: mapContractTypeName(item.name),
+      })) || [],
+    [data, isEn],
+  );
+  const localizedPaymentMethodChart = useMemo(
+    () =>
+      data?.paymentMethodChart.map((item) => ({
+        ...item,
+        name: mapPaymentMethodName(item.name),
+      })) || [],
+    [data, isEn],
+  );
+
   if (loading || !data) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
-
-  const totalContracts = data.contractTrend.reduce((sum, item) => sum + item.count, 0);
-  const totalRevenue = data.revenueTrend.reduce((sum, item) => sum + item.amount, 0);
-  const totalNewUsers = data.userTrend.reduce((sum, item) => sum + item.count, 0);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">{isEn ? 'Analytics' : '数据分析'}</h1>
-          <p className="text-gray-500">{isEn ? 'Detailed platform metrics and trend analysis' : '查看平台详细数据统计和趋势分析'}</p>
+          <p className="text-gray-500">
+            {isEn
+              ? 'Detailed platform metrics and trend analysis.'
+              : '查看平台详细指标与趋势分析。'}
+          </p>
         </div>
         <div className="flex gap-2">
           <Select value={days} onValueChange={setDays}>
-            <SelectTrigger className="w-32">
+            <SelectTrigger className="w-36">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="7">{isEn ? 'Last 7 days' : '最近7天'}</SelectItem>
-              <SelectItem value="30">{isEn ? 'Last 30 days' : '最近30天'}</SelectItem>
-              <SelectItem value="90">{isEn ? 'Last 90 days' : '最近90天'}</SelectItem>
+              <SelectItem value="7">{isEn ? 'Last 7 days' : '最近 7 天'}</SelectItem>
+              <SelectItem value="30">{isEn ? 'Last 30 days' : '最近 30 天'}</SelectItem>
+              <SelectItem value="90">{isEn ? 'Last 90 days' : '最近 90 天'}</SelectItem>
             </SelectContent>
           </Select>
           <Button variant="outline">
@@ -117,15 +185,17 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">{isEn ? 'New Users' : '新增用户'}</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-500">
+              {isEn ? 'New Users' : '新增用户'}
+            </CardTitle>
             <Users className="h-4 w-4 text-gray-400" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalNewUsers.toLocaleString(locale)}</div>
-            <div className="flex items-center text-xs text-gray-500 mt-1">
+            <div className="mt-1 text-xs text-gray-500">
               {isEn ? `Last ${days} days` : `最近 ${days} 天`}
             </div>
           </CardContent>
@@ -133,12 +203,14 @@ export default function AnalyticsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">{isEn ? 'Contracts Generated' : '合同生成'}</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-500">
+              {isEn ? 'Contracts Generated' : '合同生成数'}
+            </CardTitle>
             <FileText className="h-4 w-4 text-gray-400" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalContracts.toLocaleString(locale)}</div>
-            <div className="flex items-center text-xs text-gray-500 mt-1">
+            <div className="mt-1 text-xs text-gray-500">
               {isEn ? `Last ${days} days` : `最近 ${days} 天`}
             </div>
           </CardContent>
@@ -146,12 +218,17 @@ export default function AnalyticsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">{isEn ? 'Revenue' : '总收入'}</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-500">
+              {isEn ? 'Revenue' : '总收入'}
+            </CardTitle>
             <DollarSign className="h-4 w-4 text-gray-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{isEn ? '$' : '¥'}{totalRevenue.toLocaleString(locale)}</div>
-            <div className="flex items-center text-xs text-gray-500 mt-1">
+            <div className="text-2xl font-bold">
+              {currencyPrefix}
+              {totalRevenue.toLocaleString(locale)}
+            </div>
+            <div className="mt-1 text-xs text-gray-500">
               {isEn ? `Last ${days} days` : `最近 ${days} 天`}
             </div>
           </CardContent>
@@ -159,13 +236,15 @@ export default function AnalyticsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">{isEn ? 'Active Rate' : '活跃率'}</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-500">
+              {isEn ? 'Active Rate' : '活跃率'}
+            </CardTitle>
             <TrendingUp className="h-4 w-4 text-gray-400" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{data.stats.activeRate}%</div>
-            <div className="flex items-center text-xs text-gray-500 mt-1">
-              {isEn ? '7-day active users / total users' : '7天内活跃 / 总用户'}
+            <div className="mt-1 text-xs text-gray-500">
+              {isEn ? '7-day active users / total users' : '7 天活跃用户 / 总用户'}
             </div>
           </CardContent>
         </Card>
@@ -174,7 +253,9 @@ export default function AnalyticsPage() {
       <Tabs defaultValue="trends">
         <TabsList>
           <TabsTrigger value="trends">{isEn ? 'Trends' : '趋势分析'}</TabsTrigger>
-          <TabsTrigger value="distribution">{isEn ? 'Distribution' : '分布统计'}</TabsTrigger>
+          <TabsTrigger value="distribution">
+            {isEn ? 'Distribution' : '分布统计'}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="trends" className="space-y-6">
@@ -182,7 +263,9 @@ export default function AnalyticsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>{isEn ? 'User Growth Trend' : '用户增长趋势'}</CardTitle>
-                <CardDescription>{isEn ? 'Daily new users' : '每日新增用户数量'}</CardDescription>
+                <CardDescription>
+                  {isEn ? 'Daily new users.' : '每日新增用户数。'}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
@@ -206,8 +289,12 @@ export default function AnalyticsPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>{isEn ? 'Contract Generation Trend' : '合同生成趋势'}</CardTitle>
-                <CardDescription>{isEn ? 'Daily generated contracts' : '每日合同生成数量'}</CardDescription>
+                <CardTitle>
+                  {isEn ? 'Contract Generation Trend' : '合同生成趋势'}
+                </CardTitle>
+                <CardDescription>
+                  {isEn ? 'Daily generated contracts.' : '每日生成合同数。'}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
@@ -217,17 +304,23 @@ export default function AnalyticsPage() {
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="count" fill="#00C49F" name={isEn ? 'Contracts' : '合同数量'} />
+                    <Bar
+                      dataKey="count"
+                      fill="#00C49F"
+                      name={isEn ? 'Contracts' : '合同数量'}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
 
-            {data.revenueTrend.length > 0 && (
+            {data.revenueTrend.length > 0 ? (
               <Card>
                 <CardHeader>
                   <CardTitle>{isEn ? 'Revenue Trend' : '收入趋势'}</CardTitle>
-                  <CardDescription>{isEn ? 'Daily revenue amount' : '每日收入金额'}</CardDescription>
+                  <CardDescription>
+                    {isEn ? 'Daily revenue amount.' : '每日收入金额。'}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
@@ -241,30 +334,34 @@ export default function AnalyticsPage() {
                         type="monotone"
                         dataKey="amount"
                         stroke="#FFBB28"
-                        name={isEn ? 'Revenue' : '收入金额 (¥)'}
+                        name={isEn ? 'Revenue' : '收入金额'}
                         strokeWidth={2}
                       />
                     </LineChart>
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
-            )}
+            ) : null}
           </div>
         </TabsContent>
 
         <TabsContent value="distribution" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {data.subscriptionChart.length > 0 && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {localizedSubscriptionChart.length > 0 ? (
               <Card>
                 <CardHeader>
-                  <CardTitle>{isEn ? 'Subscription Distribution' : '订阅类型分布'}</CardTitle>
-                  <CardDescription>{isEn ? 'User share by subscription plan' : '用户订阅方案占比'}</CardDescription>
+                  <CardTitle>
+                    {isEn ? 'Subscription Distribution' : '订阅方案分布'}
+                  </CardTitle>
+                  <CardDescription>
+                    {isEn ? 'Share by subscription plan.' : '不同订阅方案的用户占比。'}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                       <Pie
-                        data={data.subscriptionChart}
+                        data={localizedSubscriptionChart}
                         cx="50%"
                         cy="50%"
                         labelLine={false}
@@ -273,8 +370,11 @@ export default function AnalyticsPage() {
                         fill="#8884d8"
                         dataKey="value"
                       >
-                        {data.subscriptionChart.map((entry, index) => (
-                          <Cell key={`cell-${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />
+                        {localizedSubscriptionChart.map((entry, index) => (
+                          <Cell
+                            key={`subscription-${entry.name}-${index}`}
+                            fill={COLORS[index % COLORS.length]}
+                          />
                         ))}
                       </Pie>
                       <Tooltip />
@@ -282,19 +382,23 @@ export default function AnalyticsPage() {
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
-            )}
+            ) : null}
 
-            {data.contractTypeChart.length > 0 && (
+            {localizedContractTypeChart.length > 0 ? (
               <Card>
                 <CardHeader>
-                  <CardTitle>{isEn ? 'Contract Type Distribution' : '合同类型分布'}</CardTitle>
-                  <CardDescription>{isEn ? 'Share by contract type' : '各类型合同数量占比'}</CardDescription>
+                  <CardTitle>
+                    {isEn ? 'Contract Type Distribution' : '合同类型分布'}
+                  </CardTitle>
+                  <CardDescription>
+                    {isEn ? 'Share by contract type.' : '不同合同类型的占比。'}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                       <Pie
-                        data={data.contractTypeChart}
+                        data={localizedContractTypeChart}
                         cx="50%"
                         cy="50%"
                         labelLine={false}
@@ -303,8 +407,11 @@ export default function AnalyticsPage() {
                         fill="#8884d8"
                         dataKey="value"
                       >
-                        {data.contractTypeChart.map((entry, index) => (
-                          <Cell key={`cell-${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />
+                        {localizedContractTypeChart.map((entry, index) => (
+                          <Cell
+                            key={`contract-type-${entry.name}-${index}`}
+                            fill={COLORS[index % COLORS.length]}
+                          />
                         ))}
                       </Pie>
                       <Tooltip />
@@ -312,49 +419,69 @@ export default function AnalyticsPage() {
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
-            )}
+            ) : null}
 
-            {data.paymentMethodChart.length > 0 && (
+            {localizedPaymentMethodChart.length > 0 ? (
               <Card>
                 <CardHeader>
-                  <CardTitle>{isEn ? 'Payment Method Distribution' : '支付方式分布'}</CardTitle>
-                  <CardDescription>{isEn ? 'Usage by payment method' : '各支付方式使用占比'}</CardDescription>
+                  <CardTitle>
+                    {isEn ? 'Payment Method Distribution' : '支付方式分布'}
+                  </CardTitle>
+                  <CardDescription>
+                    {isEn ? 'Usage by payment method.' : '不同支付方式的使用情况。'}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={data.paymentMethodChart}>
+                    <BarChart data={localizedPaymentMethodChart}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" />
                       <YAxis />
                       <Tooltip />
                       <Legend />
-                      <Bar dataKey="value" fill="#8884D8" name={isEn ? 'Orders' : '订单数量'} />
+                      <Bar
+                        dataKey="value"
+                        fill="#8884D8"
+                        name={isEn ? 'Orders' : '订单数量'}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
-            )}
+            ) : null}
 
             <Card>
               <CardHeader>
                 <CardTitle>{isEn ? 'User Activity' : '用户活跃度'}</CardTitle>
-                <CardDescription>{isEn ? '7-day active user stats' : '7天内活跃用户统计'}</CardDescription>
+                <CardDescription>
+                  {isEn ? '7-day active user metrics.' : '最近 7 天活跃用户统计。'}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">{isEn ? 'Total Users' : '总用户数'}</span>
-                    <span className="text-2xl font-bold">{data.stats.totalUsers.toLocaleString(locale)}</span>
+                    <span className="text-sm text-gray-500">
+                      {isEn ? 'Total Users' : '总用户数'}
+                    </span>
+                    <span className="text-2xl font-bold">
+                      {data.stats.totalUsers.toLocaleString(locale)}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">{isEn ? 'Active in 7 days' : '7天活跃用户'}</span>
+                    <span className="text-sm text-gray-500">
+                      {isEn ? 'Active in 7 days' : '7 天内活跃用户'}
+                    </span>
                     <span className="text-2xl font-bold text-green-600">
                       {data.stats.activeUsers7d.toLocaleString(locale)}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between pt-4 border-t">
-                    <span className="text-sm font-medium">{isEn ? 'Active Rate' : '活跃率'}</span>
-                    <span className="text-3xl font-bold text-primary">{data.stats.activeRate}%</span>
+                  <div className="flex items-center justify-between border-t pt-4">
+                    <span className="text-sm font-medium">
+                      {isEn ? 'Active Rate' : '活跃率'}
+                    </span>
+                    <span className="text-3xl font-bold text-primary">
+                      {data.stats.activeRate}%
+                    </span>
                   </div>
                 </div>
               </CardContent>

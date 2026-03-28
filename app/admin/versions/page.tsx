@@ -1,11 +1,23 @@
 'use client';
 
-import { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react';
+import {
+  AlertCircle,
+  CheckCircle,
+  Download,
+  Loader2,
+  Monitor,
+  Smartphone,
+  Trash2,
+  Upload,
+} from 'lucide-react';
+import { toast } from 'sonner';
+
+import { useLanguage } from '@/components/language-provider';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -14,9 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Upload, Download, Trash2, CheckCircle, AlertCircle, Smartphone, Monitor } from 'lucide-react';
-import { toast } from 'sonner';
-import { useLanguage } from '@/components/language-provider';
+import { Textarea } from '@/components/ui/textarea';
 
 type Platform = 'android' | 'ios' | 'mac' | 'windows' | 'harmonyos';
 
@@ -33,22 +43,7 @@ interface Version {
   createdAt: string;
 }
 
-const mockVersions: Version[] = [
-  {
-    id: '1',
-    platform: 'android',
-    version: '1.0.0',
-    buildNumber: 1,
-    fileUrl: 'https://example.com/ContractHub-v1.0.0.apk',
-    fileSize: 52428800,
-    changelog: 'Initial release\n- Contract generation\n- User authentication\n- Payment flow',
-    forceUpdate: false,
-    isActive: true,
-    createdAt: '2025-01-01',
-  },
-];
-
-const platformIcons: Record<Platform, React.ReactNode> = {
+const platformIcons: Record<Platform, ReactNode> = {
   android: <Smartphone className="h-4 w-4" />,
   ios: <Smartphone className="h-4 w-4" />,
   mac: <Monitor className="h-4 w-4" />,
@@ -57,117 +52,210 @@ const platformIcons: Record<Platform, React.ReactNode> = {
 };
 
 export default function VersionsPage() {
-  const [versions, setVersions] = useState<Version[]>(mockVersions);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadForm, setUploadForm] = useState({
-    platform: '' as Platform,
+  const { language } = useLanguage();
+  const isEn = language === 'en';
+  const locale = isEn ? 'en-US' : 'zh-CN';
+  const [versions, setVersions] = useState<Version[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({
+    platform: '' as Platform | '',
     version: '',
-    buildNumber: '',
+    buildNumber: '1',
     file: null as File | null,
     changelog: '',
     forceUpdate: false,
   });
-  const { language } = useLanguage();
-  const isEn = language === 'en';
 
   const platformNames: Record<Platform, string> = {
     android: 'Android',
     ios: 'iOS',
     mac: 'Mac',
     windows: 'Windows',
-    harmonyos: isEn ? 'HarmonyOS' : '鸿蒙',
+    harmonyos: 'HarmonyOS',
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setUploadForm({ ...uploadForm, file });
-    }
-  };
+  useEffect(() => {
+    void fetchVersions();
+  }, []);
 
-  const handleUpload = async () => {
-    if (!uploadForm.file || !uploadForm.platform || !uploadForm.version) {
-      toast.error(isEn ? 'Please fill in all required fields' : '请填写所有必填项');
-      return;
-    }
-
-    setIsUploading(true);
-
+  const fetchVersions = async () => {
+    setLoading(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      const newVersion: Version = {
-        id: Date.now().toString(),
-        platform: uploadForm.platform,
-        version: uploadForm.version,
-        buildNumber: parseInt(uploadForm.buildNumber) || 1,
-        fileUrl: URL.createObjectURL(uploadForm.file),
-        fileSize: uploadForm.file.size,
-        changelog: uploadForm.changelog,
-        forceUpdate: uploadForm.forceUpdate,
-        isActive: true,
-        createdAt: new Date().toISOString().split('T')[0],
-      };
-
-      setVersions([newVersion, ...versions]);
-      setUploadForm({
-        platform: '' as Platform,
-        version: '',
-        buildNumber: '',
-        file: null,
-        changelog: '',
-        forceUpdate: false,
-      });
-
-      toast.success(isEn ? 'Version uploaded successfully' : '版本上传成功！');
+      const response = await fetch('/api/admin/versions');
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to fetch versions');
+      }
+      setVersions(result.data || []);
     } catch (error) {
-      toast.error(isEn ? 'Upload failed. Please retry.' : '上传失败，请重试');
+      console.error('Failed to fetch versions:', error);
+      toast.error(isEn ? 'Failed to load versions.' : '加载版本列表失败。');
     } finally {
-      setIsUploading(false);
+      setLoading(false);
     }
   };
 
-  const toggleActive = (id: string) => {
-    setVersions(versions.map((v) => (v.id === id ? { ...v, isActive: !v.isActive } : v)));
-    toast.success(isEn ? 'Version status updated' : '版本状态已更新');
-  };
-
-  const deleteVersion = (id: string) => {
-    const confirmed = confirm(isEn ? 'Delete this version?' : '确定要删除这个版本吗？');
-    if (confirmed) {
-      setVersions(versions.filter((v) => v.id !== id));
-      toast.success(isEn ? 'Version deleted' : '版本已删除');
-    }
+  const handleFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    setForm((current) => ({ ...current, file }));
   };
 
   const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    if (bytes < 1024) {
+      return `${bytes} B`;
+    }
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(2)} KB`;
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  const resetForm = () => {
+    setForm({
+      platform: '',
+      version: '',
+      buildNumber: '1',
+      file: null,
+      changelog: '',
+      forceUpdate: false,
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (!form.platform || !form.version || !form.file) {
+      toast.error(isEn ? 'Please complete all required fields.' : '请先填写必填项并选择安装包。');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', form.file);
+      uploadFormData.append('folder', 'app-releases');
+
+      const uploadResponse = await fetch('/api/admin/upload', {
+        method: 'POST',
+        body: uploadFormData,
+      });
+      const uploadResult = await uploadResponse.json();
+      if (!uploadResponse.ok || !uploadResult.success) {
+        throw new Error(uploadResult.error || 'Upload failed');
+      }
+
+      const createResponse = await fetch('/api/admin/versions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          platform: form.platform,
+          version: form.version,
+          buildNumber: Number(form.buildNumber || 1),
+          fileUrl: uploadResult.data.url,
+          fileSize: uploadResult.data.size,
+          changelog: form.changelog,
+          forceUpdate: form.forceUpdate,
+        }),
+      });
+      const createResult = await createResponse.json();
+      if (!createResponse.ok || !createResult.success) {
+        throw new Error(createResult.error || 'Create version failed');
+      }
+
+      toast.success(isEn ? 'Version uploaded successfully.' : '版本上传成功。');
+      resetForm();
+      await fetchVersions();
+    } catch (error) {
+      console.error('Failed to upload version:', error);
+      toast.error(isEn ? 'Upload failed. Please try again.' : '上传失败，请稍后重试。');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleToggle = async (version: Version) => {
+    try {
+      const response = await fetch(`/api/admin/versions/${version.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          isActive: !version.isActive,
+          forceUpdate: version.forceUpdate,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Update failed');
+      }
+
+      toast.success(isEn ? 'Version status updated.' : '版本状态已更新。');
+      await fetchVersions();
+    } catch (error) {
+      console.error('Failed to update version:', error);
+      toast.error(isEn ? 'Failed to update version.' : '更新版本状态失败。');
+    }
+  };
+
+  const handleDelete = async (version: Version) => {
+    const confirmed = window.confirm(
+      isEn ? `Delete version ${version.version}?` : `确定删除版本 ${version.version} 吗？`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/versions/${version.id}`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Delete failed');
+      }
+
+      toast.success(isEn ? 'Version deleted.' : '版本已删除。');
+      await fetchVersions();
+    } catch (error) {
+      console.error('Failed to delete version:', error);
+      toast.error(isEn ? 'Failed to delete version.' : '删除版本失败。');
+    }
   };
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">{isEn ? 'Version Management' : '版本管理'}</h1>
-        <p className="text-gray-500">{isEn ? 'Upload and manage application versions across platforms' : '上传和管理各平台应用版本'}</p>
+        <p className="text-gray-500">
+          {isEn
+            ? 'Upload release packages and manage active versions across platforms.'
+            : '上传安装包并统一管理各平台的生效版本。'}
+        </p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>{isEn ? 'Upload New Version' : '上传新版本'}</CardTitle>
-          <CardDescription>{isEn ? 'Upload app package and configure version metadata' : '上传应用安装包并配置版本信息'}</CardDescription>
+          <CardDescription>
+            {isEn
+              ? 'Create a release record after the package upload succeeds.'
+              : '安装包上传完成后，立即生成统一的版本记录。'}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="platform">{isEn ? 'Platform *' : '平台 *'}</Label>
               <Select
-                value={uploadForm.platform}
-                onValueChange={(value) => setUploadForm({ ...uploadForm, platform: value as Platform })}
+                value={form.platform}
+                onValueChange={(value) =>
+                  setForm((current) => ({ ...current, platform: value as Platform }))
+                }
               >
                 <SelectTrigger id="platform">
-                  <SelectValue placeholder={isEn ? 'Select platform' : '选择平台'} />
+                  <SelectValue placeholder={isEn ? 'Select platform' : '请选择平台'} />
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(platformNames).map(([key, name]) => (
@@ -183,70 +271,78 @@ export default function VersionsPage() {
               <Label htmlFor="version">{isEn ? 'Version *' : '版本号 *'}</Label>
               <Input
                 id="version"
-                placeholder={isEn ? 'e.g. 1.0.0' : '例如: 1.0.0'}
-                value={uploadForm.version}
-                onChange={(e) => setUploadForm({ ...uploadForm, version: e.target.value })}
+                placeholder={isEn ? 'e.g. 1.0.0' : '例如 1.0.0'}
+                value={form.version}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, version: event.target.value }))
+                }
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="buildNumber">{isEn ? 'Build Number' : 'Build号'}</Label>
+              <Label htmlFor="buildNumber">{isEn ? 'Build Number' : '构建号'}</Label>
               <Input
                 id="buildNumber"
                 type="number"
-                placeholder={isEn ? 'e.g. 1' : '例如: 1'}
-                value={uploadForm.buildNumber}
-                onChange={(e) => setUploadForm({ ...uploadForm, buildNumber: e.target.value })}
+                min={1}
+                value={form.buildNumber}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, buildNumber: event.target.value }))
+                }
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="file">{isEn ? 'Install Package *' : '安装包文件 *'}</Label>
+              <Label htmlFor="file">{isEn ? 'Install Package *' : '安装包 *'}</Label>
               <Input
                 id="file"
                 type="file"
-                accept=".apk,.ipa,.dmg,.exe,.hap"
+                accept=".apk,.ipa,.dmg,.exe,.hap,.zip,.msi"
                 onChange={handleFileSelect}
               />
-              {uploadForm.file && (
+              {form.file ? (
                 <p className="text-sm text-gray-500">
-                  {isEn ? 'Selected' : '已选择'}: {uploadForm.file.name} ({formatFileSize(uploadForm.file.size)})
+                  {(isEn ? 'Selected' : '已选择')} {form.file.name} ({formatFileSize(form.file.size)})
                 </p>
-              )}
+              ) : null}
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="changelog">{isEn ? 'Release Notes' : '更新日志'}</Label>
+            <Label htmlFor="changelog">{isEn ? 'Release Notes' : '更新说明'}</Label>
             <Textarea
               id="changelog"
-              placeholder={isEn ? 'Describe changes in this version...' : '输入本版本的更新内容...'}
               rows={4}
-              value={uploadForm.changelog}
-              onChange={(e) => setUploadForm({ ...uploadForm, changelog: e.target.value })}
+              placeholder={isEn ? 'Describe this release...' : '简要说明本次更新内容...'}
+              value={form.changelog}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, changelog: event.target.value }))
+              }
             />
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             <Switch
               id="forceUpdate"
-              checked={uploadForm.forceUpdate}
-              onCheckedChange={(checked) => setUploadForm({ ...uploadForm, forceUpdate: checked })}
+              checked={form.forceUpdate}
+              onCheckedChange={(checked) =>
+                setForm((current) => ({ ...current, forceUpdate: checked }))
+              }
             />
             <Label htmlFor="forceUpdate" className="cursor-pointer">
-              {isEn ? 'Force update (required to continue using app)' : '强制更新（用户必须更新才能使用）'}
+              {isEn ? 'Force update for all users' : '设为强制更新，用户需升级后继续使用'}
             </Label>
           </div>
 
-          <Button onClick={handleUpload} disabled={isUploading} className="w-full md:w-auto">
-            {isUploading ? (
+          <Button onClick={handleSubmit} disabled={submitting}>
+            {submitting ? (
               <>
-                <Upload className="h-4 w-4 mr-2 animate-spin" />
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 {isEn ? 'Uploading...' : '上传中...'}
               </>
             ) : (
               <>
-                <Upload className="h-4 w-4 mr-2" />
+                <Upload className="mr-2 h-4 w-4" />
                 {isEn ? 'Upload Version' : '上传版本'}
               </>
             )}
@@ -257,67 +353,93 @@ export default function VersionsPage() {
       <Card>
         <CardHeader>
           <CardTitle>{isEn ? 'Version List' : '版本列表'}</CardTitle>
-          <CardDescription>{isEn ? 'Uploaded application versions' : '已上传的应用版本'}</CardDescription>
+          <CardDescription>
+            {isEn
+              ? 'Keep at most one active version per platform.'
+              : '建议每个平台始终只保留一个启用版本。'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {versions.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                <Upload className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>{isEn ? 'No versions uploaded yet' : '还没有上传任何版本'}</p>
-              </div>
-            ) : (
-              versions.map((version) => (
-                <div key={version.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : versions.length === 0 ? (
+            <div className="py-12 text-center text-gray-500">
+              <Upload className="mx-auto mb-4 h-12 w-12 opacity-50" />
+              <p>{isEn ? 'No versions yet.' : '暂无版本记录。'}</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {versions.map((version) => (
+                <div
+                  key={version.id}
+                  className="flex flex-col gap-4 rounded-lg border p-4 lg:flex-row lg:items-center lg:justify-between"
+                >
+                  <div className="flex flex-1 items-start gap-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
                       {platformIcons[version.platform]}
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
                         <h3 className="font-medium">{platformNames[version.platform]}</h3>
                         <span className="text-sm text-gray-500">v{version.version}</span>
-                        {version.forceUpdate && (
-                          <span className="px-2 py-0.5 text-xs bg-red-100 text-red-600 rounded-full">
+                        {version.forceUpdate ? (
+                          <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-600">
                             {isEn ? 'Force Update' : '强制更新'}
                           </span>
-                        )}
+                        ) : null}
                         {version.isActive ? (
-                          <span className="flex items-center gap-1 px-2 py-0.5 text-xs bg-green-100 text-green-600 rounded-full">
+                          <span className="flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-600">
                             <CheckCircle className="h-3 w-3" />
-                            {isEn ? 'Active' : '生效中'}
+                            {isEn ? 'Active' : '已启用'}
                           </span>
                         ) : (
-                          <span className="flex items-center gap-1 px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded-full">
+                          <span className="flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
                             <AlertCircle className="h-3 w-3" />
-                            {isEn ? 'Disabled' : '已停用'}
+                            {isEn ? 'Inactive' : '未启用'}
                           </span>
                         )}
                       </div>
                       <div className="text-sm text-gray-500">
-                        Build {version.buildNumber} · {formatFileSize(version.fileSize)} · {version.createdAt}
+                        {`Build ${version.buildNumber} · ${formatFileSize(version.fileSize)} · ${new Date(
+                          version.createdAt,
+                        ).toLocaleDateString(locale)}`}
                       </div>
-                      {version.changelog && (
-                        <div className="mt-2 text-sm text-gray-600 whitespace-pre-line">{version.changelog}</div>
-                      )}
+                      {version.changelog ? (
+                        <div className="mt-2 whitespace-pre-line text-sm text-gray-600">
+                          {version.changelog}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => window.open(version.fileUrl, '_blank')}>
-                      <Download className="h-4 w-4 mr-1" />
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(version.fileUrl, '_blank', 'noopener,noreferrer')}
+                    >
+                      <Download className="mr-1 h-4 w-4" />
                       {isEn ? 'Download' : '下载'}
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => toggleActive(version.id)}>
-                      {version.isActive ? (isEn ? 'Disable' : '停用') : isEn ? 'Enable' : '启用'}
+                    <Button variant="outline" size="sm" onClick={() => handleToggle(version)}>
+                      {version.isActive
+                        ? isEn
+                          ? 'Disable'
+                          : '停用'
+                        : isEn
+                          ? 'Enable'
+                          : '启用'}
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => deleteVersion(version.id)}>
+                    <Button variant="outline" size="sm" onClick={() => handleDelete(version)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

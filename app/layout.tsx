@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { GeistSans } from "geist/font/sans";
-import { GeistMono } from "geist/font/mono";
 import { Analytics } from "@vercel/analytics/next";
+import { GeistMono } from "geist/font/mono";
+import { GeistSans } from "geist/font/sans";
 import { Toaster } from "sonner";
+
 import { AppProvider } from "@/components/app-context";
 import { LanguageProvider } from "@/components/language-provider";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -17,7 +18,7 @@ const appName = getAppDisplayName();
 const defaultLanguage = getDefaultLanguage();
 const metadataDescription =
   defaultLanguage === "zh"
-    ? "面向合作双方的电子合同平台，支持合同拟定、在线确认、电子签署与长期留存。"
+    ? "面向合作双方的数字合同平台，支持合同生成、在线确认、电子签署与长期留存。"
     : "A digital contract platform for drafting, confirming, signing, and reviewing agreements online.";
 
 export const metadata: Metadata = {
@@ -28,7 +29,7 @@ export const metadata: Metadata = {
     "e-signature",
     "digital contracts",
     "China",
-    "USA",
+    "international",
     "MornContract",
   ],
   authors: [{ name: appName }],
@@ -63,3 +64,4 @@ export default function RootLayout({
     </html>
   );
 }
+

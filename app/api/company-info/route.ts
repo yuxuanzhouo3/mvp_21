@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
 import {
   getCompanyProfile,
   upsertCompanyProfile,
 } from "@/lib/data/company-profile-store";
-import { verifyAuthToken, extractTokenFromHeader } from "@/lib/auth/auth-utils";
+import { getDEPLOY_REGION } from "@/lib/config/region";
 
 async function requireUserId(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -13,7 +14,7 @@ async function requireUserId(request: NextRequest) {
   if (tokenError || !token) {
     return {
       error: NextResponse.json(
-        { error: tokenError || "Unauthorized" },
+        { success: false, error: tokenError || "Unauthorized" },
         { status: 401 },
       ),
     };
@@ -23,7 +24,7 @@ async function requireUserId(request: NextRequest) {
   if (!authResult.success || !authResult.userId) {
     return {
       error: NextResponse.json(
-        { error: authResult.error || "Invalid token" },
+        { success: false, error: authResult.error || "Invalid token" },
         { status: 401 },
       ),
     };
@@ -48,11 +49,15 @@ export async function POST(request: NextRequest) {
       contactPerson = "",
       contactPhone = "",
       contactEmail = "",
-    } = body;
+    } = body ?? {};
 
     if (!companyName || !creditCode || !legalPerson || !address) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        {
+          success: false,
+          error:
+            "companyName, creditCode, legalPerson, and address are required",
+        },
         { status: 400 },
       );
     }
@@ -70,11 +75,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: profile,
+      region: getDEPLOY_REGION(),
     });
   } catch (error) {
     console.error("[/api/company-info POST] Error:", error);
     return NextResponse.json(
-      { error: "Failed to save company profile" },
+      { success: false, error: "Failed to save company profile" },
       { status: 500 },
     );
   }
@@ -89,11 +95,19 @@ export async function GET(request: NextRequest) {
 
     const profile = await getCompanyProfile(auth.userId);
     if (!profile) {
-      return NextResponse.json({ hasCompanyInfo: false });
+      return NextResponse.json({
+        success: true,
+        hasCompanyInfo: false,
+        data: null,
+        region: getDEPLOY_REGION(),
+      });
     }
 
     return NextResponse.json({
+      success: true,
       hasCompanyInfo: true,
+      data: profile,
+      region: getDEPLOY_REGION(),
       ...profile,
       company_name: profile.companyName,
       credit_code: profile.creditCode,
@@ -108,8 +122,9 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("[/api/company-info GET] Error:", error);
     return NextResponse.json(
-      { error: "Failed to load company profile" },
+      { success: false, error: "Failed to load company profile" },
       { status: 500 },
     );
   }
 }
+
