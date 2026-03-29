@@ -17,6 +17,7 @@ import { normalizeAccountProfile, type AccountProfile } from "@/lib/account/prof
 import { Header } from "@/components/header";
 import { useLanguage } from "@/components/language-provider";
 import { useUser } from "@/components/user-context";
+import { useTranslations } from "@/lib/i18n";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,8 @@ import { Label } from "@/components/ui/label";
 export default function ProfilePage() {
   const router = useRouter();
   const { language } = useLanguage();
+  const t = useTranslations(language);
+  const content = t.profilePage;
   const { user: currentUser, loading: userLoading, refreshUser, signOut } = useUser();
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,69 +44,6 @@ export default function ProfilePage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-
-  const content = useMemo(
-    () =>
-      language === "zh"
-        ? {
-            title: "个人资料",
-            subtitle: "完善头像、姓名和联系方式，方便双方在签署合同前确认身份。",
-            loading: "正在加载资料...",
-            loginRequired: "请先登录后再查看个人资料。",
-            loginAction: "前往登录",
-            back: "返回",
-            name: "姓名",
-            namePlaceholder: "请输入您的姓名或企业联系人称呼",
-            email: "邮箱",
-            avatar: "头像 URL",
-            avatarPlaceholder: "请输入头像图片地址",
-            phone: "联系电话",
-            phonePlaceholder: "请输入联系电话",
-            membership: "会员状态",
-            membershipNone: "未开通会员",
-            save: "保存资料",
-            saving: "保存中...",
-            saved: "个人资料已更新",
-            loadFailed: "加载个人资料失败，请稍后重试。",
-            saveFailed: "保存失败，请稍后重试。",
-            settings: "设置",
-            billing: "账单与会员",
-            logout: "退出登录",
-            free: "免费版",
-            active: "生效中",
-            inactive: "未开通",
-          }
-        : {
-            title: "Profile",
-            subtitle:
-              "Complete your avatar, name, and contact details before contracts are shared for signature.",
-            loading: "Loading profile...",
-            loginRequired: "Please sign in before viewing your profile.",
-            loginAction: "Go to Sign In",
-            back: "Back",
-            name: "Full Name",
-            namePlaceholder: "Enter your name or primary contact",
-            email: "Email",
-            avatar: "Avatar URL",
-            avatarPlaceholder: "Enter an avatar image URL",
-            phone: "Phone",
-            phonePlaceholder: "Enter a contact phone number",
-            membership: "Membership",
-            membershipNone: "No active membership",
-            save: "Save Profile",
-            saving: "Saving...",
-            saved: "Profile updated",
-            loadFailed: "Failed to load profile. Please try again later.",
-            saveFailed: "Failed to save profile. Please try again later.",
-            settings: "Settings",
-            billing: "Billing",
-            logout: "Log out",
-            free: "Free plan",
-            active: "Active",
-            inactive: "Inactive",
-          },
-    [language],
-  );
 
   useEffect(() => {
     let cancelled = false;
@@ -163,7 +103,10 @@ export default function ProfilePage() {
     return source.trim().charAt(0).toUpperCase() || "U";
   }, [currentUser?.email, profile?.email, profile?.name]);
 
-  const handleChange = (field: keyof Pick<AccountProfile, "name" | "avatar" | "phone">, value: string) => {
+  const handleChange = (
+    field: keyof Pick<AccountProfile, "name" | "avatar" | "phone">,
+    value: string,
+  ) => {
     setProfile((prev) => (prev ? { ...prev, [field]: value } : prev));
   };
 
@@ -218,11 +161,7 @@ export default function ProfilePage() {
       router.replace("/auth");
     } catch (logoutError) {
       console.error("[ProfilePage] Failed to sign out:", logoutError);
-      setError(
-        language === "zh"
-          ? "退出登录失败，请稍后重试。"
-          : "Failed to log out. Please try again later.",
-      );
+      setError(content.logoutFailed);
     } finally {
       setLoggingOut(false);
     }

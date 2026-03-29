@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { saveAuthState } from "@/lib/auth/auth-state-manager";
 import {
@@ -19,6 +19,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
+import { useTranslations } from "@/lib/i18n";
 
 function AuthCallbackContent() {
   const [error, setError] = useState("");
@@ -26,7 +27,8 @@ function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { language } = useLanguage();
-  const isEn = language === "en";
+  const t = useTranslations(language);
+  const text = t.authCallbackPage;
 
   const requestedRedirect = searchParams.get("redirect");
   const normalizedRedirect = requestedRedirect?.split("?")[0] || "";
@@ -36,32 +38,6 @@ function AuthCallbackContent() {
     !normalizedRedirect.startsWith("//")
       ? normalizedRedirect
       : "/dashboard";
-
-  const text = useMemo(
-    () => ({
-      callbackError: isEn ? "Failed to handle auth callback" : "处理认证回调时出错",
-      wechatStateInvalid: isEn
-        ? "Security validation failed. Please retry."
-        : "安全验证失败，请重试",
-      wechatAuthFailed: isEn ? "WeChat authorization failed" : "微信授权失败",
-      wechatCodeMissing: isEn
-        ? "Authorization code missing. Please retry."
-        : "未获取到授权码，请重试",
-      wechatLoginFailed: isEn ? "WeChat login failed" : "微信登录失败",
-      authFailed: isEn ? "Authentication failed. Please retry." : "认证失败，请重试",
-      processing: isEn ? "Processing authentication..." : "正在处理认证...",
-      resultTitle: isEn ? "Authentication Result" : "认证结果",
-      resultDescription: isEn
-        ? "Issue detected during authentication"
-        : "认证过程中出现问题",
-      resultSuccess: isEn ? "Authentication complete" : "认证完成",
-      successRedirecting: isEn
-        ? "Authentication successful, redirecting..."
-        : "认证成功，正在跳转...",
-      backToLogin: isEn ? "Back to sign in" : "返回登录页面",
-    }),
-    [isEn],
-  );
 
   const buildUrl = (path: string) => {
     const debug = searchParams.get("debug");
@@ -232,6 +208,9 @@ function AuthCallbackContent() {
 }
 
 export default function AuthCallbackPage() {
+  const { language } = useLanguage();
+  const t = useTranslations(language);
+
   return (
     <Suspense
       fallback={
@@ -240,7 +219,7 @@ export default function AuthCallbackPage() {
             <CardContent className="pt-6">
               <div className="flex flex-col items-center space-y-4">
                 <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                <p className="text-center text-gray-600">Loading...</p>
+                <p className="text-center text-gray-600">{t.common.loading}</p>
               </div>
             </CardContent>
           </Card>

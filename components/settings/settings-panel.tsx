@@ -1,17 +1,25 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Globe, Bell, Shield, Moon } from "lucide-react"
-import type { Language } from "@/lib/i18n"
+import { useLanguage } from "@/components/language-provider"
+import { useTranslations, type Language } from "@/lib/i18n"
 
 export function SettingsPanel() {
-  const [locale, setLocale] = useState<Language>("en")
+  const { language } = useLanguage()
+  const t = useTranslations(language)
+  const content = t.settingsPanel
+  const [locale, setLocale] = useState<Language>(language)
   const [darkMode, setDarkMode] = useState(false)
+
+  useEffect(() => {
+    setLocale(language)
+  }, [language])
 
   return (
     <div className="space-y-6">
@@ -20,12 +28,12 @@ export function SettingsPanel() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Globe className="h-5 w-5 text-primary" />
-            Language & Region
+            {content.languageRegionTitle}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="language">Display Language</Label>
+            <Label htmlFor="language">{content.displayLanguage}</Label>
             <Select value={locale} onValueChange={(value) => setLocale(value as Language)}>
               <SelectTrigger id="language">
                 <SelectValue />
@@ -34,24 +42,24 @@ export function SettingsPanel() {
                 <SelectItem value="en">
                   <div className="flex items-center gap-2">
                     <span>🇺🇸</span>
-                    English (United States)
+                    {content.languageEnglishUs}
                   </div>
                 </SelectItem>
                 <SelectItem value="zh">
                   <div className="flex items-center gap-2">
                     <span>🇨🇳</span>
-                    中文 (简体中文)
+                    {content.languageChineseSimplified}
                   </div>
                 </SelectItem>
               </SelectContent>
             </Select>
             <p className="text-sm text-muted-foreground">
-              {locale === "en" ? "Choose your preferred language for the interface" : "选择您的界面首选语言"}
+              {content.displayLanguageDesc}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="region">Primary Region</Label>
+            <Label htmlFor="region">{content.primaryRegion}</Label>
             <Select defaultValue="us">
               <SelectTrigger id="region">
                 <SelectValue />
@@ -60,36 +68,32 @@ export function SettingsPanel() {
                 <SelectItem value="us">
                   <div className="flex items-center gap-2">
                     <span>🇺🇸</span>
-                    {locale === "en" ? "United States" : "美国"}
+                    {content.regionUnitedStates}
                   </div>
                 </SelectItem>
                 <SelectItem value="cn">
                   <div className="flex items-center gap-2">
                     <span>🇨🇳</span>
-                    {locale === "en" ? "China" : "中国"}
+                    {content.regionChina}
                   </div>
                 </SelectItem>
               </SelectContent>
             </Select>
             <p className="text-sm text-muted-foreground">
-              {locale === "en"
-                ? "Your primary business region for compliance and legal requirements"
-                : "您的主要业务地区，用于合规和法律要求"}
+              {content.primaryRegionDesc}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="timezone">Time Zone</Label>
+            <Label htmlFor="timezone">{content.timeZone}</Label>
             <Select defaultValue="utc-8">
               <SelectTrigger id="timezone">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="utc-8">{locale === "en" ? "(UTC-8) Pacific Time" : "(UTC-8) 太平洋时间"}</SelectItem>
-                <SelectItem value="utc-5">{locale === "en" ? "(UTC-5) Eastern Time" : "(UTC-5) 东部时间"}</SelectItem>
-                <SelectItem value="utc+8">
-                  {locale === "en" ? "(UTC+8) China Standard Time" : "(UTC+8) 中国标准时间"}
-                </SelectItem>
+                <SelectItem value="utc-8">{content.timezonePacific}</SelectItem>
+                <SelectItem value="utc-5">{content.timezoneEastern}</SelectItem>
+                <SelectItem value="utc+8">{content.timezoneChina}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -101,36 +105,30 @@ export function SettingsPanel() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Bell className="h-5 w-5 text-primary" />
-            {locale === "en" ? "Notifications" : "通知"}
+            {content.notificationsTitle}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label>{locale === "en" ? "Email Notifications" : "邮件通知"}</Label>
-              <p className="text-sm text-muted-foreground">
-                {locale === "en" ? "Receive email updates about your contracts" : "接收有关您合同的电子邮件更新"}
-              </p>
+              <Label>{content.emailNotifications}</Label>
+              <p className="text-sm text-muted-foreground">{content.emailNotificationsDesc}</p>
             </div>
             <Switch defaultChecked />
           </div>
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label>{locale === "en" ? "WeChat Notifications" : "微信通知"}</Label>
-              <p className="text-sm text-muted-foreground">
-                {locale === "en" ? "Get notifications via WeChat" : "通过微信接收通知"}
-              </p>
+              <Label>{content.wechatNotifications}</Label>
+              <p className="text-sm text-muted-foreground">{content.wechatNotificationsDesc}</p>
             </div>
             <Switch defaultChecked />
           </div>
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label>{locale === "en" ? "Signature Reminders" : "签名提醒"}</Label>
-              <p className="text-sm text-muted-foreground">
-                {locale === "en" ? "Remind parties to sign pending contracts" : "提醒各方签署待处理的合同"}
-              </p>
+              <Label>{content.signatureReminders}</Label>
+              <p className="text-sm text-muted-foreground">{content.signatureRemindersDesc}</p>
             </div>
             <Switch defaultChecked />
           </div>
@@ -142,26 +140,22 @@ export function SettingsPanel() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-primary" />
-            {locale === "en" ? "Security" : "安全"}
+            {content.securityTitle}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label>{locale === "en" ? "Two-Factor Authentication" : "双因素认证"}</Label>
-              <p className="text-sm text-muted-foreground">
-                {locale === "en" ? "Add an extra layer of security to your account" : "为您的账户添加额外的安全层"}
-              </p>
+              <Label>{content.twoFactorAuth}</Label>
+              <p className="text-sm text-muted-foreground">{content.twoFactorAuthDesc}</p>
             </div>
             <Switch />
           </div>
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label>{locale === "en" ? "Blockchain Verification" : "区块链验证"}</Label>
-              <p className="text-sm text-muted-foreground">
-                {locale === "en" ? "Automatically verify all contracts on blockchain" : "自动在区块链上验证所有合同"}
-              </p>
+              <Label>{content.blockchainVerification}</Label>
+              <p className="text-sm text-muted-foreground">{content.blockchainVerificationDesc}</p>
             </div>
             <Switch defaultChecked />
           </div>
@@ -173,16 +167,14 @@ export function SettingsPanel() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Moon className="h-5 w-5 text-primary" />
-            {locale === "en" ? "Appearance" : "外观"}
+            {content.appearanceTitle}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label>{locale === "en" ? "Dark Mode" : "深色模式"}</Label>
-              <p className="text-sm text-muted-foreground">
-                {locale === "en" ? "Use dark theme for the interface" : "为界面使用深色主题"}
-              </p>
+              <Label>{content.darkMode}</Label>
+              <p className="text-sm text-muted-foreground">{content.darkModeDesc}</p>
             </div>
             <Switch checked={darkMode} onCheckedChange={setDarkMode} />
           </div>
@@ -191,9 +183,9 @@ export function SettingsPanel() {
 
       <div className="flex justify-end gap-4">
         <Button variant="outline" className="bg-transparent">
-          {locale === "en" ? "Cancel" : "取消"}
+          {t.common.cancel}
         </Button>
-        <Button>{locale === "en" ? "Save Changes" : "保存更改"}</Button>
+        <Button>{content.saveChanges}</Button>
       </div>
     </div>
   )

@@ -12,23 +12,15 @@ import {
   getAppDisplayName,
   isLanguageSwitchingEnabled,
 } from "@/lib/config/deployment.config";
+import { useTranslations } from "@/lib/i18n";
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { language, setLanguage } = useLanguage();
+  const t = useTranslations(language);
   const appName = getAppDisplayName();
   const showLanguageSwitcher = isLanguageSwitchingEnabled();
-
-  const labels = {
-    console: language === "en" ? "Console" : "控制台",
-    contracts: language === "en" ? "Contracts" : "合同",
-    templates: language === "en" ? "Templates" : "模板",
-    signatures: language === "en" ? "Signatures" : "签署",
-    features: language === "en" ? "Features" : "功能",
-    pricing: language === "en" ? "Pricing" : "价格",
-    customers: language === "en" ? "Customers" : "客户案例",
-    openConsole: language === "en" ? "Open Console" : "进入控制台",
-  };
+  const labels = t.marketingNav;
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -98,7 +90,7 @@ export function Header() {
 
         <button
           className="md:hidden"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          onClick={() => setMobileMenuOpen((open) => !open)}
           aria-label="Toggle menu"
         >
           {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}

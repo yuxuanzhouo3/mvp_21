@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { CheckCircle, Loader2 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
+import { useTranslations } from "@/lib/i18n";
 import { useUser } from "@/components/user-context";
 
 function PaymentSuccessContent() {
@@ -19,7 +20,8 @@ function PaymentSuccessContent() {
   const searchParams = useSearchParams();
   const { refreshUser } = useUser();
   const { language } = useLanguage();
-  const isEn = language === "en";
+  const t = useTranslations(language);
+  const content = t.paymentSuccessPage;
   const [isProcessing, setIsProcessing] = useState(true);
   const [paymentStatus, setPaymentStatus] = useState<"processing" | "success" | "error">("processing");
   const [paymentDetails, setPaymentDetails] = useState<{
@@ -43,7 +45,7 @@ function PaymentSuccessContent() {
         const wechatOutTradeNo = searchParams.get("wechat_out_trade_no");
 
         if (!sessionId && !token && !outTradeNo && !tradeNo && !wechatOutTradeNo) {
-          throw new Error("Missing payment confirmation parameters");
+          throw new Error(content.missingParameters);
         }
 
         const params = new URLSearchParams();
@@ -68,7 +70,7 @@ function PaymentSuccessContent() {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || "Payment confirmation failed");
+          throw new Error(errorData.error || content.errorTitle);
         }
 
         const result = await response.json();
@@ -96,7 +98,7 @@ function PaymentSuccessContent() {
 
           setPaymentStatus("success");
         } else {
-          throw new Error(result.error || "Payment confirmation failed");
+          throw new Error(result.error || content.errorTitle);
         }
       } catch (error) {
         console.error("Payment confirmation error:", error);
@@ -121,27 +123,23 @@ function PaymentSuccessContent() {
           {paymentStatus === "processing" && (
             <>
               <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />
-              <CardTitle className="text-xl">{isEn ? "Processing payment..." : "处理支付中..."}</CardTitle>
-              <CardDescription>{isEn ? "Confirming your payment, please wait" : "正在确认您的支付，请稍候"}</CardDescription>
+              <CardTitle className="text-xl">{content.processingTitle}</CardTitle>
+              <CardDescription>{content.processingDescription}</CardDescription>
             </>
           )}
 
           {paymentStatus === "success" && (
             <>
               <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-              <CardTitle className="text-xl text-green-600">{isEn ? "Payment successful!" : "支付成功！"}</CardTitle>
+              <CardTitle className="text-xl text-green-600">{content.successTitle}</CardTitle>
               <CardDescription>
                 {paymentDetails.daysAdded
-                  ? isEn
-                    ? `${paymentDetails.daysAdded} days of premium access added`
-                    : `已为您添加 ${paymentDetails.daysAdded} 天高级会员`
-                  : isEn
-                    ? "Membership activated. Thank you for your support."
-                    : "您的会员已激活，感谢您的支持"}
+                  ? content.successDaysAdded.replace("{days}", String(paymentDetails.daysAdded))
+                  : content.successMembership}
               </CardDescription>
               {paymentDetails.amount && paymentDetails.amount > 0 && paymentDetails.currency && (
                 <div className="mt-2 text-sm text-muted-foreground">
-                  {isEn ? "Amount" : "支付金额"}: {paymentDetails.amount} {paymentDetails.currency}
+                  {content.amount}: {paymentDetails.amount} {paymentDetails.currency}
                 </div>
               )}
             </>
@@ -152,8 +150,8 @@ function PaymentSuccessContent() {
               <div className="h-12 w-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-red-600 text-2xl">✕</span>
               </div>
-              <CardTitle className="text-xl text-red-600">{isEn ? "Payment confirmation failed" : "支付确认失败"}</CardTitle>
-              <CardDescription>{isEn ? "Please contact support or try again later" : "请联系客服或稍后重试"}</CardDescription>
+              <CardTitle className="text-xl text-red-600">{content.errorTitle}</CardTitle>
+              <CardDescription>{content.errorDescription}</CardDescription>
             </>
           )}
         </CardHeader>
@@ -161,7 +159,7 @@ function PaymentSuccessContent() {
         <CardContent className="text-center">
           {!isProcessing && (
             <Button onClick={handleContinue} className="w-full">
-              {paymentStatus === "success" ? (isEn ? "Start using ContractHub" : "开始使用") : isEn ? "Back to Home" : "返回首页"}
+              {paymentStatus === "success" ? content.successAction : content.backHome}
             </Button>
           )}
         </CardContent>
@@ -171,6 +169,9 @@ function PaymentSuccessContent() {
 }
 
 export default function PaymentSuccessPage() {
+  const { language } = useLanguage();
+  const t = useTranslations(language);
+
   return (
     <Suspense
       fallback={
@@ -178,7 +179,7 @@ export default function PaymentSuccessPage() {
           <Card className="w-full max-w-md">
             <CardHeader className="text-center">
               <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />
-              <CardTitle className="text-xl">Loading...</CardTitle>
+              <CardTitle className="text-xl">{t.common.loading}</CardTitle>
             </CardHeader>
           </Card>
         </div>

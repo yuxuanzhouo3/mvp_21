@@ -13,11 +13,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { AlertCircle, CheckCircle, Clock } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
+import { useTranslations } from "@/lib/i18n";
 
 function WechatQRCodeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { language } = useLanguage();
+  const t = useTranslations(language);
+  const content = t.wechatPaymentPage;
   const [timeLeft, setTimeLeft] = useState(600);
   const [paymentStatus, setPaymentStatus] = useState("pending");
 
@@ -133,7 +136,7 @@ function WechatQRCodeContent() {
         <Card className="w-full max-w-md">
           <CardContent className="pt-6">
             <div className="text-center text-red-600">
-              {language === "zh" ? "参数错误" : "Invalid Parameters"}
+              {content.invalidParameters}
             </div>
           </CardContent>
         </Card>
@@ -145,14 +148,8 @@ function WechatQRCodeContent() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">
-            {language === "zh" ? "微信支付" : "WeChat Payment"}
-          </CardTitle>
-          <CardDescription>
-            {language === "zh"
-              ? "请使用微信扫描二维码支付"
-              : "Please scan the QR code with WeChat to pay"}
-          </CardDescription>
+          <CardTitle className="text-2xl">{content.title}</CardTitle>
+          <CardDescription>{content.description}</CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-6">
@@ -161,14 +158,8 @@ function WechatQRCodeContent() {
               <div className="flex items-center gap-3">
                 <CheckCircle className="h-6 w-6 text-green-600" />
                 <div>
-                  <h3 className="font-medium text-green-800">
-                    {language === "zh" ? "支付成功" : "Payment Successful"}
-                  </h3>
-                  <p className="text-sm text-green-600 mt-1">
-                    {language === "zh"
-                      ? "您的支付已确认"
-                      : "Your payment has been confirmed"}
-                  </p>
+                  <h3 className="font-medium text-green-800">{content.successTitle}</h3>
+                  <p className="text-sm text-green-600 mt-1">{content.successDescription}</p>
                 </div>
               </div>
             </div>
@@ -179,14 +170,8 @@ function WechatQRCodeContent() {
               <div className="flex items-center gap-3">
                 <AlertCircle className="h-6 w-6 text-red-600" />
                 <div>
-                  <h3 className="font-medium text-red-800">
-                    {language === "zh" ? "二维码已过期" : "QR Code Expired"}
-                  </h3>
-                  <p className="text-sm text-red-600 mt-1">
-                    {language === "zh"
-                      ? "请返回重新发起支付"
-                      : "Please go back and try again"}
-                  </p>
+                  <h3 className="font-medium text-red-800">{content.expiredTitle}</h3>
+                  <p className="text-sm text-red-600 mt-1">{content.expiredDescription}</p>
                 </div>
               </div>
             </div>
@@ -200,7 +185,7 @@ function WechatQRCodeContent() {
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
                       codeUrl
                     )}`}
-                    alt="WeChat Payment QR Code"
+                    alt={content.qrAlt}
                     className="w-64 h-64"
                   />
                 </div>
@@ -211,7 +196,7 @@ function WechatQRCodeContent() {
                   <div className="flex items-center justify-center gap-2">
                     <Clock className="h-4 w-4 text-blue-600" />
                     <span className="text-sm font-medium text-blue-800">
-                      {language === "zh" ? "过期时间: " : "Expires in: "}
+                      {content.expiresIn}:{" "}
                       <span className="text-lg font-bold">
                         {formatTime(timeLeft)}
                       </span>
@@ -221,9 +206,7 @@ function WechatQRCodeContent() {
 
                 {amount && (
                   <div className="text-center">
-                    <p className="text-sm text-gray-600">
-                      {language === "zh" ? "支付金额" : "Amount"}
-                    </p>
+                    <p className="text-sm text-gray-600">{content.amount}</p>
                     <p className="text-2xl font-bold text-green-600">
                       ¥{parseFloat(amount).toFixed(2)}
                     </p>
@@ -232,18 +215,14 @@ function WechatQRCodeContent() {
 
                 {paymentId && (
                   <p className="text-xs text-gray-500">
-                    {language === "zh" ? "订单号: " : "Order No: "}
+                    {content.orderNumber}:{" "}
                     <span className="font-mono">{paymentId}</span>
                   </p>
                 )}
               </div>
 
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                <p className="text-sm text-yellow-800">
-                  {language === "zh"
-                    ? '💡 打开您的微信应用，点击"扫一扫"来扫描此二维码'
-                    : "💡 Open your WeChat app and tap 'Scan' to scan this QR code"}
-                </p>
+                <p className="text-sm text-yellow-800">{content.scanHint}</p>
               </div>
             </div>
           )}
@@ -251,24 +230,22 @@ function WechatQRCodeContent() {
           <div className="space-y-3">
             {paymentStatus === "success" && (
               <Button onClick={handleSuccess} className="w-full">
-                {language === "zh" ? "完成" : "Done"}
+                {content.done}
               </Button>
             )}
 
             {paymentStatus !== "success" && (
               <Button variant="outline" onClick={handleBack} className="w-full">
-                {language === "zh" ? "返回" : "Go Back"}
+                {content.back}
               </Button>
             )}
           </div>
 
           <div className="text-center text-xs text-gray-500">
             <p>
-              {language === "zh"
-                ? "如有问题，请"
-                : "If you have any issues, please "}
+              {content.supportPrefix}{" "}
               <a href="/contact" className="text-blue-600 hover:underline">
-                {language === "zh" ? "联系我们" : "contact us"}
+                {content.supportAction}
               </a>
             </p>
           </div>
@@ -279,6 +256,9 @@ function WechatQRCodeContent() {
 }
 
 export default function WechatQRCodePage() {
+  const { language } = useLanguage();
+  const t = useTranslations(language);
+
   return (
     <Suspense
       fallback={
@@ -286,7 +266,7 @@ export default function WechatQRCodePage() {
           <Card className="w-full max-w-md">
             <CardContent className="pt-6">
               <div className="text-center">
-                <p className="text-muted-foreground">Loading...</p>
+                <p className="text-muted-foreground">{t.common.loading}</p>
               </div>
             </CardContent>
           </Card>

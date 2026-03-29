@@ -5,12 +5,14 @@ import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
+import { useTranslations } from "@/lib/i18n";
 
 function PaymentRedirectContent() {
   const searchParams = useSearchParams();
   const formSubmitted = useRef(false);
   const { language } = useLanguage();
-  const isEn = language === "en";
+  const t = useTranslations(language);
+  const content = t.paymentRedirectPage;
 
   useEffect(() => {
     if (formSubmitted.current) return;
@@ -49,13 +51,11 @@ function PaymentRedirectContent() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />
-          <CardTitle className="text-xl">{isEn ? "Redirecting to payment page..." : "正在跳转到支付页面..."}</CardTitle>
+          <CardTitle className="text-xl">{content.title}</CardTitle>
         </CardHeader>
         <CardContent className="text-center text-muted-foreground">
-          <p>{isEn ? "Please wait while we redirect you to the payment gateway." : "请稍候，即将跳转到支付宝收银台"}</p>
-          <p className="text-sm mt-2">
-            {isEn ? "If it takes too long, go back and retry." : "如果长时间未跳转，请返回重试"}
-          </p>
+          <p>{content.description}</p>
+          <p className="text-sm mt-2">{content.retryHint}</p>
         </CardContent>
       </Card>
     </div>
@@ -63,6 +63,9 @@ function PaymentRedirectContent() {
 }
 
 export default function PaymentRedirectPage() {
+  const { language } = useLanguage();
+  const t = useTranslations(language);
+
   return (
     <Suspense
       fallback={
@@ -70,7 +73,7 @@ export default function PaymentRedirectPage() {
           <Card className="w-full max-w-md">
             <CardHeader className="text-center">
               <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />
-              <CardTitle className="text-xl">Loading...</CardTitle>
+              <CardTitle className="text-xl">{t.common.loading}</CardTitle>
             </CardHeader>
           </Card>
         </div>

@@ -1,26 +1,20 @@
 "use client";
 
-import { useState, Suspense, useEffect, useCallback, useMemo, useRef } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Eye, EyeOff, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
-import { getAuthClient } from "@/lib/auth/client";
-import { Eye, EyeOff, Mail, Lock, MessageSquare, Home } from "lucide-react";
-import { RegionType } from "@/lib/architecture-modules/core/types";
 import { useUser } from "@/components/user-context";
 import { useLanguage } from "@/components/language-provider";
+import { getAuthClient } from "@/lib/auth/client";
 import { useTranslations } from "@/lib/i18n";
+import { RegionType } from "@/lib/architecture-modules/core/types";
 import { getWechatLoginUrl } from "@/lib/wechat/oauth";
 import { isChinaDeployment } from "@/lib/config/deployment.config";
 import { useAuthConfig } from "@/lib/hooks/useAuthConfig";
@@ -28,1367 +22,425 @@ import { useAuthConfig } from "@/lib/hooks/useAuthConfig";
 const authClient = getAuthClient();
 
 function AuthPageContent() {
-  // 从API端点读取配置
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, loading: userLoading } = useUser();
+  const { language } = useLanguage();
+  const t = useTranslations(language);
+  const ui = t.authPage;
   const { config, loading: configLoading } = useAuthConfig();
-  const wechatAppId = config.wechatAppId || "";
-  const appUrl = config.appUrl || "";
-
+  const mode = searchParams.get("mode") === "signup" ? "signup" : "signin";
+  const debugRegion = searchParams.get("debug");
+  const requestedRedirect = searchParams.get("redirect");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [otp, setOtp] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [loginMethod, setLoginMethod] = useState<"password" | "otp">(
-    "password"
-  );
-  const [forgotPassword, setForgotPassword] = useState(false);
-  const [forgotPasswordStep, setForgotPasswordStep] = useState<
-    "request" | "verify" | "reset"
-  >("request");
   const [resetOtp, setResetOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
-
-  // 注册验证码相关状态
-  const [signupOtp, setSignupOtp] = useState("");
-  const [signupOtpSent, setSignupOtpSent] = useState(false);
-  const [signupStep, setSignupStep] = useState<"form" | "verify">("form");
-
-  // 隐私政策同意状态
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreeToPrivacy, setAgreeToPrivacy] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [loginMethod, setLoginMethod] = useState<"password" | "otp">("password");
+  const [forgotStep, setForgotStep] = useState<"off" | "request" | "verify" | "reset">("off");
+  const [region, setRegion] = useState<RegionType>(isChinaDeployment() ? RegionType.CHINA : RegionType.USA);
+  const supportsOtp = region !== RegionType.CHINA;
+  const thirdPartyUnavailable =
+    (region === RegionType.CHINA && !config.features.wechatAuth) ||
+    (region !== RegionType.CHINA && !config.features.googleAuth);
 
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const { user, loading: userLoading } = useUser();
-  const mode = searchParams.get("mode") || "signin";
-  const debugRegion = searchParams.get("debug");
-  const requestedRedirect = searchParams.get("redirect");
-  const { language } = useLanguage();
-  const isEnglish = language === "en";
-  const t = useTranslations(language);
-  const authUiText = useMemo(
-    () => ({
-      privacyConsentRequired: isEnglish
-        ? "Please read and agree to the Privacy Policy and Terms."
-        : "请阅读并同意《隐私政策》和《服务条款》",
-      emailAlreadyRegistered: isEnglish
-        ? "This email is already registered."
-        : "该邮箱已被注册",
-      weakPassword: isEnglish
-        ? "Password is too weak. Please choose a stronger password."
-        : "密码强度不足，请使用更复杂的密码",
-      invalidEmailFormat: isEnglish ? "Invalid email format." : "邮箱格式不正确",
-      registerSuccessCn: isEnglish
-        ? "Registration successful. Please sign in with your email and password."
-        : "注册成功，请使用邮箱和密码登录。",
-      registerSuccessIntl: isEnglish
-        ? "Registration successful. We sent a confirmation email to your inbox. Please confirm your email to finish sign-up."
-        : "注册成功，我们已向您的邮箱发送确认邮件，请完成邮件确认。",
-      operationFailed: isEnglish
-        ? "Operation failed. Please try again later."
-        : "操作失败，请稍后重试",
-      wechatAppIdMissing: isEnglish
-        ? "WeChat App ID is not configured."
-        : "微信应用 ID 未配置",
-      appUrlMissing: isEnglish
-        ? "App URL is not configured."
-        : "应用 URL 未配置",
-      wechatLoginFailed: isEnglish
-        ? "WeChat login failed. Please try again later."
-        : "微信登录失败，请稍后重试",
-      otpVerifiedSetPassword: isEnglish
-        ? "Verification succeeded. Please set a new password."
-        : "验证码验证成功，请设置新密码。",
-      signingUp: isEnglish ? "Signing up..." : "注册中...",
-      wechatRedirecting: isEnglish
-        ? "Redirecting to WeChat..."
-        : "正在跳转到微信...",
-      privacyAgreementPrefix: isEnglish ? "I agree to the " : "我已阅读并同意",
-      privacyAgreementConnector: isEnglish ? " and " : "和",
-    }),
-    [isEnglish],
-  );
-
-  // 辅助函数：构建包含debug参数的URL
-  const buildUrl = useCallback(
-    (path: string, additionalParams?: Record<string, string>) => {
-      const params = new URLSearchParams();
-      if (debugRegion) {
-        params.set("debug", debugRegion);
-      }
-      if (additionalParams) {
-        Object.entries(additionalParams).forEach(([key, value]) => {
-          params.set(key, value);
-        });
-      }
-      const queryString = params.toString();
-      return queryString ? `${path}?${queryString}` : path;
-    },
-    [debugRegion]
-  );
-
-  // 检测用户区域 - 从部署配置初始化
-  const getInitialRegion = (): RegionType => {
-    // 使用新的部署配置系统而不是环境变量
-    if (isChinaDeployment()) {
-      return RegionType.CHINA;
-    }
-    return RegionType.USA;
-  };
-
-  const [userRegion, setUserRegion] = useState<RegionType>(getInitialRegion());
-  const supportsOtpFlows = userRegion !== RegionType.CHINA;
+  const buildUrl = useCallback((path: string, extra?: Record<string, string>) => {
+    const params = new URLSearchParams();
+    if (debugRegion) params.set("debug", debugRegion);
+    if (extra) Object.entries(extra).forEach(([k, v]) => params.set(k, v));
+    const q = params.toString();
+    return q ? `${path}?${q}` : path;
+  }, [debugRegion]);
 
   const postAuthPath = useMemo(() => {
-    const normalizedRedirect = requestedRedirect?.split("?")[0] || "";
-    if (
-      normalizedRedirect &&
-      normalizedRedirect.startsWith("/") &&
-      !normalizedRedirect.startsWith("//")
-    ) {
-      return normalizedRedirect;
-    }
+    const normalized = requestedRedirect?.split("?")[0] || "";
+    if (normalized.startsWith("/") && !normalized.startsWith("//")) return normalized;
     return "/dashboard";
   }, [requestedRedirect]);
-
   const postAuthUrl = useMemo(() => buildUrl(postAuthPath), [buildUrl, postAuthPath]);
 
+  useEffect(() => setRegion(isChinaDeployment() ? RegionType.CHINA : RegionType.USA), []);
   useEffect(() => {
-    // 初始化区域
-    setUserRegion(getInitialRegion());
-  }, []);
+    if (user && !userLoading) router.replace(postAuthUrl);
+  }, [postAuthUrl, router, user, userLoading]);
 
-  useEffect(() => {
-    // 如果用户已经登录且不是在加载状态，自动跳转到控制台
-    if (user && !userLoading) {
-      console.log("用户已登录，跳转到控制台");
-      router.replace(postAuthUrl);
-    }
-  }, [user, userLoading, router, postAuthUrl]);
-
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (loading) return;
-
-    setLoading(true);
+  const clearFeedback = () => {
+    setNotice("");
     setError("");
-
-    // 验证隐私政策同意（中国版本登录也必须同意）
-    if (userRegion === RegionType.CHINA && !agreeToPrivacy) {
-      setError("请阅读并同意隐私政策");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const { data, error } = await authClient.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        setError(error.message);
-        setLoading(false);
-        return;
-      }
-
-      // 登录成功，触发auth-state-changed事件通知其他组件
-      // 对于INTL模式，Supabase SDK的onAuthStateChange会自动触发
-      console.log("邮箱登录成功，准备跳转...");
-      setLoading(false);
-
-      // 发送自定义事件，让user-context通过监听器更新（用于兼容CN模式）
-      window.dispatchEvent(new Event("auth-state-changed"));
-
-      // 等待user-context更新用户状态后自动跳转
-      setTimeout(() => {
-        router.replace(postAuthUrl);
-      }, 500);
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("登录失败，请稍后重试");
-      }
-      setLoading(false);
-    }
   };
 
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (loading) return;
+  const msg = useCallback((raw: unknown) => {
+    const m = raw instanceof Error ? raw.message : String(raw || "");
+    const lower = m.toLowerCase();
+    if (!m) return ui.operationFailed;
+    if (lower.includes("already")) return ui.emailAlreadyRegistered;
+    if (lower.includes("invalid email")) return ui.invalidEmailFormat;
+    if (lower.includes("weak password") || lower.includes("security requirements")) return ui.weakPassword;
+    if (lower.includes("google")) return t.auth.googleLoginFailed;
+    return m;
+  }, [t.auth.googleLoginFailed, ui.emailAlreadyRegistered, ui.invalidEmailFormat, ui.operationFailed, ui.weakPassword]);
 
-    setLoading(true);
-    setError("");
-
-    // 验证隐私政策同意（中国版本必须同意）
-    if (userRegion === RegionType.CHINA && !agreeToPrivacy) {
-      setError("请阅读并同意隐私政策");
-      setLoading(false);
-      return;
+  const requirePrivacy = () => {
+    if (region === RegionType.CHINA && !agreeToPrivacy) {
+      setError(ui.privacyConsentRequired);
+      return false;
     }
-
-    // 验证密码
-    if (password !== confirmPassword) {
-      setError("两次输入的密码不一致");
-      setLoading(false);
-      return;
-    }
-
-    if (password.length < 6) {
-      setError("密码长度至少为6位");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      // 根据区域采用不同的注册方式
-      if (userRegion === RegionType.CHINA) {
-        // 中国区域：直接使用 email + password + confirmPassword 注册
-        // 无需 OTP 验证，直接调用后端 API
-
-        const response = await fetch("/api/auth/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email,
-            password,
-            confirmPassword,
-            fullName: email.split("@")[0], // 使用邮箱前缀作为默认名称
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          // 处理特定的错误信息
-          if (data.code === "EMAIL_EXISTS") {
-            setError("该邮箱已被注册");
-          } else if (data.code === "WEAK_PASSWORD") {
-            setError(
-              data.passwordStrength?.feedback?.[0] ||
-                "密码强度不足，请使用更复杂的密码"
-            );
-          } else {
-            setError(data.error || data.message || "注册失败，请稍后重试");
-          }
-          setLoading(false);
-          return;
-        }
-
-        // 注册成功
-        setError("注册成功！请使用您的邮箱和密码登录。");
-        setSignupStep("form");
-        setPassword("");
-        setConfirmPassword("");
-        setEmail("");
-        setLoginMethod("password");
-        setAgreeToPrivacy(false);
-        setLoading(false);
-
-        // 重置到登录页面
-        setTimeout(() => {
-          router.push(buildUrl("/auth", { mode: "signin" }));
-        }, 1500);
-      } else {
-        // 国际区域：使用 signUp() 直接注册，邮件确认流程由 Supabase 内置处理
-        try {
-          const { data, error: signUpError } = await authClient.signUp({
-            email,
-            password,
-            options: {
-              data: {
-                name: email.split("@")[0], // 存储用户名
-              },
-            },
-          });
-
-          if (signUpError) {
-            // Log detailed error for debugging
-            console.error("Signup error details:", {
-              message: signUpError.message,
-              name: signUpError.name,
-            });
-
-            // 处理特定的错误信息
-            if (signUpError.message?.includes("already registered")) {
-              setError("该邮箱已被注册");
-            } else if (signUpError.message?.includes("Password")) {
-              setError("密码不符合要求。密码必须至少包含6个字符");
-            } else if (signUpError.message?.includes("Email")) {
-              setError("邮箱格式不正确");
-            } else {
-              setError(signUpError.message || "注册失败，请稍后重试");
-            }
-            setLoading(false);
-            return;
-          }
-
-          // 注册成功，显示邮件验证提示
-          setError(
-            "注册成功！我们已向您的邮箱发送一封确认邮件。请检查您的邮箱并点击确认链接以完成注册。"
-          );
-          setSignupStep("form");
-          setPassword("");
-          setConfirmPassword("");
-          setEmail("");
-          setSignupOtp("");
-          setSignupOtpSent(false);
-          setLoginMethod("password");
-          setAgreeToPrivacy(false);
-          setLoading(false);
-
-          // 5秒后返回登录页面
-          setTimeout(() => {
-            router.push(buildUrl("/auth", { mode: "signin" }));
-          }, 5000);
-        } catch (err) {
-          if (err instanceof Error) {
-            setError(err.message);
-          } else {
-            setError("注册失败，请稍后重试");
-          }
-          setLoading(false);
-        }
-      }
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("注册失败，请稍后重试");
-      }
-      setLoading(false);
-    }
+    return true;
   };
 
-  const handleOtpSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (loading) return;
-
-    setLoading(true);
-    setError("");
-
-    // 验证隐私政策同意（中国版本登录也必须同意）
-    if (userRegion === RegionType.CHINA && !agreeToPrivacy) {
-      setError("请阅读并同意隐私政策");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      if (!otpSent) {
-        const { error } = await authClient.signInWithOtp({ email });
-        if (error) {
-          setError(error.message);
-        } else {
-          setOtpSent(true);
-          setError("验证码已发送到您的邮箱，请检查并输入验证码。");
-        }
-        setLoading(false);
-      } else {
-        const { error } = await authClient.verifyOtp({
-          email,
-          token: otp,
-          type: "email",
-        });
-        if (error) {
-          setError(error.message);
-          setLoading(false);
-        } else {
-          // 验证成功，等待user-context更新后自动跳转
-          // 不手动调用router.replace，避免竞态
-          console.log("OTP登录成功，准备跳转...");
-          setLoading(false);
-          setTimeout(() => {
-            router.replace(postAuthUrl);
-          }, 500);
-        }
-      }
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("操作失败，请稍后重试");
-      }
-      setLoading(false);
-    }
-  };
-
-  const handleWechatSignIn = async () => {
-    if (loading) return;
-
-    setLoading(true);
-    setError("");
-
-    try {
-      // 直接使用环境变量中的配置
-
-      if (!wechatAppId) {
-        setError("微信应用 ID 未配置");
-        setLoading(false);
-        return;
-      }
-
-      if (!appUrl) {
-        setError("应用 URL 未配置");
-        setLoading(false);
-        return;
-      }
-
-      // 获取微信登录 URL
-      // 使用 NEXT_PUBLIC_APP_URL 确保与微信开放平台配置的域名一致
-      const callbackUrl = new URL(`${appUrl}/auth/callback`);
-      if (debugRegion) {
-        callbackUrl.searchParams.set("debug", debugRegion);
-      }
-      if (postAuthPath !== "/dashboard") {
-        callbackUrl.searchParams.set("redirect", postAuthPath);
-      }
-      const redirectUri = callbackUrl.toString();
-      const wechatLoginUrl = getWechatLoginUrl(wechatAppId, redirectUri);
-
-      // ✅ 直接跳转到微信登录页面（标准 OAuth2 流程）
-      // 用户看到二维码，扫码授权后自动回调到 /auth/callback
-      window.location.href = wechatLoginUrl;
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("微信登录失败，请稍后重试");
-      }
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    if (loading) return;
-
-    setLoading(true);
-    setError("");
-
-    try {
-      const { error } = await authClient.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}${buildUrl("/auth/callback", {
-            redirect: postAuthPath,
-          })}`,
-        },
-      });
-
-      if (error) {
-        setError(error.message);
-        setLoading(false);
-      }
-      // OAuth会重定向，不需要手动处理
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Google登录失败，请稍后重试");
-      }
-      setLoading(false);
-    }
-  };
-
-  const resetForgotPasswordFlow = () => {
-    setForgotPasswordStep("request");
+  const resetForgot = () => {
+    setForgotStep("off");
     setResetOtp("");
     setNewPassword("");
     setConfirmNewPassword("");
   };
 
-  const handleResetOtpRequest = async (
-    e?: React.FormEvent | React.MouseEvent<HTMLButtonElement>
-  ) => {
-    e?.preventDefault();
-    if (loading) return; // 防止并发请求
+  const goSignedIn = () => {
+    window.dispatchEvent(new Event("auth-state-changed"));
+    router.replace(postAuthUrl);
+  };
 
+  const onSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading || !requirePrivacy()) return;
+    clearFeedback();
     setLoading(true);
-    setError("");
-
     try {
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          reject(new Error("发送验证码超时，请检查网络连接后重试"));
-        }, 15000);
-      });
-
-      const resetOtpPromise = authClient.signInWithOtp({
-        email,
-        options: {
-          shouldCreateUser: false,
-          emailRedirectTo: buildUrl(`${window.location.origin}/auth`),
-        },
-      });
-
-      const { error } = await Promise.race([resetOtpPromise, timeoutPromise]);
-
-      if (error) {
-        setError(error.message);
-      } else {
-        setForgotPasswordStep("verify");
-        setError("验证码已发送到您的邮箱，请输入验证码。");
-        setLoading(false);
-      }
+      const { error: err } = await authClient.signInWithPassword({ email, password });
+      if (err) throw err;
+      goSignedIn();
     } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("发送验证码失败，请稍后重试");
-      }
+      setError(msg(err) || t.auth.loginFailed);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleVerifyResetOtp = async (e: React.FormEvent) => {
+  const onOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loading) return; // 防止并发请求
-
-    if (!resetOtp) {
-      setError("请输入验证码");
-      return;
-    }
-
+    if (loading || !supportsOtp) return;
+    clearFeedback();
     setLoading(true);
-    setError("");
-
     try {
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          reject(new Error("验证验证码超时，请检查网络连接后重试"));
-        }, 15000);
-      });
-
-      const verifyPromise = authClient.verifyOtp({
-        email,
-        token: resetOtp,
-        type: "email",
-      });
-
-      const { error } = await Promise.race([verifyPromise, timeoutPromise]);
-
-      if (error) {
-        setError(error.message);
+      if (!otpSent) {
+        const { error: err } = await authClient.signInWithOtp({ email });
+        if (err) throw err;
+        setOtpSent(true);
+        setNotice(t.auth.otpSent);
       } else {
-        setForgotPasswordStep("reset");
-        setResetOtp("");
-        setError("验证码验证成功，请设置新密码。");
-        setLoading(false);
+        const { error: err } = await authClient.verifyOtp({ email, token: otp, type: "email" });
+        if (err) throw err;
+        goSignedIn();
       }
     } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("验证码验证失败，请稍后重试");
-      }
+      setError(msg(err));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSetNewPassword = async (e: React.FormEvent) => {
+  const onSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loading) return; // 防止并发请求
-
-    if (newPassword.length < 6) {
-      setError("密码长度至少为6位");
-      return;
-    }
-
-    if (newPassword !== confirmNewPassword) {
-      setError("两次输入的密码不一致");
-      return;
-    }
-
+    if (loading) return;
+    clearFeedback();
+    if (!requirePrivacy()) return;
+    if (password !== confirmPassword) return void setError(t.auth.passwordMismatch);
+    if (password.length < 6) return void setError(t.auth.passwordTooShort);
     setLoading(true);
-    setError("");
-
     try {
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          reject(new Error("设置密码超时，请检查网络连接后重试"));
-        }, 15000);
-      });
-
-      const updatePromise = authClient.updateUser({
-        password: newPassword,
-      });
-
-      const { error } = await Promise.race([updatePromise, timeoutPromise]);
-
-      if (error) {
-        setError(error.message);
-        return;
+      if (region === RegionType.CHINA) {
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password, confirmPassword, fullName: email.split("@")[0] }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.details || data.error || t.auth.registerFailed);
+        setNotice(ui.registerSuccessCn);
+      } else {
+        const { error: err } = await authClient.signUp({
+          email,
+          password,
+          options: {
+            data: { name: email.split("@")[0] },
+            emailRedirectTo: `${window.location.origin}${buildUrl("/auth/callback", { redirect: postAuthPath })}`,
+          },
+        });
+        if (err) throw err;
+        setNotice(ui.registerSuccessIntl);
       }
-
-      await authClient.signOut();
-
-      setForgotPassword(false);
-      resetForgotPasswordFlow();
       setPassword("");
       setConfirmPassword("");
-      setOtp("");
-      setOtpSent(false);
-      setLoginMethod("password");
-      setNewPassword("");
-      setConfirmNewPassword("");
-      setError("密码重置成功，请使用新密码登录。");
-      setLoading(false);
+      setAgreeToPrivacy(false);
+      window.setTimeout(() => router.push(buildUrl("/auth", { mode: "signin" })), region === RegionType.CHINA ? 1200 : 3000);
     } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("设置新密码失败，请稍后重试");
-      }
+      setError(msg(err));
     } finally {
       setLoading(false);
     }
   };
 
-  const currentMode = mode === "signup" ? "signUp" : "signIn";
-
-  const getButtonText = () => {
-    if (loading) {
-      if (loginMethod === "password") return t.auth.loggingIn;
-      if (otpSent) return t.auth.verifying;
-      return t.auth.sending;
-    } else {
-      if (loginMethod === "password") return t.auth.signInButton;
-      if (otpSent) return t.auth.verifyOtp;
-      return t.auth.sendOtp;
+  const onWechat = async () => {
+    if (loading) return;
+    clearFeedback();
+    setLoading(true);
+    try {
+      if (!config.wechatAppId) throw new Error(ui.wechatAppIdMissing);
+      if (!config.appUrl) throw new Error(ui.appUrlMissing);
+      const callback = new URL(`${config.appUrl}/auth/callback`);
+      if (debugRegion) callback.searchParams.set("debug", debugRegion);
+      if (postAuthPath !== "/dashboard") callback.searchParams.set("redirect", postAuthPath);
+      setNotice(ui.wechatRedirecting);
+      window.location.href = getWechatLoginUrl(config.wechatAppId, callback.toString());
+    } catch (err) {
+      setError(msg(err));
+      setLoading(false);
     }
   };
 
-  const buttonText = getButtonText();
-  const displayMessage = useMemo(() => {
-    if (!error) {
-      return "";
+  const onGoogle = async () => {
+    if (loading) return;
+    clearFeedback();
+    setLoading(true);
+    try {
+      const { error: err } = await authClient.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}${buildUrl("/auth/callback", { redirect: postAuthPath })}` },
+      });
+      if (err) throw err;
+    } catch (err) {
+      setError(msg(err));
+      setLoading(false);
     }
-
-    const normalized = error.trim();
-    const lower = normalized.toLowerCase();
-
-    if (normalized.includes("隐私政策")) return authUiText.privacyConsentRequired;
-    if (
-      normalized.includes("两次输入的密码不一致") ||
-      lower.includes("passwords do not match")
-    ) {
-      return t.auth.passwordMismatch;
-    }
-    if (
-      normalized.includes("密码长度至少为6位") ||
-      lower.includes("at least 6 characters")
-    ) {
-      return t.auth.passwordTooShort;
-    }
-    if (
-      normalized.includes("密码强度不足") ||
-      lower.includes("weak password") ||
-      lower.includes("security requirements")
-    ) {
-      return authUiText.weakPassword;
-    }
-    if (
-      normalized.includes("该邮箱已被注册") ||
-      lower.includes("already registered")
-    ) {
-      return authUiText.emailAlreadyRegistered;
-    }
-    if (
-      normalized.includes("邮箱格式不正确") ||
-      lower.includes("invalid email")
-    ) {
-      return authUiText.invalidEmailFormat;
-    }
-    if (
-      normalized.includes("注册成功") &&
-      normalized.includes("确认邮件")
-    ) {
-      return authUiText.registerSuccessIntl;
-    }
-    if (
-      normalized.includes("注册成功") &&
-      (normalized.includes("邮箱和密码登录") ||
-        normalized.includes("邮箱和密码"))
-    ) {
-      return authUiText.registerSuccessCn;
-    }
-    if (normalized.includes("验证码已发送")) return t.auth.otpSent;
-    if (normalized.includes("请输入验证码")) return t.auth.enterOtpRequired;
-    if (normalized.includes("验证码验证成功")) {
-      return authUiText.otpVerifiedSetPassword;
-    }
-    if (normalized.includes("密码重置成功")) return t.auth.passwordResetSuccess;
-    if (normalized.includes("发送验证码超时")) return t.auth.sendOtpTimeout;
-    if (normalized.includes("验证验证码超时")) return t.auth.verifyOtpTimeout;
-    if (
-      normalized.includes("设置密码超时") ||
-      normalized.includes("设置新密码超时")
-    ) {
-      return t.auth.setPasswordTimeout;
-    }
-    if (normalized.includes("发送验证码失败")) return t.auth.sendOtpFailed;
-    if (normalized.includes("验证码验证失败")) return t.auth.verifyOtpFailed;
-    if (normalized.includes("设置新密码失败")) return t.auth.setPasswordFailed;
-    if (normalized.includes("微信应用 ID")) return authUiText.wechatAppIdMissing;
-    if (normalized.includes("应用 URL")) return authUiText.appUrlMissing;
-    if (normalized.includes("微信登录失败")) return authUiText.wechatLoginFailed;
-    if (lower.includes("google") && lower.includes("failed")) {
-      return t.auth.googleLoginFailed;
-    }
-    if (normalized.includes("操作失败")) return authUiText.operationFailed;
-    if (normalized.includes("登录失败")) return t.auth.loginFailed;
-    if (normalized.includes("注册失败")) return t.auth.registerFailed;
-
-    return normalized;
-  }, [authUiText, error, t.auth]);
-
-  const renderForgotPasswordForm = () => {
-    if (forgotPasswordStep === "request") {
-      return (
-        <form onSubmit={handleResetOtpRequest} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="reset-email">{t.auth.email}</Label>
-            <Input
-              id="reset-email"
-              type="email"
-              placeholder={t.auth.enterEmail}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? t.auth.sending : t.auth.sendOtp}
-          </Button>
-
-          <div className="text-center">
-            <a
-              href="#"
-              className="text-sm text-blue-600 hover:underline"
-              onClick={(e) => {
-                e.preventDefault();
-                setForgotPassword(false);
-                resetForgotPasswordFlow();
-                setError("");
-              }}
-            >
-              {t.auth.backToLogin}
-            </a>
-          </div>
-        </form>
-      );
-    }
-
-    if (forgotPasswordStep === "verify") {
-      return (
-        <form onSubmit={handleVerifyResetOtp} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="reset-email-verify">{t.auth.email}</Label>
-            <Input
-              id="reset-email-verify"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="reset-otp">{t.auth.resetPassword}</Label>
-            <Input
-              id="reset-otp"
-              type="text"
-              placeholder={t.auth.enterOtp}
-              value={resetOtp}
-              onChange={(e) => setResetOtp(e.target.value)}
-              maxLength={6}
-              required
-            />
-          </div>
-
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? t.auth.verifying : t.auth.verifyOtp}
-          </Button>
-
-          <div className="flex items-center justify-between text-sm">
-            <button
-              type="button"
-              className="text-blue-600 hover:underline"
-              onClick={(e) => {
-                e.preventDefault();
-                handleResetOtpRequest(e);
-              }}
-              disabled={loading}
-            >
-              {t.auth.resendOtp}
-            </button>
-            <a
-              href="#"
-              className="text-blue-600 hover:underline"
-              onClick={(e) => {
-                e.preventDefault();
-                setForgotPassword(false);
-                resetForgotPasswordFlow();
-                setError("");
-              }}
-            >
-              {t.auth.backToLogin}
-            </a>
-          </div>
-        </form>
-      );
-    }
-
-    return (
-      <form onSubmit={handleSetNewPassword} className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="reset-new-password">{t.auth.password}</Label>
-          <Input
-            id="reset-new-password"
-            type="password"
-            placeholder={t.auth.enterNewPassword}
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            required
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="reset-confirm-password">
-            {t.auth.confirmPassword}
-          </Label>
-          <Input
-            id="reset-confirm-password"
-            type="password"
-            placeholder={t.auth.confirmNewPassword}
-            value={confirmNewPassword}
-            onChange={(e) => setConfirmNewPassword(e.target.value)}
-            required
-          />
-        </div>
-
-        <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? t.auth.setting : t.auth.setNewPassword}
-        </Button>
-
-        <div className="text-center">
-          <a
-            href="#"
-            className="text-sm text-blue-600 hover:underline"
-            onClick={(e) => {
-              e.preventDefault();
-              setForgotPassword(false);
-              resetForgotPasswordFlow();
-              setError("");
-            }}
-          >
-            {t.auth.backToLogin}
-          </a>
-        </div>
-      </form>
-    );
   };
 
-  const signinForm = supportsOtpFlows && forgotPassword ? (
-    renderForgotPasswordForm()
-  ) : (
-    <form
-      onSubmit={loginMethod === "password" ? handleSignIn : handleOtpSignIn}
-      className="space-y-4"
-    >
-      <div className="space-y-2">
-        <Label htmlFor="email">{t.auth.email}</Label>
-        <Input
-          id="email"
-          type="email"
-          placeholder={t.auth.enterEmail}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-      </div>
+  const onResetRequest = async (e?: React.FormEvent | React.MouseEvent<HTMLButtonElement>) => {
+    e?.preventDefault();
+    if (loading) return;
+    clearFeedback();
+    setLoading(true);
+    try {
+      const { error: err } = await authClient.signInWithOtp({
+        email,
+        options: { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}${buildUrl("/auth", { mode: "signin" })}` },
+      });
+      if (err) throw err;
+      setForgotStep("verify");
+      setNotice(t.auth.otpSent);
+    } catch (err) {
+      setError(msg(err));
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      {loginMethod === "password" ? (
-        <div className="space-y-2">
-          <Label htmlFor="password">{t.auth.password}</Label>
-          <div className="relative">
-            <Input
-              id="password"
-              type={showPassword ? "text" : "password"}
-              placeholder={t.auth.enterPassword}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              {showPassword ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
-            </button>
-          </div>
-          {/* 忘记密码链接 */}
-          {supportsOtpFlows && (
-            <div className="text-right">
-              <a
-                href="#"
-                className="text-sm text-blue-600 hover:underline"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setForgotPassword(true);
-                  resetForgotPasswordFlow();
-                  setError("");
-                }}
-              >
-                {t.auth.forgotPassword}
-              </a>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div>
-          <div className="space-y-2">
-            <Label htmlFor="otp">{t.auth.resetPassword}</Label>
-            <Input
-              id="otp"
-              type="text"
-              placeholder={t.auth.enterOtp}
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
-              maxLength={6}
-              required={otpSent}
-            />
-          </div>
-          {/* 切换为密码登录的链接 */}
-          <div className="text-right">
-            <a
-              href="#"
-              className="text-sm text-blue-600 hover:underline"
-              onClick={(e) => {
-                e.preventDefault();
-                setLoginMethod("password");
-                setOtp("");
-                setOtpSent(false);
-              }}
-            >
-              {t.auth.usePasswordLogin}
-            </a>
-          </div>
-        </div>
-      )}
+  const onResetVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading) return;
+    if (!resetOtp) return void setError(t.auth.enterOtpRequired);
+    clearFeedback();
+    setLoading(true);
+    try {
+      const { error: err } = await authClient.verifyOtp({ email, token: resetOtp, type: "email" });
+      if (err) throw err;
+      setResetOtp("");
+      setForgotStep("reset");
+      setNotice(ui.otpVerifiedSetPassword);
+    } catch (err) {
+      setError(msg(err));
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      {/* 隐私政策同意 - 中国版本强制同意 */}
-      {userRegion === RegionType.CHINA && (
-        <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-          <Checkbox
-            id="privacy-agree-signin"
-            checked={agreeToPrivacy}
-            onCheckedChange={(checked) => setAgreeToPrivacy(checked as boolean)}
-            className="mt-1"
-          />
-          <label
-            htmlFor="privacy-agree-signin"
-            className="text-sm text-gray-700 cursor-pointer flex-1"
-          >
-            我已阅读并同意{" "}
-            <button
-              type="button"
-              className="text-blue-600 hover:underline"
-              onClick={() => router.push(buildUrl("/privacy"))}
-            >
-              《隐私政策》
-            </button>{" "}
-            和{" "}
-            <button
-              type="button"
-              className="text-blue-600 hover:underline"
-              onClick={() => router.push(buildUrl("/terms"))}
-            >
-              《服务条款》
-            </button>
-            <span className="text-red-600 ml-1">*</span>
-          </label>
-        </div>
-      )}
+  const onResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading) return;
+    if (newPassword.length < 6) return void setError(t.auth.passwordTooShort);
+    if (newPassword !== confirmNewPassword) return void setError(t.auth.passwordMismatch);
+    clearFeedback();
+    setLoading(true);
+    try {
+      const { error: err } = await authClient.updateUser({ password: newPassword });
+      if (err) throw err;
+      await authClient.signOut();
+      resetForgot();
+      setOtpSent(false);
+      setOtp("");
+      setLoginMethod("password");
+      setNotice(t.auth.passwordResetSuccess);
+    } catch (err) {
+      setError(msg(err));
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      <Button type="submit" className="w-full" disabled={loading}>
-        {buttonText}
-      </Button>
-    </form>
+  const signInButton = loading
+    ? loginMethod === "password"
+      ? t.auth.loggingIn
+      : otpSent
+        ? t.auth.verifying
+        : t.auth.sending
+    : loginMethod === "password"
+      ? t.auth.signInButton
+      : otpSent
+        ? t.auth.verifyOtp
+        : t.auth.sendOtp;
+
+  const privacy = (
+    <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+      <Checkbox id={`privacy-${mode}`} checked={agreeToPrivacy} onCheckedChange={(checked) => setAgreeToPrivacy(Boolean(checked))} className="mt-1" />
+      <label htmlFor={`privacy-${mode}`} className="flex-1 cursor-pointer text-sm text-gray-700">
+        {ui.consentPrefix}{" "}
+        <button type="button" className="text-blue-600 hover:underline" onClick={() => router.push(buildUrl("/privacy"))}>{ui.privacyPolicy}</button>{" "}
+        {ui.consentConnector}{" "}
+        <button type="button" className="text-blue-600 hover:underline" onClick={() => router.push(buildUrl("/terms"))}>{ui.termsOfService}</button>
+        {region === RegionType.CHINA ? <span className="ml-1 text-red-600">*</span> : null}
+      </label>
+    </div>
   );
 
+  const forgotForm =
+    forgotStep === "request" ? (
+      <form onSubmit={onResetRequest} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="reset-email">{t.auth.email}</Label>
+          <Input id="reset-email" type="email" placeholder={t.auth.enterEmail} value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </div>
+        <Button type="submit" className="w-full" disabled={loading}>{loading ? t.auth.sending : t.auth.sendOtp}</Button>
+        <button type="button" className="w-full text-sm text-blue-600 hover:underline" onClick={() => { clearFeedback(); resetForgot(); }}>{t.auth.backToLogin}</button>
+      </form>
+    ) : forgotStep === "verify" ? (
+      <form onSubmit={onResetVerify} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="reset-verify-email">{t.auth.email}</Label>
+          <Input id="reset-verify-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="reset-otp">{t.auth.verifyOtp}</Label>
+          <Input id="reset-otp" type="text" placeholder={t.auth.enterOtp} value={resetOtp} onChange={(e) => setResetOtp(e.target.value)} maxLength={6} required />
+        </div>
+        <Button type="submit" className="w-full" disabled={loading}>{loading ? t.auth.verifying : t.auth.verifyOtp}</Button>
+        <div className="flex items-center justify-between text-sm">
+          <button type="button" className="text-blue-600 hover:underline" onClick={(e) => { void onResetRequest(e); }} disabled={loading}>{t.auth.resendOtp}</button>
+          <button type="button" className="text-blue-600 hover:underline" onClick={() => { clearFeedback(); resetForgot(); }}>{t.auth.backToLogin}</button>
+        </div>
+      </form>
+    ) : (
+      <form onSubmit={onResetPassword} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="new-password">{t.auth.password}</Label>
+          <Input id="new-password" type="password" placeholder={t.auth.enterNewPassword} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="confirm-new-password">{t.auth.confirmPassword}</Label>
+          <Input id="confirm-new-password" type="password" placeholder={t.auth.confirmNewPassword} value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} required />
+        </div>
+        <Button type="submit" className="w-full" disabled={loading}>{loading ? t.auth.setting : t.auth.setNewPassword}</Button>
+        <button type="button" className="w-full text-sm text-blue-600 hover:underline" onClick={() => { clearFeedback(); resetForgot(); }}>{t.auth.backToLogin}</button>
+      </form>
+    );
+
+  const signInForm =
+    supportsOtp && forgotStep !== "off" ? forgotForm : (
+      <form onSubmit={loginMethod === "password" ? onSignIn : onOtp} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="signin-email">{t.auth.email}</Label>
+          <Input id="signin-email" type="email" placeholder={t.auth.enterEmail} value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </div>
+        {loginMethod === "password" ? (
+          <div className="space-y-2">
+            <Label htmlFor="signin-password">{t.auth.password}</Label>
+            <div className="relative">
+              <Input id="signin-password" type={showPassword ? "text" : "password"} placeholder={t.auth.enterPassword} value={password} onChange={(e) => setPassword(e.target.value)} required />
+              <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
+            </div>
+            {supportsOtp ? (
+              <div className="flex justify-between text-sm">
+                <button type="button" className="text-blue-600 hover:underline" onClick={() => { clearFeedback(); setLoginMethod("otp"); setOtp(""); setOtpSent(false); }}>{t.auth.sendOtp}</button>
+                <button type="button" className="text-blue-600 hover:underline" onClick={() => { clearFeedback(); setForgotStep("request"); }}>{t.auth.forgotPassword}</button>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Label htmlFor="signin-otp">{otpSent ? t.auth.verifyOtp : t.auth.sendOtp}</Label>
+            <Input id="signin-otp" type="text" placeholder={otpSent ? t.auth.enterOtp : t.auth.enterEmail} value={otpSent ? otp : email} onChange={(e) => otpSent ? setOtp(e.target.value) : setEmail(e.target.value)} maxLength={otpSent ? 6 : undefined} required />
+            <div className="text-right text-sm">
+              <button type="button" className="text-blue-600 hover:underline" onClick={() => { clearFeedback(); setLoginMethod("password"); setOtp(""); setOtpSent(false); }}>{t.auth.usePasswordLogin}</button>
+            </div>
+          </div>
+        )}
+        {privacy}
+        <Button type="submit" className="w-full" disabled={loading}>{signInButton}</Button>
+      </form>
+    );
+
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-6 sm:px-6 sm:py-12 lg:px-8">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-6 sm:px-6 sm:py-12 lg:px-8">
       <div className="w-full max-w-md">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 px-2"
-            onClick={() => router.push(buildUrl("/"))}
-          >
-            <Home className="h-4 w-4 mr-1.5" />
-            <span className="truncate">{t.auth.backToHome}</span>
-          </Button>
-
+          <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => router.push(buildUrl("/"))}><Home className="mr-1.5 h-4 w-4" /><span className="truncate">{t.auth.backToHome}</span></Button>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2"
-              onClick={() => router.push(buildUrl("/privacy"))}
-            >
-              {language === "zh" ? "隐私政策" : "Privacy Policy"}
-            </Button>
-
-            {debugRegion && (
-              <div className="rounded-lg border border-yellow-300 bg-yellow-100 px-2.5 py-1.5 text-xs sm:text-sm">
-                <div className="font-medium text-yellow-800">{t.auth.debugMode}</div>
-                <div className="text-yellow-700">
-                  {t.auth.region}:{" "}
-                  {userRegion === RegionType.CHINA
-                    ? t.auth.china
-                    : userRegion === RegionType.USA
-                      ? t.auth.usa
-                      : t.auth.unknown}
-                </div>
-              </div>
-            )}
+            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => router.push(buildUrl("/privacy"))}>{ui.privacyPolicy}</Button>
+            {debugRegion ? <div className="rounded-lg border border-yellow-300 bg-yellow-100 px-2.5 py-1.5 text-xs sm:text-sm"><div className="font-medium text-yellow-800">{t.auth.debugMode}</div><div className="text-yellow-700">{t.auth.region}: {region === RegionType.CHINA ? t.auth.china : region === RegionType.USA ? t.auth.usa : t.auth.unknown}</div></div> : null}
           </div>
         </div>
-
         <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl text-center">
-            {mode === "signup" ? t.auth.signUpTitle : t.auth.signInTitle}
-          </CardTitle>
-          <CardDescription className="text-center">
-            {mode === "signup"
-              ? t.auth.signUpDescription
-              : t.auth.signInDescription}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs value={mode} className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger
-                value="signin"
-                onClick={() =>
-                  router.push(buildUrl("/auth", { mode: "signin" }))
-                }
-              >
-                {t.auth.login}
-              </TabsTrigger>
-              <TabsTrigger
-                value="signup"
-                onClick={() =>
-                  router.push(buildUrl("/auth", { mode: "signup" }))
-                }
-              >
-                {t.auth.register}
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="signin" className="space-y-6">
-              {signinForm}
-
-              {/* separator */}
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="bg-white px-4 text-gray-500">
-                    {t.auth.or}
-                  </span>
-                </div>
-              </div>
-
-              {/* 根据区域显示不同的登录选项 */}
-              {userRegion === RegionType.CHINA ? (
-                <div className="space-y-3">
-                  <Button
-                    onClick={handleWechatSignIn}
-                    variant="outline"
-                    className="w-full h-12"
-                    disabled={loading}
-                  >
-                    <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
-                      <path
-                        fill="currentColor"
-                        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
-                      />
-                    </svg>
-                    {loading ? "正在跳转到微信..." : t.auth.wechatLogin}
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  onClick={handleGoogleSignIn}
-                  variant="outline"
-                  className="w-full h-12"
-                  disabled={loading}
-                >
-                  <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
-                    <path
-                      fill="currentColor"
-                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    />
-                    <path
-                      fill="currentColor"
-                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    />
-                    <path
-                      fill="currentColor"
-                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                    />
-                    <path
-                      fill="currentColor"
-                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                    />
-                  </svg>
-                  {t.auth.googleLogin}
-                </Button>
-              )}
-
-              {displayMessage && (
-                <Alert variant="destructive">
-                  <AlertDescription>{displayMessage}</AlertDescription>
-                </Alert>
-              )}
-            </TabsContent>
-            <TabsContent value="signup" className="space-y-4">
-              {/* 邮箱注册表单 */}
-              <form onSubmit={handleSignUp} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signup-email">{t.auth.email}</Label>
-                  <Input
-                    id="signup-email"
-                    type="email"
-                    placeholder={t.auth.enterEmail}
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    disabled={signupStep === "verify"}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="signup-password">{t.auth.password}</Label>
-                  <div className="relative">
-                    <Input
-                      id="signup-password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder={t.auth.passwordMinLength}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      disabled={signupStep === "verify"}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      disabled={signupStep === "verify"}
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="confirm-password">
-                    {t.auth.confirmPassword}
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="confirm-password"
-                      type={showConfirmPassword ? "text" : "password"}
-                      placeholder={t.auth.enterConfirmPassword}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      required
-                      disabled={signupStep === "verify"}
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShowConfirmPassword(!showConfirmPassword)
-                      }
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      disabled={signupStep === "verify"}
-                    >
-                      {showConfirmPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* 隐私政策同意 - 中国版本强制同意，国际版本可选 */}
-                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                  <Checkbox
-                    id="privacy-agree"
-                    checked={agreeToPrivacy}
-                    onCheckedChange={(checked) =>
-                      setAgreeToPrivacy(checked as boolean)
-                    }
-                    disabled={signupStep === "verify"}
-                    className="mt-1"
-                  />
-                  <label
-                    htmlFor="privacy-agree"
-                    className="text-sm text-gray-700 cursor-pointer flex-1"
-                  >
-                    {userRegion === RegionType.CHINA ? (
-                      <>
-                        我已阅读并同意{" "}
-                        <button
-                          type="button"
-                          className="text-blue-600 hover:underline"
-                          onClick={() => router.push(buildUrl("/privacy"))}
-                        >
-                          《隐私政策》
-                        </button>{" "}
-                        和{" "}
-                        <button
-                          type="button"
-                          className="text-blue-600 hover:underline"
-                          onClick={() => router.push(buildUrl("/terms"))}
-                        >
-                          《服务条款》
-                        </button>
-                        <span className="text-red-600 ml-1">*</span>
-                      </>
-                    ) : (
-                      <>
-                        I agree to the{" "}
-                        <button
-                          type="button"
-                          className="text-blue-600 hover:underline"
-                          onClick={() => router.push(buildUrl("/privacy"))}
-                        >
-                          Privacy Policy
-                        </button>
-                      </>
-                    )}
-                  </label>
-                </div>
-
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading
-                    ? userRegion === RegionType.CHINA
-                      ? "注册中..."
-                      : "Signing up..."
-                    : userRegion === RegionType.CHINA
-                    ? t.auth.register
-                    : "Sign Up"}
-                </Button>
-              </form>
-
-              {/* separator */}
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="bg-white px-4 text-gray-500">
-                    {t.auth.or}
-                  </span>
-                </div>
-              </div>
-
-              {/* 根据区域显示不同的登录选项 */}
-              {userRegion === RegionType.CHINA ? (
-                <div className="space-y-3">
-                  <Button
-                    onClick={handleWechatSignIn}
-                    variant="outline"
-                    className="w-full h-12"
-                    disabled={loading}
-                  >
-                    <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
-                      <path
-                        fill="currentColor"
-                        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
-                      />
-                    </svg>
-                    {loading ? "正在跳转到微信..." : t.auth.wechatRegister}
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  onClick={handleGoogleSignIn}
-                  variant="outline"
-                  className="w-full h-12"
-                  disabled={loading}
-                >
-                  <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
-                    <path
-                      fill="currentColor"
-                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    />
-                    <path
-                      fill="currentColor"
-                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    />
-                    <path
-                      fill="currentColor"
-                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                    />
-                    <path
-                      fill="currentColor"
-                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                    />
-                  </svg>
-                  {t.auth.googleRegister}
-                </Button>
-              )}
-
-              {displayMessage && (
-                <Alert variant="destructive">
-                  <AlertDescription>{displayMessage}</AlertDescription>
-                </Alert>
-              )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-center text-2xl">{mode === "signup" ? t.auth.signUpTitle : t.auth.signInTitle}</CardTitle>
+            <CardDescription className="text-center">{mode === "signup" ? t.auth.signUpDescription : t.auth.signInDescription}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs value={mode} className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="signin" onClick={() => { clearFeedback(); resetForgot(); setLoginMethod("password"); router.push(buildUrl("/auth", { mode: "signin" })); }}>{t.auth.login}</TabsTrigger>
+                <TabsTrigger value="signup" onClick={() => { clearFeedback(); resetForgot(); router.push(buildUrl("/auth", { mode: "signup" })); }}>{t.auth.register}</TabsTrigger>
+              </TabsList>
+              <TabsContent value="signin" className="space-y-6">
+                {signInForm}
+                <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-sm"><span className="bg-white px-4 text-gray-500">{t.auth.or}</span></div></div>
+                {region === RegionType.CHINA ? <Button onClick={onWechat} variant="outline" className="h-12 w-full" disabled={loading || configLoading || thirdPartyUnavailable}>{loading ? ui.wechatRedirecting : t.auth.wechatLogin}</Button> : <Button onClick={onGoogle} variant="outline" className="h-12 w-full" disabled={loading || configLoading || thirdPartyUnavailable}>{t.auth.googleLogin}</Button>}
+              </TabsContent>
+              <TabsContent value="signup" className="space-y-4">
+                <form onSubmit={onSignUp} className="space-y-4">
+                  <div className="space-y-2"><Label htmlFor="signup-email">{t.auth.email}</Label><Input id="signup-email" type="email" placeholder={t.auth.enterEmail} value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
+                  <div className="space-y-2"><Label htmlFor="signup-password">{t.auth.password}</Label><div className="relative"><Input id="signup-password" type={showPassword ? "text" : "password"} placeholder={t.auth.passwordMinLength} value={password} onChange={(e) => setPassword(e.target.value)} required /><button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div></div>
+                  <div className="space-y-2"><Label htmlFor="signup-confirm-password">{t.auth.confirmPassword}</Label><div className="relative"><Input id="signup-confirm-password" type={showConfirmPassword ? "text" : "password"} placeholder={t.auth.enterConfirmPassword} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required /><button type="button" onClick={() => setShowConfirmPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">{showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div></div>
+                  {privacy}
+                  <Button type="submit" className="w-full" disabled={loading}>{loading ? ui.signingUp : t.auth.signUpButton}</Button>
+                </form>
+                <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-sm"><span className="bg-white px-4 text-gray-500">{t.auth.or}</span></div></div>
+                {region === RegionType.CHINA ? <Button onClick={onWechat} variant="outline" className="h-12 w-full" disabled={loading || configLoading || thirdPartyUnavailable}>{loading ? ui.wechatRedirecting : t.auth.wechatRegister}</Button> : <Button onClick={onGoogle} variant="outline" className="h-12 w-full" disabled={loading || configLoading || thirdPartyUnavailable}>{t.auth.googleRegister}</Button>}
+              </TabsContent>
+            </Tabs>
+            {notice ? <Alert className="mt-4"><AlertDescription>{notice}</AlertDescription></Alert> : null}
+            {error ? <Alert variant="destructive" className="mt-4"><AlertDescription>{error}</AlertDescription></Alert> : null}
+            {thirdPartyUnavailable && !configLoading ? <Alert className="mt-4"><AlertDescription>{ui.oauthUnavailable}</AlertDescription></Alert> : null}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
 }
 
 export default function AuthPage() {
+  const { language } = useLanguage();
+  const t = useTranslations(language);
+
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Loading...</p>
-          </div>
-        </div>
-      }
-    >
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-gray-50"><div className="text-center"><div className="mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" /><p className="mt-2 text-gray-600">{t.common.loading}</p></div></div>}>
       <AuthPageContent />
     </Suspense>
   );
