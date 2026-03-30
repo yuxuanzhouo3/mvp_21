@@ -69,8 +69,9 @@ WORKDIR /app
 # 2. 所有配置在运行时由部署环境提供
 # 3. 这样同一个镜像可以用于不同的环境（开发、测试、生产等）
 
-ARG PORT=3000
+ARG PORT=80
 ENV PORT=$PORT
+ENV HOSTNAME=0.0.0.0
 
 # 从构建阶段复制必要的文件
 COPY --from=base /app/package.json /app/pnpm-lock.yaml ./
@@ -81,6 +82,11 @@ COPY --from=base /app/next.config.mjs ./
 # 安装生产依赖
 RUN pnpm install --frozen-lockfile --prod
 
+# 允许非 root 用户绑定 80 端口，兼容 CloudBase 默认健康检查
+RUN apk add --no-cache libcap \
+  && setcap 'cap_net_bind_service=+ep' /usr/local/bin/node \
+  && apk del libcap
+
 # 创建非root用户
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nextjs -u 1001
@@ -90,7 +96,7 @@ RUN chown -R nextjs:nodejs /app
 USER nextjs
 
 # 暴露端口
-EXPOSE 3000
+EXPOSE 80
 
 # 启动应用
 CMD ["pnpm", "start"]
