@@ -27,6 +27,9 @@ RUN pnpm install --frozen-lockfile
 # 复制源代码
 COPY . .
 
+# CloudBase 构建时仓库可能没有 public 目录，先补一个空目录避免后续 COPY 失败
+RUN mkdir -p public
+
 # 构建应用（此时环境变量已可用）
 RUN pnpm build
 
