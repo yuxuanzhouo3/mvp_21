@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ArchiveRestore,
   Download,
   Eye,
   FileText,
@@ -19,10 +20,24 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { deleteContractForCurrentUser, listContractsForCurrentUser, type ContractListItem } from "@/lib/contracts/client";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  applyContractActionForCurrentUser,
+  deleteContractForCurrentUser,
+  downloadContractForCurrentUser,
+  listContractsForCurrentUser,
+  type ContractListItem,
+} from "@/lib/contracts/client";
 import { useTranslations } from "@/lib/i18n";
 
-type ContractFilter = "all" | ContractListItem["status"];
+type ContractFilter = "all" | ContractListItem["status"] | "archived";
+type SortMode = "updated_desc" | "updated_asc" | "title_asc" | "title_desc";
 
 function formatDate(value?: string, locale = "zh-CN") {
   if (!value) {
@@ -54,7 +69,10 @@ export default function ContractsPage() {
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<ContractFilter>("all");
+  const [sortMode, setSortMode] = useState<SortMode>("updated_desc");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userLoading && !user) {
@@ -140,13 +158,18 @@ export default function ContractsPage() {
     { value: "pending", label: content.statusPending },
     { value: "signed", label: content.statusSigned },
     { value: "completed", label: content.statusCompleted },
+    { value: "archived", label: isEn ? "Archived" : "已归档" },
   ];
 
   const filteredContracts = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
-
-    return contracts.filter((contract) => {
-      const matchesFilter = filter === "all" ? true : contract.status === filter;
+    const nextContracts = contracts.filter((contract) => {
+      const matchesFilter =
+        filter === "all"
+          ? true
+          : filter === "archived"
+            ? Boolean(contract.archivedAt)
+            : contract.status === filter;
       if (!matchesFilter) {
         return false;
       }
@@ -166,7 +189,35 @@ export default function ContractsPage() {
 
       return haystack.includes(keyword);
     });
-  }, [contracts, filter, searchQuery]);
+
+    return [...nextContracts].sort((left, right) => {
+      if (sortMode === "title_asc") {
+        return left.title.localeCompare(right.title);
+      }
+
+      if (sortMode === "title_desc") {
+        return right.title.localeCompare(left.title);
+      }
+
+      const leftTime = new Date(left.updatedAt || left.createdAt || 0).getTime();
+      const rightTime = new Date(right.updatedAt || right.createdAt || 0).getTime();
+
+      return sortMode === "updated_asc" ? leftTime - rightTime : rightTime - leftTime;
+    });
+  }, [contracts, filter, searchQuery, sortMode]);
+
+  const stats = useMemo(
+    () => ({
+      total: contracts.length,
+      archived: contracts.filter((contract) => contract.archivedAt).length,
+      signing: contracts.filter(
+        (contract) =>
+          contract.signFlowStatus === "awaiting_sender" ||
+          contract.signFlowStatus === "awaiting_counterparty",
+      ).length,
+    }),
+    [contracts],
+  );
 
   const handleDelete = async (contract: ContractListItem) => {
     if (!window.confirm(content.deleteConfirm)) {
@@ -183,6 +234,57 @@ export default function ContractsPage() {
       window.alert(content.deleteFailed);
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleDownload = async (contract: ContractListItem) => {
+    try {
+      setDownloadingId(contract.id);
+      await downloadContractForCurrentUser(contract.id);
+    } catch (downloadError) {
+      console.error("[ContractsPage] Failed to download contract:", downloadError);
+      window.alert(isEn ? "Failed to download the contract." : "下载合同失败，请稍后重试。");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const handleArchiveToggle = async (contract: ContractListItem) => {
+    try {
+      setArchivingId(contract.id);
+      const updated = await applyContractActionForCurrentUser(
+        contract.id,
+        contract.archivedAt ? "unarchive" : "archive",
+        contract.archivedAt
+          ? isEn
+            ? "Returned to the active contract list"
+            : "已恢复到活跃合同列表"
+          : isEn
+            ? "Archived from contract center"
+            : "已从合同中心归档",
+      );
+
+      setContracts((current) =>
+        current.map((item) =>
+          item.id === contract.id
+            ? {
+                ...item,
+                status: updated.status as ContractListItem["status"],
+                archivedAt: (
+                  updated.metadata as Record<string, unknown>
+                )?.archivedAt as string | undefined,
+                archivedReason: (
+                  updated.metadata as Record<string, unknown>
+                )?.archivedReason as string | undefined,
+              }
+            : item,
+        ),
+      );
+    } catch (archiveError) {
+      console.error("[ContractsPage] Failed to toggle archive:", archiveError);
+      window.alert(isEn ? "Failed to update archive status." : "更新归档状态失败。");
+    } finally {
+      setArchivingId(null);
     }
   };
 
@@ -212,7 +314,7 @@ export default function ContractsPage() {
             <p className="mt-2 text-gray-600">{content.description}</p>
           </div>
 
-          <Button onClick={() => router.push("/contracts/new")}>
+          <Button onClick={() => router.push("/create")}>
             <Plus className="mr-2 h-5 w-5" />
             {content.primaryAction}
           </Button>
@@ -241,6 +343,57 @@ export default function ContractsPage() {
               </Button>
             ))}
           </div>
+
+          <div className="grid gap-3 md:grid-cols-[repeat(3,minmax(0,1fr))_220px]">
+            <Card>
+              <CardContent className="py-4">
+                <div className="text-sm text-muted-foreground">
+                  {isEn ? "Total Contracts" : "合同总数"}
+                </div>
+                <div className="mt-2 text-2xl font-semibold">{stats.total}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-4">
+                <div className="text-sm text-muted-foreground">
+                  {isEn ? "In Signing" : "签署中"}
+                </div>
+                <div className="mt-2 text-2xl font-semibold">{stats.signing}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-4">
+                <div className="text-sm text-muted-foreground">
+                  {isEn ? "Archived" : "已归档"}
+                </div>
+                <div className="mt-2 text-2xl font-semibold">{stats.archived}</div>
+              </CardContent>
+            </Card>
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground">
+                {isEn ? "Sort By" : "排序方式"}
+              </div>
+              <Select value={sortMode} onValueChange={(value) => setSortMode(value as SortMode)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="updated_desc">
+                    {isEn ? "Latest updated" : "最近更新"}
+                  </SelectItem>
+                  <SelectItem value="updated_asc">
+                    {isEn ? "Oldest updated" : "最早更新"}
+                  </SelectItem>
+                  <SelectItem value="title_asc">
+                    {isEn ? "Title A-Z" : "标题 A-Z"}
+                  </SelectItem>
+                  <SelectItem value="title_desc">
+                    {isEn ? "Title Z-A" : "标题 Z-A"}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </div>
 
         {error ? (
@@ -264,7 +417,7 @@ export default function ContractsPage() {
                   : content.noResultsDescription}
               </p>
               {contracts.length === 0 ? (
-                <Button className="mt-6" onClick={() => router.push("/contracts/new")}>
+                <Button className="mt-6" onClick={() => router.push("/create")}>
                   <Plus className="mr-2 h-4 w-4" />
                   {content.primaryAction}
                 </Button>
@@ -290,6 +443,11 @@ export default function ContractsPage() {
                         {content.regionLabel}: {contract.region}
                       </Badge>
                     ) : null}
+                    {contract.archivedAt ? (
+                      <Badge variant="outline" className="border-slate-300 text-slate-600">
+                        {isEn ? "Archived" : "已归档"}
+                      </Badge>
+                    ) : null}
                   </div>
 
                   <div className="space-y-1 text-sm text-muted-foreground">
@@ -303,6 +461,13 @@ export default function ContractsPage() {
                         isEn ? "en-US" : "zh-CN",
                       )}
                     </p>
+                    <p>
+                      {isEn ? "Signing Flow" : "签署流程"}:{" "}
+                      {contract.signFlowStatus || (isEn ? "draft" : "草稿")}
+                      {contract.reminderCount
+                        ? ` · ${contract.reminderCount} ${isEn ? "reminders" : "次提醒"}`
+                        : ""}
+                    </p>
                   </div>
                 </div>
 
@@ -310,7 +475,7 @@ export default function ContractsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => window.alert(content.openComingSoon)}
+                    onClick={() => router.push(`/contracts/${contract.id}`)}
                   >
                     <Eye className="mr-1 h-4 w-4" />
                     {content.viewAction}
@@ -318,10 +483,30 @@ export default function ContractsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => window.alert(content.downloadComingSoon)}
+                    onClick={() => void handleDownload(contract)}
+                    disabled={downloadingId === contract.id}
                   >
                     <Download className="mr-1 h-4 w-4" />
                     {content.downloadAction}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleArchiveToggle(contract)}
+                    disabled={archivingId === contract.id}
+                  >
+                    {archivingId === contract.id ? (
+                      <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    ) : (
+                      <ArchiveRestore className="mr-1 h-4 w-4" />
+                    )}
+                    {contract.archivedAt
+                      ? isEn
+                        ? "Restore"
+                        : "恢复"
+                      : isEn
+                        ? "Archive"
+                        : "归档"}
                   </Button>
                   <Button
                     variant="outline"

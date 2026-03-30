@@ -3,6 +3,10 @@ import { supabaseAdmin } from "../integrations/supabase-admin";
 import { getDatabase } from "../auth/auth-utils";
 import { isChinaRegion } from "../config/region";
 import {
+  applyDirectSubscriptionStatusChange,
+  applySubscriptionPaymentTerminalStatus,
+} from "./subscription-payment-sync";
+import {
   logger,
   logError,
   logInfo,
@@ -361,6 +365,10 @@ export class WebhookHandler {
       case "BILLING.SUBSCRIPTION.SUSPENDED":
         return await this.handleSubscriptionSuspended("paypal", resource);
 
+      case "PAYMENT.CAPTURE.REFUNDED":
+      case "PAYMENT.SALE.REFUNDED":
+        return await this.handlePayPalPaymentRefunded(resource);
+
       default:
         logInfo(`Unhandled PayPal event: ${eventType}`, {
           eventType,
@@ -396,7 +404,10 @@ export class WebhookHandler {
         return await this.handleStripeInvoicePaymentSucceeded(data);
 
       case "invoice.payment_failed":
-        return await this.handleStripeInvoicePaymentFailed(data);
+        return await this.handleStripeInvoicePaymentFailedConsistent(data);
+
+      case "charge.refunded":
+        return await this.handleStripeChargeRefunded(data);
 
       default:
         logInfo(`Unhandled Stripe event: ${eventType}`, { eventType, data });
@@ -415,6 +426,9 @@ export class WebhookHandler {
       case "TRADE_SUCCESS":
       case "TRADE_FINISHED":
         return await this.handlePaymentSuccess("alipay", eventData);
+
+      case "TRADE_CLOSED":
+        return await this.handleAlipayPaymentClosed(eventData);
 
       default:
         logInfo(`Unhandled Alipay event: ${eventType}`, {
@@ -1862,7 +1876,7 @@ export class WebhookHandler {
 
       // 可以在这里添加支付失败的处理逻辑
       // 比如发送通知、更新订阅状态等
-      logWarn("Stripe invoice payment failed - notification needed", {
+      logWarn("Stripe invoice payment failed", {
         operationId,
         userId: user.userId,
         invoiceId: invoice.id,
@@ -1890,6 +1904,250 @@ export class WebhookHandler {
   /**
    * 更新订阅状态 - CloudBase 实现（中国地区）
    */
+  private async handleStripeInvoicePaymentFailedConsistent(
+    invoice: any
+  ): Promise<boolean> {
+    const operationId = `stripe_invoice_failed_consistent_${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 11)}`;
+
+    try {
+      const subscriptionId = invoice.subscription;
+      if (!subscriptionId) {
+        return true;
+      }
+
+      const user = await this.findUserBySubscriptionId(subscriptionId);
+      if (!user) {
+        return false;
+      }
+
+      let paymentRecord =
+        (await this.findPaymentRecordByTransactionReferences([invoice.id])) || null;
+
+      if (!paymentRecord && !isChinaRegion()) {
+        const { data: insertedPayment, error: insertError } = await supabaseAdmin
+          .from("payments")
+          .insert({
+            user_id: user.userId,
+            subscription_id: user.subscriptionId || null,
+            amount: (invoice.amount_due || 0) / 100,
+            currency: invoice.currency?.toUpperCase() || "USD",
+            status: "failed",
+            payment_method: "stripe",
+            transaction_id: invoice.id,
+            metadata: {
+              provider: "stripe",
+              providerEvent: "invoice.payment_failed",
+            },
+          })
+          .select("*")
+          .single();
+
+        if (insertError) {
+          logError("Failed to create failed invoice payment record", insertError, {
+            operationId,
+            userId: user.userId,
+            invoiceId: invoice.id,
+          });
+          return false;
+        }
+
+        paymentRecord = insertedPayment;
+      }
+
+      if (paymentRecord) {
+        await applySubscriptionPaymentTerminalStatus({
+          payment: paymentRecord,
+          paymentStatus: "failed",
+          finalTransactionId: invoice.id,
+        });
+      } else {
+        await applyDirectSubscriptionStatusChange({
+          userId: user.userId,
+          providerReference: subscriptionId,
+          subscriptionStatus: "active",
+          paymentMethod: "stripe",
+        });
+      }
+
+      return true;
+    } catch (error) {
+      logError(
+        "Error handling Stripe invoice payment failed (consistent)",
+        error as Error,
+        {
+          operationId,
+          invoiceId: invoice?.id,
+        }
+      );
+      return false;
+    }
+  }
+
+  private async handleStripeChargeRefunded(charge: any): Promise<boolean> {
+    const operationId = `stripe_charge_refunded_${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 11)}`;
+
+    try {
+      const paymentRecord = await this.findPaymentRecordByTransactionReferences([
+        charge.invoice,
+        charge.payment_intent,
+        charge.id,
+      ]);
+
+      if (!paymentRecord) {
+        logWarn("Stripe refunded charge payment record not found", {
+          operationId,
+          chargeId: charge?.id,
+        });
+        return true;
+      }
+
+      await applySubscriptionPaymentTerminalStatus({
+        payment: paymentRecord,
+        paymentStatus: "refunded",
+        finalTransactionId: charge.id || charge.invoice || charge.payment_intent,
+        subscriptionStatus: "cancelled",
+      });
+
+      return true;
+    } catch (error) {
+      logError("Error handling Stripe refunded charge", error as Error, {
+        operationId,
+        chargeId: charge?.id,
+      });
+      return false;
+    }
+  }
+
+  private async handlePayPalPaymentRefunded(resource: any): Promise<boolean> {
+    const operationId = `paypal_payment_refunded_${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 11)}`;
+
+    try {
+      const paymentRecord = await this.findPaymentRecordByTransactionReferences([
+        resource.id,
+        resource.sale_id,
+        resource.invoice_id,
+        resource.supplementary_data?.related_ids?.capture_id,
+        resource.supplementary_data?.related_ids?.order_id,
+      ]);
+
+      if (!paymentRecord) {
+        logWarn("PayPal refunded payment record not found", {
+          operationId,
+          refundId: resource?.id,
+        });
+        return true;
+      }
+
+      await applySubscriptionPaymentTerminalStatus({
+        payment: paymentRecord,
+        paymentStatus: "refunded",
+        finalTransactionId:
+          resource.id ||
+          resource.sale_id ||
+          resource.supplementary_data?.related_ids?.capture_id,
+        subscriptionStatus: "cancelled",
+      });
+
+      return true;
+    } catch (error) {
+      logError("Error handling PayPal refunded payment", error as Error, {
+        operationId,
+        refundId: resource?.id,
+      });
+      return false;
+    }
+  }
+
+  private async handleAlipayPaymentClosed(eventData: any): Promise<boolean> {
+    const operationId = `alipay_payment_closed_${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 11)}`;
+
+    try {
+      const paymentRecord = await this.findPaymentRecordByTransactionReferences([
+        eventData.out_trade_no,
+        eventData.trade_no,
+      ]);
+
+      if (!paymentRecord || paymentRecord.status === "completed") {
+        return true;
+      }
+
+      await applySubscriptionPaymentTerminalStatus({
+        payment: paymentRecord,
+        paymentStatus: "failed",
+        finalTransactionId: eventData.trade_no || eventData.out_trade_no,
+      });
+
+      return true;
+    } catch (error) {
+      logError("Error handling Alipay closed payment", error as Error, {
+        operationId,
+        outTradeNo: eventData?.out_trade_no,
+      });
+      return false;
+    }
+  }
+
+  private async findPaymentRecordByTransactionReferences(
+    references: Array<string | undefined | null>
+  ): Promise<any | null> {
+    const candidates = Array.from(
+      new Set(
+        references.filter(
+          (value): value is string => typeof value === "string" && value.length > 0
+        )
+      )
+    );
+
+    if (!candidates.length) {
+      return null;
+    }
+
+    if (isChinaRegion()) {
+      const db = getDatabase();
+      const result = await db
+        .collection("payments")
+        .where({
+          $or: candidates.flatMap((reference) => [
+            { transaction_id: reference },
+            { out_trade_no: reference },
+            { order_id: reference },
+          ]),
+        })
+        .limit(1)
+        .get();
+
+      return result.data?.[0] || null;
+    }
+
+    for (const reference of candidates) {
+      const { data, error } = await supabaseAdmin
+        .from("payments")
+        .select("*")
+        .or(
+          `transaction_id.eq.${reference},order_id.eq.${reference},out_trade_no.eq.${reference}`
+        )
+        .limit(1);
+
+      if (error) {
+        throw error;
+      }
+
+      if (data?.length) {
+        return data[0];
+      }
+    }
+
+    return null;
+  }
+
   private async updateSubscriptionStatusCloudBase(
     userId: string,
     subscriptionId: string,

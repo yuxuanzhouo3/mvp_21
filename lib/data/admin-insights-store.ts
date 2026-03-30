@@ -95,6 +95,45 @@ export interface AdminAdRecord {
   updated_at?: string;
 }
 
+function normalizeAdminAdRecord(record: Record<string, any>): AdminAdRecord {
+  return {
+    id: record._id || record.id,
+    name: toSafeString(record.name),
+    position: toSafeString(record.position),
+    type: toSafeString(record.type),
+    content: toSafeString(record.content),
+    link: toSafeString(record.link),
+    status: toSafeString(record.status),
+    start_date: toSafeString(record.start_date) || null,
+    end_date: toSafeString(record.end_date) || null,
+    impressions: toNumber(record.impressions),
+    clicks: toNumber(record.clicks),
+    revenue: toNumber(record.revenue),
+    created_at: toSafeString(record.created_at),
+    updated_at: toSafeString(record.updated_at),
+  };
+}
+
+function buildAdminAdMutationPayload(data: Partial<AdminAdRecord>) {
+  const payload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (data.name !== undefined) payload.name = toSafeString(data.name);
+  if (data.position !== undefined) payload.position = toSafeString(data.position);
+  if (data.type !== undefined) payload.type = toSafeString(data.type);
+  if (data.content !== undefined) payload.content = toSafeString(data.content);
+  if (data.link !== undefined) payload.link = toSafeString(data.link);
+  if (data.status !== undefined) payload.status = toSafeString(data.status, "draft");
+  if (data.start_date !== undefined) payload.start_date = data.start_date || null;
+  if (data.end_date !== undefined) payload.end_date = data.end_date || null;
+  if (data.impressions !== undefined) payload.impressions = toNumber(data.impressions);
+  if (data.clicks !== undefined) payload.clicks = toNumber(data.clicks);
+  if (data.revenue !== undefined) payload.revenue = toNumber(data.revenue);
+
+  return payload;
+}
+
 function startOfDay(date: Date) {
   const cloned = new Date(date);
   cloned.setHours(0, 0, 0, 0);
@@ -876,6 +915,57 @@ export async function getAdminAdsMetrics(days = 7): Promise<AdminAdsPayload> {
   };
 }
 
+export async function listAdminAds(): Promise<AdminAdRecord[]> {
+  const rows = await loadAdminAdRows();
+
+  return rows
+    .map((record) => normalizeAdminAdRecord(record))
+    .sort((left, right) =>
+      toSafeString(right.updated_at || right.created_at).localeCompare(
+        toSafeString(left.updated_at || left.created_at),
+      ),
+    );
+}
+
+export async function createAdminAd(
+  data: Partial<AdminAdRecord>,
+): Promise<AdminAdRecord | null> {
+  const now = new Date().toISOString();
+  const payload = {
+    name: toSafeString(data.name, "Untitled Ad"),
+    position: toSafeString(data.position, "dashboard_top"),
+    type: toSafeString(data.type, "banner"),
+    content: toSafeString(data.content),
+    link: toSafeString(data.link),
+    status: toSafeString(data.status, "draft"),
+    start_date: data.start_date || null,
+    end_date: data.end_date || null,
+    impressions: toNumber(data.impressions),
+    clicks: toNumber(data.clicks),
+    revenue: toNumber(data.revenue),
+    created_at: now,
+    updated_at: now,
+  };
+
+  if (isChinaRegion()) {
+    const db = getDatabase();
+    const result = await db.collection("ads").add(payload);
+    return getAdminAdById(result.id);
+  }
+
+  const { data: created, error } = await getSupabaseAdmin()
+    .from("ads")
+    .insert(payload)
+    .select("*")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return created ? normalizeAdminAdRecord(created as Record<string, any>) : null;
+}
+
 export async function getAdminAdById(id: string): Promise<AdminAdRecord | null> {
   if (isChinaRegion()) {
     try {
@@ -885,22 +975,7 @@ export async function getAdminAdById(id: string): Promise<AdminAdRecord | null> 
       if (!record) {
         return null;
       }
-      return {
-        id: record._id || record.id,
-        name: toSafeString(record.name),
-        position: toSafeString(record.position),
-        type: toSafeString(record.type),
-        content: toSafeString(record.content),
-        link: toSafeString(record.link),
-        status: toSafeString(record.status),
-        start_date: toSafeString(record.start_date) || null,
-        end_date: toSafeString(record.end_date) || null,
-        impressions: toNumber(record.impressions),
-        clicks: toNumber(record.clicks),
-        revenue: toNumber(record.revenue),
-        created_at: toSafeString(record.created_at),
-        updated_at: toSafeString(record.updated_at),
-      };
+      return normalizeAdminAdRecord(record);
     } catch {
       return null;
     }
@@ -919,32 +994,14 @@ export async function getAdminAdById(id: string): Promise<AdminAdRecord | null> 
     return null;
   }
 
-  return {
-    id: record.id,
-    name: toSafeString(record.name),
-    position: toSafeString(record.position),
-    type: toSafeString(record.type),
-    content: toSafeString(record.content),
-    link: toSafeString(record.link),
-    status: toSafeString(record.status),
-    start_date: toSafeString(record.start_date) || null,
-    end_date: toSafeString(record.end_date) || null,
-    impressions: toNumber(record.impressions),
-    clicks: toNumber(record.clicks),
-    revenue: toNumber(record.revenue),
-    created_at: toSafeString(record.created_at),
-    updated_at: toSafeString(record.updated_at),
-  };
+  return normalizeAdminAdRecord(record);
 }
 
 export async function updateAdminAdById(
   id: string,
   data: Partial<AdminAdRecord>,
 ) {
-  const payload = {
-    ...data,
-    updated_at: new Date().toISOString(),
-  };
+  const payload = buildAdminAdMutationPayload(data);
 
   if (isChinaRegion()) {
     const db = getDatabase();

@@ -1,7 +1,5 @@
-"use client";
-
-import { CreateContractScreen } from "@/components/create/create-contract-screen";
+import { redirect } from "next/navigation";
 
 export default function CreateContractPage() {
-  return <CreateContractScreen flowContext="standalone" />;
+  redirect("/create");
 }

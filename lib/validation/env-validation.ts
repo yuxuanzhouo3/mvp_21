@@ -13,8 +13,8 @@ const envSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
 
   // Supabase配置
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
+  NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1).optional(),
 
   // Stripe配置
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z
@@ -72,6 +72,16 @@ const envSchema = z.object({
   VERCEL_URL: z.string().optional(),
 });
 
+function resolveRegion(envData: Record<string, string | undefined>): "CN" | "INTL" {
+  const rawRegion =
+    envData.NEXT_PUBLIC_APP_REGION ||
+    envData.APP_REGION ||
+    envData.NEXT_PUBLIC_DEPLOYMENT_REGION ||
+    "CN";
+
+  return rawRegion.toUpperCase() === "INTL" ? "INTL" : "CN";
+}
+
 /**
  * 验证环境变量
  */
@@ -93,6 +103,27 @@ export function validateEnvironment():
         (err) => `${err.path.join(".")}: ${err.message}`
       );
       return { success: false, errors };
+    }
+
+    const region = resolveRegion(envData);
+    const conditionalErrors: string[] = [];
+
+    if (region === "INTL") {
+      if (!envData.NEXT_PUBLIC_SUPABASE_URL) {
+        conditionalErrors.push(
+          "NEXT_PUBLIC_SUPABASE_URL: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is INTL"
+        );
+      }
+
+      if (!envData.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+        conditionalErrors.push(
+          "NEXT_PUBLIC_SUPABASE_ANON_KEY: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is INTL"
+        );
+      }
+    }
+
+    if (conditionalErrors.length > 0) {
+      return { success: false, errors: conditionalErrors };
     }
 
     return { success: true };

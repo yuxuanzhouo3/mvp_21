@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
+import {
+  logAdminApiError,
+  logAdminAudit,
+  requireAdmin,
+  type AdminAuditContext,
+} from "@/lib/auth/admin-auth";
 import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
 import {
   buildSupabaseSubscriptionPayload,
@@ -141,35 +146,6 @@ function buildSubscriptionStats(subscriptions: UnifiedSubscriptionRecord[]): Sub
     renewalRate,
     churnCount,
     baseCurrency: resolveBaseCurrency(activeSubscriptions),
-  };
-}
-
-async function requireAuthenticatedUser(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const { token, error: tokenError } = extractTokenFromHeader(authHeader);
-
-  if (tokenError || !token) {
-    return {
-      error: NextResponse.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 },
-      ),
-    };
-  }
-
-  const authResult = await verifyAuthToken(token);
-  if (!authResult.success || !authResult.userId) {
-    return {
-      error: NextResponse.json(
-        { success: false, error: authResult.error || "Invalid token" },
-        { status: 401 },
-      ),
-    };
-  }
-
-  return {
-    userId: authResult.userId,
-    user: authResult.user,
   };
 }
 
@@ -721,12 +697,15 @@ async function upsertIntlSubscription(body: Record<string, any>) {
 }
 
 export async function GET(request: NextRequest) {
+  let auditContext: AdminAuditContext | undefined;
+
   try {
-    const auth = await requireAuthenticatedUser(request);
-    if (auth.error) {
-      return auth.error;
+    const admin = await requireAdmin(request);
+    if ("error" in admin) {
+      return admin.error;
     }
 
+    auditContext = admin.auditContext;
     const { searchParams } = new URL(request.url);
     const tab = searchParams.get("tab") === "payments" ? "payments" : "subscriptions";
     const status = searchParams.get("status") || "all";
@@ -753,6 +732,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    logAdminApiError("Failed to load subscription admin data", error, auditContext);
     console.error("[/api/admin/subscriptions GET] Failed:", error);
     return NextResponse.json(
       {
@@ -765,12 +745,15 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  let auditContext: AdminAuditContext | undefined;
+
   try {
-    const auth = await requireAuthenticatedUser(request);
-    if (auth.error) {
-      return auth.error;
+    const admin = await requireAdmin(request);
+    if ("error" in admin) {
+      return admin.error;
     }
 
+    auditContext = admin.auditContext;
     const body = (await request.json()) as Record<string, any>;
     if (!body.userId || typeof body.userId !== "string") {
       return NextResponse.json(
@@ -786,6 +769,12 @@ export async function POST(request: NextRequest) {
       ? await upsertChinaSubscription(body)
       : await upsertIntlSubscription(body);
 
+    logAdminAudit("Admin saved subscription", auditContext, {
+      targetUserId: body.userId,
+      plan: body.plan,
+      status: body.status,
+    });
+
     return NextResponse.json({
       success: true,
       data: {
@@ -793,6 +782,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    logAdminApiError("Failed to save subscription admin data", error, auditContext);
     console.error("[/api/admin/subscriptions POST] Failed:", error);
     return NextResponse.json(
       {

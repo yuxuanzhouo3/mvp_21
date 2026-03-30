@@ -15,6 +15,7 @@ import {
 import { toast } from 'sonner';
 
 import { useLanguage } from '@/components/language-provider';
+import { adminFetchJson } from '@/lib/admin/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -126,11 +127,14 @@ export default function UsersPage() {
         params.append('subscription_type', planFilter);
       }
 
-      const response = await fetch(`/api/admin/users?${params.toString()}`);
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Failed to fetch users');
-      }
+      const result = await adminFetchJson<{
+        success: true;
+        data: {
+          users?: User[];
+          total?: number;
+          totalPages?: number;
+        };
+      }>(`/api/admin/users?${params.toString()}`);
 
       setUsers(result.data.users || []);
       setTotal(result.data.total || 0);
@@ -146,11 +150,10 @@ export default function UsersPage() {
   const fetchUserDetails = async (userId: string) => {
     try {
       setSelectedUserDetails(null);
-      const response = await fetch(`/api/admin/users/${userId}`);
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Failed to fetch user details');
-      }
+      const result = await adminFetchJson<{
+        success: true;
+        data: UserDetails;
+      }>(`/api/admin/users/${userId}`);
 
       setSelectedUserDetails(result.data as UserDetails);
     } catch (error) {
@@ -161,17 +164,13 @@ export default function UsersPage() {
 
   const handleBanUser = async (userId: string, ban: boolean) => {
     try {
-      const response = await fetch(`/api/admin/users/${userId}`, {
+      await adminFetchJson(`/api/admin/users/${userId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ is_banned: ban }),
       });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Operation failed');
-      }
 
       await fetchUsers();
       if (selectedUser?.id === userId) {

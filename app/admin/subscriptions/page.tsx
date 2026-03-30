@@ -1,9 +1,40 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  DollarSign,
+  Download,
+  Loader2,
+  Pencil,
+  RefreshCw,
+  Search,
+  TrendingUp,
+  Users,
+  XCircle,
+} from 'lucide-react';
+
+import { adminFetchJson } from '@/lib/admin/client';
+import { useLanguage } from '@/components/language-provider';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -12,26 +43,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Search,
-  Filter,
-  Download,
-  TrendingUp,
-  Users,
-  DollarSign,
-  RefreshCw,
-  XCircle,
-  Loader2,
-} from 'lucide-react';
-import { useLanguage } from '@/components/language-provider';
 
 type AdminTab = 'subscriptions' | 'payments';
 
@@ -82,6 +94,19 @@ type Pagination = {
   totalPages: number;
 };
 
+type SubscriptionForm = {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  plan: string;
+  status: string;
+  price: string;
+  currency: string;
+  billingCycle: string;
+  paymentMethod: string;
+  currentPeriodEnd: string;
+};
+
 const EMPTY_STATS: Stats = {
   activeCount: 0,
   mrr: 0,
@@ -97,6 +122,19 @@ const EMPTY_PAGINATION: Pagination = {
   totalPages: 1,
 };
 
+const EMPTY_FORM: SubscriptionForm = {
+  userId: '',
+  userName: '',
+  userEmail: '',
+  plan: 'free',
+  status: 'inactive',
+  price: '0',
+  currency: 'USD',
+  billingCycle: 'monthly',
+  paymentMethod: 'manual',
+  currentPeriodEnd: '',
+};
+
 export default function SubscriptionsPage() {
   const { language } = useLanguage();
   const isEn = language === 'en';
@@ -104,6 +142,7 @@ export default function SubscriptionsPage() {
 
   const [tab, setTab] = useState<AdminTab>('subscriptions');
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -112,6 +151,8 @@ export default function SubscriptionsPage() {
   const [pagination, setPagination] = useState<Pagination>(EMPTY_PAGINATION);
   const [subscriptions, setSubscriptions] = useState<SubscriptionItem[]>([]);
   const [payments, setPayments] = useState<PaymentItem[]>([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [form, setForm] = useState<SubscriptionForm>(EMPTY_FORM);
 
   const statusOptions = useMemo(
     () =>
@@ -134,24 +175,14 @@ export default function SubscriptionsPage() {
     [isEn, tab],
   );
 
-  const getAuthHeaders = useCallback(async () => {
-    const { tokenManager } = await import('@/lib/auth/frontend-token-manager');
-    const authHeaders = await tokenManager.getAuthHeaderAsync();
-    if (!authHeaders) {
-      throw new Error(isEn ? 'Please sign in again.' : '请重新登录后再试。');
-    }
-    return authHeaders;
-  }, [isEn]);
-
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError('');
 
     try {
-      const headers = await getAuthHeaders();
       const params = new URLSearchParams({
         tab,
-        page: page.toString(),
+        page: String(page),
         limit: '20',
       });
 
@@ -159,112 +190,46 @@ export default function SubscriptionsPage() {
         params.set('status', statusFilter);
       }
 
-      const response = await fetch(`/api/admin/subscriptions?${params.toString()}`, {
-        headers,
-      });
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(
-          result.error ||
-            (isEn ? 'Failed to load subscription data.' : '加载订阅数据失败。'),
-        );
-      }
+      const result = await adminFetchJson<{
+        success: true;
+        data: {
+          items: SubscriptionItem[] | PaymentItem[];
+          stats?: Stats;
+          pagination?: Pagination;
+        };
+      }>(`/api/admin/subscriptions?${params.toString()}`);
 
       setStats(result.data.stats || EMPTY_STATS);
       setPagination(result.data.pagination || EMPTY_PAGINATION);
 
       if (tab === 'subscriptions') {
-        setSubscriptions(result.data.items || []);
+        setSubscriptions((result.data.items || []) as SubscriptionItem[]);
       } else {
-        setPayments(result.data.items || []);
+        setPayments((result.data.items || []) as PaymentItem[]);
       }
     } catch (fetchError) {
-      console.error('Failed to load admin subscriptions:', fetchError);
       setError(
         fetchError instanceof Error
           ? fetchError.message
           : isEn
-            ? 'Failed to load subscription data.'
-            : '加载订阅数据失败。',
+            ? 'Failed to load subscription management data.'
+            : '加载订阅管理数据失败。',
       );
-      if (tab === 'subscriptions') {
-        setSubscriptions([]);
-      } else {
-        setPayments([]);
-      }
+      setSubscriptions([]);
+      setPayments([]);
+      setPagination(EMPTY_PAGINATION);
     } finally {
       setLoading(false);
     }
-  }, [getAuthHeaders, isEn, page, statusFilter, tab]);
+  }, [isEn, page, statusFilter, tab]);
 
   useEffect(() => {
-    fetchData();
+    void fetchData();
   }, [fetchData]);
 
   useEffect(() => {
     setPage(1);
   }, [tab, statusFilter]);
-
-  useEffect(() => {
-    setStatusFilter('all');
-  }, [tab]);
-
-  const filteredSubscriptions = useMemo(() => {
-    const keyword = searchQuery.trim().toLowerCase();
-    if (!keyword) {
-      return subscriptions;
-    }
-
-    return subscriptions.filter((item) =>
-      [
-        item.userName,
-        item.userEmail,
-        item.plan,
-        item.paymentMethod,
-        item.id,
-      ]
-        .filter(Boolean)
-        .some((value) => value.toLowerCase().includes(keyword)),
-    );
-  }, [searchQuery, subscriptions]);
-
-  const filteredPayments = useMemo(() => {
-    const keyword = searchQuery.trim().toLowerCase();
-    if (!keyword) {
-      return payments;
-    }
-
-    return payments.filter((item) =>
-      [
-        item.userName,
-        item.userEmail,
-        item.transactionId || '',
-        item.paymentMethod,
-        item.id,
-      ]
-        .filter(Boolean)
-        .some((value) => value.toLowerCase().includes(keyword)),
-    );
-  }, [payments, searchQuery]);
-
-  const exportCurrentView = useCallback(() => {
-    const data = tab === 'subscriptions' ? filteredSubscriptions : filteredPayments;
-    const fileName =
-      tab === 'subscriptions'
-        ? 'admin-subscriptions.json'
-        : 'admin-payments.json';
-
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: 'application/json;charset=utf-8',
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    link.click();
-    URL.revokeObjectURL(url);
-  }, [filteredPayments, filteredSubscriptions, tab]);
 
   const formatDate = useCallback(
     (value: string | null) => {
@@ -273,11 +238,7 @@ export default function SubscriptionsPage() {
       }
 
       const parsed = new Date(value);
-      if (Number.isNaN(parsed.getTime())) {
-        return value;
-      }
-
-      return parsed.toLocaleString(locale);
+      return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString(locale);
     },
     [isEn, locale],
   );
@@ -297,69 +258,81 @@ export default function SubscriptionsPage() {
     [locale, stats.baseCurrency],
   );
 
+  const filteredSubscriptions = useMemo(() => {
+    const keyword = searchQuery.trim().toLowerCase();
+    if (!keyword) {
+      return subscriptions;
+    }
+
+    return subscriptions.filter((item) =>
+      [item.userName, item.userEmail, item.plan, item.paymentMethod, item.id]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(keyword)),
+    );
+  }, [searchQuery, subscriptions]);
+
+  const filteredPayments = useMemo(() => {
+    const keyword = searchQuery.trim().toLowerCase();
+    if (!keyword) {
+      return payments;
+    }
+
+    return payments.filter((item) =>
+      [item.userName, item.userEmail, item.transactionId || '', item.paymentMethod, item.id]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(keyword)),
+    );
+  }, [payments, searchQuery]);
+
+  const exportCurrentView = useCallback(() => {
+    const data = tab === 'subscriptions' ? filteredSubscriptions : filteredPayments;
+    const fileName = tab === 'subscriptions' ? 'admin-subscriptions.json' : 'admin-payments.json';
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: 'application/json;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [filteredPayments, filteredSubscriptions, tab]);
+
   const getPlanBadge = (plan: string) => {
-    const styles: Record<string, string> = {
-      free: 'bg-gray-100 text-gray-700',
-      pro: 'bg-blue-100 text-blue-700',
-      enterprise: 'bg-amber-100 text-amber-700',
-    };
-    const labels: Record<string, string> = {
-      free: isEn ? 'Free' : '免费版',
+    const labelMap: Record<string, string> = {
+      free: isEn ? 'Free' : '免费',
       pro: 'Pro',
       enterprise: isEn ? 'Enterprise' : '企业版',
     };
+    const variant: 'default' | 'secondary' | 'outline' =
+      plan === 'enterprise' ? 'default' : plan === 'pro' ? 'secondary' : 'outline';
 
-    return (
-      <span className={`rounded-full px-2 py-1 text-xs ${styles[plan] || 'bg-gray-100 text-gray-700'}`}>
-        {labels[plan] || plan}
-      </span>
-    );
+    return <Badge variant={variant}>{labelMap[plan] || plan}</Badge>;
   };
 
-  const getSubscriptionStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
-      active: 'bg-green-100 text-green-700',
-      inactive: 'bg-slate-100 text-slate-700',
-      paused: 'bg-amber-100 text-amber-700',
-      cancelled: 'bg-red-100 text-red-700',
-      canceled: 'bg-red-100 text-red-700',
-      expired: 'bg-gray-100 text-gray-700',
-    };
-    const labels: Record<string, string> = {
+  const getStatusBadge = (value: string) => {
+    const normalized = value?.toLowerCase?.() || 'inactive';
+    const variant: 'default' | 'outline' | 'destructive' =
+      normalized === 'active' || normalized === 'completed'
+        ? 'default'
+        : normalized === 'failed' || normalized === 'cancelled' || normalized === 'canceled'
+          ? 'destructive'
+          : 'outline';
+    const labelMap: Record<string, string> = {
       active: isEn ? 'Active' : '有效',
       inactive: isEn ? 'Inactive' : '未生效',
       paused: isEn ? 'Paused' : '已暂停',
       cancelled: isEn ? 'Cancelled' : '已取消',
       canceled: isEn ? 'Cancelled' : '已取消',
       expired: isEn ? 'Expired' : '已过期',
-    };
-
-    return (
-      <span className={`rounded-full px-2 py-1 text-xs ${styles[status] || 'bg-gray-100 text-gray-700'}`}>
-        {labels[status] || status}
-      </span>
-    );
-  };
-
-  const getPaymentStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
-      completed: 'bg-green-100 text-green-700',
-      pending: 'bg-amber-100 text-amber-700',
-      failed: 'bg-red-100 text-red-700',
-      refunded: 'bg-slate-100 text-slate-700',
-    };
-    const labels: Record<string, string> = {
       completed: isEn ? 'Completed' : '成功',
       pending: isEn ? 'Pending' : '处理中',
       failed: isEn ? 'Failed' : '失败',
       refunded: isEn ? 'Refunded' : '已退款',
     };
 
-    return (
-      <span className={`rounded-full px-2 py-1 text-xs ${styles[status] || 'bg-gray-100 text-gray-700'}`}>
-        {labels[status] || status}
-      </span>
-    );
+    return <Badge variant={variant}>{labelMap[normalized] || normalized}</Badge>;
   };
 
   const getPaymentMethodLabel = (method: string) => {
@@ -369,126 +342,181 @@ export default function SubscriptionsPage() {
       stripe: 'Stripe',
       paypal: 'PayPal',
       card: isEn ? 'Card' : '银行卡',
+      manual: isEn ? 'Manual' : '人工处理',
     };
 
     return labels[method?.toLowerCase?.() || ''] || method || '-';
   };
 
-  const dataCount =
-    tab === 'subscriptions' ? filteredSubscriptions.length : filteredPayments.length;
+  const openEditDialog = (item: SubscriptionItem) => {
+    setForm({
+      userId: item.userId,
+      userName: item.userName,
+      userEmail: item.userEmail,
+      plan: item.plan || 'free',
+      status: item.status || 'inactive',
+      price: String(item.price || 0),
+      currency: item.currency || stats.baseCurrency || 'USD',
+      billingCycle: item.billingCycle || 'monthly',
+      paymentMethod: item.paymentMethod || 'manual',
+      currentPeriodEnd: item.currentPeriodEnd ? item.currentPeriodEnd.slice(0, 16) : '',
+    });
+    setDialogOpen(true);
+  };
+
+  const updateForm = (key: keyof SubscriptionForm, value: string) => {
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
+
+  const saveSubscription = async () => {
+    if (!form.userId) {
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+
+    try {
+      await adminFetchJson('/api/admin/subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: form.userId,
+          plan: form.plan,
+          status: form.status,
+          price: Number(form.price || 0),
+          currency: form.currency,
+          billingCycle: form.billingCycle,
+          paymentMethod: form.paymentMethod,
+          currentPeriodEnd: form.currentPeriodEnd
+            ? new Date(form.currentPeriodEnd).toISOString()
+            : null,
+        }),
+      });
+
+      setDialogOpen(false);
+      setForm(EMPTY_FORM);
+      await fetchData();
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : isEn
+            ? 'Failed to save subscription.'
+            : '保存订阅失败。',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const dataCount = tab === 'subscriptions' ? filteredSubscriptions.length : filteredPayments.length;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">
-            {isEn ? 'Subscription Management' : '订阅管理'}
-          </h1>
-          <p className="text-gray-500">
+          <h1 className="text-2xl font-bold">{isEn ? 'Subscription Management' : '订阅管理'}</h1>
+          <p className="text-muted-foreground">
             {isEn
-              ? 'Review subscriptions, revenue trends, and payment records.'
-              : '查看订阅状态、营收趋势和支付记录。'}
+              ? 'Review real subscription data, adjust plans, and validate billing records.'
+              : '核对订阅真实数据、调整套餐状态，并验收支付记录。'}
           </p>
         </div>
-        <Button variant="outline" onClick={exportCurrentView}>
-          <Download className="mr-2 h-4 w-4" />
-          {isEn ? 'Export Current View' : '导出当前列表'}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => void fetchData()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            {isEn ? 'Refresh' : '刷新'}
+          </Button>
+          <Button variant="outline" onClick={exportCurrentView}>
+            <Download className="mr-2 h-4 w-4" />
+            {isEn ? 'Export Current View' : '导出当前视图'}
+          </Button>
+        </div>
+      </div>
+
+      {error ? (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="rounded-xl border bg-card/60 p-4 text-sm text-muted-foreground">
+        {isEn
+          ? 'Data source: unified subscriptions/payments models. Subscription edits sync the latest plan status back to the user profile metadata.'
+          : '数据来源：统一的 subscriptions / payments 模型。订阅编辑会把最新套餐状态同步回用户资料元数据。'}
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              {isEn ? 'Active Subscriptions' : '有效订阅数'}
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              {isEn ? 'Active Subscriptions' : '有效订阅'}
             </CardTitle>
-            <Users className="h-4 w-4 text-gray-400" />
+            <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.activeCount}</div>
-            <p className="text-xs text-gray-500">
-              {isEn ? 'Current paying accounts' : '当前付费账户'}
-            </p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               {isEn ? 'Monthly MRR' : '月度 MRR'}
             </CardTitle>
-            <DollarSign className="h-4 w-4 text-gray-400" />
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {formatCurrency(stats.mrr, stats.baseCurrency)}
-            </div>
-            <p className="flex items-center gap-1 text-xs text-gray-500">
-              <TrendingUp className="h-3 w-3" />
-              {isEn ? 'Normalized monthly recurring revenue' : '按月折算后的经常性收入'}
-            </p>
+            <div className="text-2xl font-bold">{formatCurrency(stats.mrr, stats.baseCurrency)}</div>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               {isEn ? 'Renewal Rate' : '续费率'}
             </CardTitle>
-            <RefreshCw className="h-4 w-4 text-gray-400" />
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.renewalRate}%</div>
-            <p className="text-xs text-gray-500">
-              {isEn ? 'Based on current active subscriptions' : '基于当前有效订阅占比'}
-            </p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              {isEn ? 'Churned Users' : '流失用户数'}
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              {isEn ? 'Churned Users' : '流失用户'}
             </CardTitle>
-            <XCircle className="h-4 w-4 text-gray-400" />
+            <XCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.churnCount}</div>
-            <p className="text-xs text-gray-500">
-              {isEn ? 'Cancelled or expired subscriptions' : '已取消或已过期订阅'}
-            </p>
           </CardContent>
         </Card>
       </div>
 
-      <Tabs
-        value={tab}
-        onValueChange={(value) => setTab(value as AdminTab)}
-        className="space-y-4"
-      >
+      <Tabs value={tab} onValueChange={(value) => setTab(value as AdminTab)} className="space-y-4">
         <TabsList>
-          <TabsTrigger value="subscriptions">
-            {isEn ? 'Subscriptions' : '订阅列表'}
-          </TabsTrigger>
-          <TabsTrigger value="payments">
-            {isEn ? 'Payments' : '支付记录'}
-          </TabsTrigger>
+          <TabsTrigger value="subscriptions">{isEn ? 'Subscriptions' : '订阅列表'}</TabsTrigger>
+          <TabsTrigger value="payments">{isEn ? 'Payments' : '支付记录'}</TabsTrigger>
         </TabsList>
 
         <Card>
           <CardContent className="pt-6">
             <div className="flex flex-col gap-4 lg:flex-row">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   className="pl-9"
                   placeholder={
                     tab === 'subscriptions'
                       ? isEn
-                        ? 'Search by user, email, plan, or subscription ID...'
-                        : '按用户、邮箱、方案或订阅 ID 搜索...'
+                        ? 'Search user, email, plan, or subscription ID...'
+                        : '按用户、邮箱、套餐或订阅 ID 搜索...'
                       : isEn
-                        ? 'Search by user, email, transaction ID...'
+                        ? 'Search user, email, or transaction ID...'
                         : '按用户、邮箱或交易 ID 搜索...'
                   }
                   value={searchQuery}
@@ -496,8 +524,7 @@ export default function SubscriptionsPage() {
                 />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full lg:w-48">
-                  <Filter className="mr-2 h-4 w-4" />
+                <SelectTrigger className="w-full lg:w-52">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -512,22 +539,14 @@ export default function SubscriptionsPage() {
           </CardContent>
         </Card>
 
-        {error ? (
-          <Card>
-            <CardContent className="py-10 text-sm text-red-600">{error}</CardContent>
-          </Card>
-        ) : null}
-
         <TabsContent value="subscriptions" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>
-                {isEn ? 'Subscription List' : '订阅列表'}
-              </CardTitle>
+              <CardTitle>{isEn ? 'Subscription List' : '订阅列表'}</CardTitle>
               <CardDescription>
                 {isEn
                   ? `Showing ${dataCount} items on this page.`
-                  : `当前页显示 ${dataCount} 条数据。`}
+                  : `当前页展示 ${dataCount} 条订阅记录。`}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -536,7 +555,7 @@ export default function SubscriptionsPage() {
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : filteredSubscriptions.length === 0 ? (
-                <div className="py-16 text-center text-gray-500">
+                <div className="py-16 text-center text-muted-foreground">
                   {isEn ? 'No subscriptions found.' : '暂无订阅数据。'}
                 </div>
               ) : (
@@ -544,12 +563,13 @@ export default function SubscriptionsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>{isEn ? 'User' : '用户'}</TableHead>
-                      <TableHead>{isEn ? 'Plan' : '方案'}</TableHead>
+                      <TableHead>{isEn ? 'Plan' : '套餐'}</TableHead>
                       <TableHead>{isEn ? 'Price' : '价格'}</TableHead>
                       <TableHead>{isEn ? 'Cycle' : '周期'}</TableHead>
                       <TableHead>{isEn ? 'Payment Method' : '支付方式'}</TableHead>
                       <TableHead>{isEn ? 'Next Renewal' : '下次续费'}</TableHead>
                       <TableHead>{isEn ? 'Status' : '状态'}</TableHead>
+                      <TableHead className="text-right">{isEn ? 'Actions' : '操作'}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -558,25 +578,21 @@ export default function SubscriptionsPage() {
                         <TableCell>
                           <div>
                             <p className="font-medium">{item.userName || '-'}</p>
-                            <p className="text-sm text-gray-500">{item.userEmail || '-'}</p>
+                            <p className="text-sm text-muted-foreground">{item.userEmail || '-'}</p>
                           </div>
                         </TableCell>
                         <TableCell>{getPlanBadge(item.plan)}</TableCell>
                         <TableCell>{formatCurrency(item.price, item.currency)}</TableCell>
-                        <TableCell>
-                          {item.billingCycle === 'yearly'
-                            ? isEn
-                              ? 'Yearly'
-                              : '年付'
-                            : isEn
-                              ? 'Monthly'
-                              : '月付'}
-                        </TableCell>
+                        <TableCell>{item.billingCycle === 'yearly' ? (isEn ? 'Yearly' : '年付') : isEn ? 'Monthly' : '月付'}</TableCell>
                         <TableCell>{getPaymentMethodLabel(item.paymentMethod)}</TableCell>
-                        <TableCell className="text-gray-500">
-                          {formatDate(item.currentPeriodEnd)}
+                        <TableCell className="text-muted-foreground">{formatDate(item.currentPeriodEnd)}</TableCell>
+                        <TableCell>{getStatusBadge(item.status)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm" onClick={() => openEditDialog(item)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            {isEn ? 'Edit' : '编辑'}
+                          </Button>
                         </TableCell>
-                        <TableCell>{getSubscriptionStatusBadge(item.status)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -593,7 +609,7 @@ export default function SubscriptionsPage() {
               <CardDescription>
                 {isEn
                   ? `Showing ${dataCount} items on this page.`
-                  : `当前页显示 ${dataCount} 条数据。`}
+                  : `当前页展示 ${dataCount} 条支付记录。`}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -602,7 +618,7 @@ export default function SubscriptionsPage() {
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : filteredPayments.length === 0 ? (
-                <div className="py-16 text-center text-gray-500">
+                <div className="py-16 text-center text-muted-foreground">
                   {isEn ? 'No payment records found.' : '暂无支付记录。'}
                 </div>
               ) : (
@@ -612,7 +628,6 @@ export default function SubscriptionsPage() {
                       <TableHead>{isEn ? 'Transaction ID' : '交易号'}</TableHead>
                       <TableHead>{isEn ? 'User' : '用户'}</TableHead>
                       <TableHead>{isEn ? 'Amount' : '金额'}</TableHead>
-                      <TableHead>{isEn ? 'Type' : '类型'}</TableHead>
                       <TableHead>{isEn ? 'Method' : '支付方式'}</TableHead>
                       <TableHead>{isEn ? 'Created At' : '创建时间'}</TableHead>
                       <TableHead>{isEn ? 'Status' : '状态'}</TableHead>
@@ -621,22 +636,17 @@ export default function SubscriptionsPage() {
                   <TableBody>
                     {filteredPayments.map((item) => (
                       <TableRow key={item.id}>
-                        <TableCell className="font-mono text-sm">
-                          {item.transactionId || item.id}
-                        </TableCell>
+                        <TableCell className="font-mono text-sm">{item.transactionId || item.id}</TableCell>
                         <TableCell>
                           <div>
                             <p className="font-medium">{item.userName || '-'}</p>
-                            <p className="text-sm text-gray-500">{item.userEmail || '-'}</p>
+                            <p className="text-sm text-muted-foreground">{item.userEmail || '-'}</p>
                           </div>
                         </TableCell>
                         <TableCell>{formatCurrency(item.amount, item.currency)}</TableCell>
-                        <TableCell>{isEn ? 'Subscription' : '订阅'}</TableCell>
                         <TableCell>{getPaymentMethodLabel(item.paymentMethod)}</TableCell>
-                        <TableCell className="text-gray-500">
-                          {formatDate(item.createdAt)}
-                        </TableCell>
-                        <TableCell>{getPaymentStatusBadge(item.status)}</TableCell>
+                        <TableCell className="text-muted-foreground">{formatDate(item.createdAt)}</TableCell>
+                        <TableCell>{getStatusBadge(item.status)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -647,11 +657,11 @@ export default function SubscriptionsPage() {
         </TabsContent>
       </Tabs>
 
-      <div className="flex items-center justify-between text-sm text-gray-500">
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
         <p>
           {isEn
-            ? `Total ${pagination.total} records, page ${pagination.page} of ${pagination.totalPages}`
-            : `共 ${pagination.total} 条记录，第 ${pagination.page} / ${pagination.totalPages} 页`}
+            ? `Total ${pagination.total} records, page ${pagination.page} of ${pagination.totalPages}.`
+            : `共 ${pagination.total} 条记录，第 ${pagination.page} / ${pagination.totalPages} 页。`}
         </p>
         <div className="flex gap-2">
           <Button
@@ -666,14 +676,107 @@ export default function SubscriptionsPage() {
             variant="outline"
             size="sm"
             disabled={loading || pagination.page >= pagination.totalPages}
-            onClick={() =>
-              setPage((current) => Math.min(current + 1, pagination.totalPages))
-            }
+            onClick={() => setPage((current) => Math.min(current + 1, pagination.totalPages))}
           >
             {isEn ? 'Next' : '下一页'}
           </Button>
         </div>
       </div>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{isEn ? 'Edit Subscription' : '编辑订阅'}</DialogTitle>
+            <DialogDescription>
+              {isEn
+                ? 'This updates the latest unified subscription record and syncs the user metadata.'
+                : '这里会更新统一订阅记录，并同步用户资料中的会员状态。'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>{isEn ? 'User' : '用户'}</Label>
+              <Input value={form.userName} disabled />
+            </div>
+            <div className="space-y-2">
+              <Label>{isEn ? 'Email' : '邮箱'}</Label>
+              <Input value={form.userEmail} disabled />
+            </div>
+            <div className="space-y-2">
+              <Label>{isEn ? 'Plan' : '套餐'}</Label>
+              <Select value={form.plan} onValueChange={(value) => updateForm('plan', value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="free">{isEn ? 'Free' : '免费'}</SelectItem>
+                  <SelectItem value="pro">Pro</SelectItem>
+                  <SelectItem value="enterprise">{isEn ? 'Enterprise' : '企业版'}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>{isEn ? 'Status' : '状态'}</Label>
+              <Select value={form.status} onValueChange={(value) => updateForm('status', value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">{isEn ? 'Active' : '有效'}</SelectItem>
+                  <SelectItem value="inactive">{isEn ? 'Inactive' : '未生效'}</SelectItem>
+                  <SelectItem value="paused">{isEn ? 'Paused' : '已暂停'}</SelectItem>
+                  <SelectItem value="cancelled">{isEn ? 'Cancelled' : '已取消'}</SelectItem>
+                  <SelectItem value="expired">{isEn ? 'Expired' : '已过期'}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>{isEn ? 'Price' : '价格'}</Label>
+              <Input value={form.price} onChange={(event) => updateForm('price', event.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>{isEn ? 'Currency' : '币种'}</Label>
+              <Input value={form.currency} onChange={(event) => updateForm('currency', event.target.value.toUpperCase())} />
+            </div>
+            <div className="space-y-2">
+              <Label>{isEn ? 'Billing Cycle' : '计费周期'}</Label>
+              <Select value={form.billingCycle} onValueChange={(value) => updateForm('billingCycle', value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="monthly">{isEn ? 'Monthly' : '月付'}</SelectItem>
+                  <SelectItem value="yearly">{isEn ? 'Yearly' : '年付'}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>{isEn ? 'Payment Method' : '支付方式'}</Label>
+              <Input value={form.paymentMethod} onChange={(event) => updateForm('paymentMethod', event.target.value)} />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>{isEn ? 'Current Period End' : '本周期结束时间'}</Label>
+            <Input
+              type="datetime-local"
+              value={form.currentPeriodEnd}
+              onChange={(event) => updateForm('currentPeriodEnd', event.target.value)}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              {isEn ? 'Cancel' : '取消'}
+            </Button>
+            <Button onClick={() => void saveSubscription()} disabled={saving}>
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {isEn ? 'Save Subscription' : '保存订阅'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

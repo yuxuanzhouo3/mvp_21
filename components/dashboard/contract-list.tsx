@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Download,
   Eye,
@@ -35,6 +36,7 @@ import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 import {
   deleteContractForCurrentUser,
+  downloadContractForCurrentUser,
   listContractsForCurrentUser,
   type ContractListItem,
 } from "@/lib/contracts/client";
@@ -60,6 +62,7 @@ function formatDate(value?: string, locale = "zh-CN") {
 }
 
 export function ContractList() {
+  const router = useRouter();
   const { language } = useLanguage();
   const t = useTranslations(language);
   const isEn = language === "en";
@@ -71,6 +74,7 @@ export function ContractList() {
   const [filter, setFilter] = useState<ContractFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -201,6 +205,18 @@ export function ContractList() {
     }
   };
 
+  const handleDownload = async (contract: ContractListItem) => {
+    try {
+      setDownloadingId(contract.id);
+      await downloadContractForCurrentUser(contract.id);
+    } catch (downloadError) {
+      console.error("[ContractList] Failed to download contract:", downloadError);
+      window.alert(isEn ? "Failed to download the contract." : "下载合同失败，请稍后重试。");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   return (
     <Card className="border-border/70 bg-card/95">
       <CardHeader className="space-y-4">
@@ -303,11 +319,14 @@ export function ContractList() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => window.alert(content.openComingSoon)}>
+                        <DropdownMenuItem onClick={() => router.push(`/contracts/${contract.id}?ctx=dashboard`)}>
                           <Eye className="mr-2 h-4 w-4" />
                           {content.viewAction}
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => window.alert(content.downloadComingSoon)}>
+                        <DropdownMenuItem
+                          disabled={downloadingId === contract.id}
+                          onClick={() => void handleDownload(contract)}
+                        >
                           <Download className="mr-2 h-4 w-4" />
                           {content.downloadAction}
                         </DropdownMenuItem>

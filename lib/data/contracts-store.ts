@@ -51,7 +51,8 @@ export async function listContracts({
     };
   }
 
-  let listQuery = getSupabaseAdmin()
+  const supabaseAdmin = getSupabaseAdmin() as any;
+  let listQuery = supabaseAdmin
     .from("contracts")
     .select("id,user_id,title,content,status,region,created_at,updated_at", {
       count: "exact",
@@ -72,7 +73,7 @@ export async function listContracts({
   }
 
   return {
-    contracts: (data || []).map((record) =>
+    contracts: (data || []).map((record: Record<string, any>) =>
       normalizeContractRecord(record as Record<string, any>),
     ),
     total: count || 0,
@@ -89,7 +90,8 @@ export async function getContractById(
     return record ? normalizeContractRecord(record) : null;
   }
 
-  const { data, error } = await getSupabaseAdmin()
+  const supabaseAdmin = getSupabaseAdmin() as any;
+  const { data, error } = await supabaseAdmin
     .from("contracts")
     .select("id,user_id,title,content,status,region,created_at,updated_at")
     .eq("id", id)
@@ -143,7 +145,8 @@ export async function createContractRecord(
     updated_at: now,
   };
 
-  const { data, error } = await getSupabaseAdmin()
+  const supabaseAdmin = getSupabaseAdmin() as any;
+  const { data, error } = await supabaseAdmin
     .from("contracts")
     .insert(insertPayload)
     .select("id,user_id,title,content,status,region,created_at,updated_at")
@@ -212,7 +215,8 @@ export async function updateContractRecord(
     updated_at: new Date().toISOString(),
   };
 
-  const { data, error } = await getSupabaseAdmin()
+  const supabaseAdmin = getSupabaseAdmin() as any;
+  const { data, error } = await supabaseAdmin
     .from("contracts")
     .update(updatePayload)
     .eq("id", id)
@@ -233,7 +237,8 @@ export async function deleteContractRecord(id: string): Promise<void> {
     return;
   }
 
-  const { error } = await getSupabaseAdmin().from("contracts").delete().eq("id", id);
+  const supabaseAdmin = getSupabaseAdmin() as any;
+  const { error } = await supabaseAdmin.from("contracts").delete().eq("id", id);
   if (error) {
     throw error;
   }

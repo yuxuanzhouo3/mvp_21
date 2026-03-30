@@ -1,328 +1,233 @@
-// app/api/payment/confirm/route.ts - 支付确认API路由
 import { NextRequest, NextResponse } from "next/server";
+
+import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
 import { PayPalProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/paypal-provider";
 import { StripeProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/stripe-provider";
-import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
-import { isChinaRegion } from "@/lib/config/region";
+import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
+import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
+import {
+  applySubscriptionPaymentSuccess,
+  getPaymentRecordById,
+  getPaymentRecordForUserByReference,
+} from "@/lib/payment/subscription-payment-sync";
 import { paymentRateLimit } from "@/lib/security/rate-limit";
-import { logBusinessEvent, logError } from "@/lib/utils/logger";
+import { logBusinessEvent, logError, logSecurityEvent } from "@/lib/utils/logger";
+
+type PaymentConfirmationResult = {
+  success: boolean;
+  transactionId: string;
+  amount: number;
+  currency: string;
+  providerReference?: string;
+};
 
 export async function POST(request: NextRequest) {
-  // Apply payment rate limiting
   return new Promise<NextResponse>((resolve) => {
     const mockRes = {
       status: (code: number) => ({
         json: (data: any) => resolve(NextResponse.json(data, { status: code })),
       }),
-      setHeader: () => { },
+      setHeader: () => {},
       getHeader: () => undefined,
     };
 
     paymentRateLimit(request as any, mockRes as any, async () => {
-      // Rate limit not exceeded, handle the request
       resolve(await handlePaymentConfirm(request));
     });
   });
 }
 
+async function confirmPaymentWithProvider(
+  payment: any,
+  reference: string,
+): Promise<PaymentConfirmationResult> {
+  const method = payment.payment_method;
+
+  if (method === "paypal") {
+    const provider = new PayPalProvider(process.env);
+    const confirmation = await provider.confirmPayment(reference);
+    return {
+      ...confirmation,
+      providerReference: reference,
+    };
+  }
+
+  if (method === "stripe") {
+    const provider = new StripeProvider(process.env);
+    const confirmation = await provider.confirmPayment(reference);
+    return {
+      ...confirmation,
+      providerReference: reference,
+    };
+  }
+
+  if (method === "alipay") {
+    const provider = new AlipayProvider(process.env);
+    const confirmation = await provider.confirmPayment(reference);
+    const queryResult = await provider.queryPayment(reference);
+    return {
+      ...confirmation,
+      success:
+        queryResult.trade_status === "TRADE_SUCCESS" ||
+        queryResult.trade_status === "TRADE_FINISHED",
+      providerReference: reference,
+    };
+  }
+
+  if (method === "wechat") {
+    const provider = new WechatProviderV3({
+      appId: process.env.WECHAT_APP_ID!,
+      mchId: process.env.WECHAT_PAY_MCH_ID!,
+      apiV3Key: process.env.WECHAT_PAY_API_V3_KEY!,
+      privateKey: process.env.WECHAT_PAY_PRIVATE_KEY!,
+      serialNo: process.env.WECHAT_PAY_SERIAL_NO!,
+      notifyUrl: `${process.env.APP_URL}/api/payment/webhook/wechat`,
+    });
+    const result = await provider.queryOrderByOutTradeNo(reference);
+
+    return {
+      success: result.tradeState === "SUCCESS",
+      transactionId: result.transactionId || reference,
+      amount: result.amount ? result.amount / 100 : payment.amount || 0,
+      currency: payment.currency || "CNY",
+      providerReference: reference,
+    };
+  }
+
+  throw new Error("Unsupported payment method");
+}
+
 async function handlePaymentConfirm(request: NextRequest) {
   const operationId = `payment_confirm_${Date.now()}_${Math.random()
     .toString(36)
-    .substr(2, 9)}`;
+    .slice(2, 11)}`;
 
   try {
-    const body = await request.json();
-    const { subscriptionId, baToken, token, planType, billingCycle, userId } =
-      body;
+    const authResult = await requireAuth(request);
+    if (!authResult) {
+      return createAuthErrorResponse();
+    }
 
-    if (!subscriptionId || !planType || !billingCycle || !userId) {
+    const { user } = authResult;
+    const body = await request.json();
+
+    const rawReferences = [
+      typeof body?.paymentId === "string" ? body.paymentId : "",
+      typeof body?.subscriptionId === "string" ? body.subscriptionId : "",
+      typeof body?.token === "string" ? body.token : "",
+      typeof body?.baToken === "string" ? body.baToken : "",
+    ].filter(Boolean);
+
+    if (!rawReferences.length) {
       return NextResponse.json(
-        { success: false, error: "Missing required parameters" },
-        { status: 400 }
+        { success: false, error: "Missing required payment reference" },
+        { status: 400 },
       );
     }
 
-    logBusinessEvent("payment_confirm_started", userId, {
-      operationId,
-      subscriptionId,
-      planType,
-      billingCycle,
-      hasBaToken: !!baToken,
-      hasToken: !!token,
-    });
+    let payment = null as any;
 
-    let confirmation;
-    let paymentMethod;
-
-    // 检测支付提供商类型（更健壮：PayPal 可能只带 subscription_id）
-    const isPayPal =
-      Boolean(baToken || token) ||
-      (typeof subscriptionId === "string" && subscriptionId.startsWith("I-"));
-
-    if (isPayPal) {
-      // PayPal支付
-      paymentMethod = "paypal";
-      logBusinessEvent("payment_confirm_paypal", userId, {
-        operationId,
-        subscriptionId,
-        baToken: !!baToken,
-        token: !!token,
-      });
-
-      const paypalProvider = new PayPalProvider(process.env);
-      confirmation = await paypalProvider.confirmPayment(subscriptionId);
-    } else {
-      // Stripe支付 (subscriptionId 实际上是 session_id)
-      paymentMethod = "stripe";
-      logBusinessEvent("payment_confirm_stripe", userId, {
-        operationId,
-        subscriptionId,
-      });
-
-      const stripeProvider = new StripeProvider(process.env);
-      confirmation = await stripeProvider.confirmPayment(subscriptionId);
+    if (typeof body?.paymentId === "string" && body.paymentId) {
+      payment = await getPaymentRecordById(body.paymentId);
     }
 
-    if (confirmation.success) {
-      // 更新用户订阅状态 - 订阅模式
-      const now = new Date();
+    if (!payment) {
+      for (const reference of rawReferences) {
+        payment = await getPaymentRecordForUserByReference(user.id, reference);
+        if (payment) {
+          break;
+        }
+      }
+    }
 
-      // 区分国内版和国际版
-      if (isChinaRegion()) {
-        // 国内版：CloudBase
-        console.log("[Payment Confirm CN] Using CloudBase for subscription update");
-        logBusinessEvent("payment_confirm_cn_mode", userId, {
+    if (!payment) {
+      logBusinessEvent("payment_confirm_not_found", user.id, {
+        operationId,
+        references: rawReferences,
+      });
+      return NextResponse.json(
+        { success: false, error: "Payment record not found" },
+        { status: 404 },
+      );
+    }
+
+    if (payment.user_id !== user.id) {
+      logSecurityEvent(
+        "payment_confirm_forbidden",
+        user.id,
+        request.headers.get("x-forwarded-for") || "unknown",
+        {
           operationId,
-          subscriptionId,
-          planType,
-          billingCycle,
-        });
-        // TODO: 实现国内版 CloudBase 的订阅更新逻辑
-        // 暂时返回成功，避免影响用户体验
-        return NextResponse.json(
-          {
-            success: true,
-            message: "Payment confirmed (CN mode)",
-            subscriptionId,
-          },
-          { status: 200 }
-        );
-      }
-
-      // 国际版：Supabase
-      logBusinessEvent("payment_confirm_intl_mode", userId, {
-        operationId,
-        subscriptionId,
-        planType,
-        billingCycle,
-      });
-
-      // 创建或更新订阅记录
-      const { data: existingSubscription, error: checkError } =
-        await supabaseAdmin
-          .from("subscriptions")
-          .select("*")
-          .eq("user_id", userId)
-          .eq("status", "active")
-          .maybeSingle();
-
-      let subscription;
-
-      if (existingSubscription) {
-        // 更新现有订阅记录
-        const currentPeriodEnd = new Date(now);
-        if (billingCycle === "yearly") {
-          currentPeriodEnd.setFullYear(currentPeriodEnd.getFullYear() + 1);
-        } else {
-          currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 1);
-        }
-
-        const { data: updatedSubscription, error: updateError } =
-          await supabaseAdmin
-            .from("subscriptions")
-            .update({
-              plan_id: planType,
-              status: "active",
-              current_period_start: now.toISOString(),
-              current_period_end: currentPeriodEnd.toISOString(),
-              cancel_at_period_end: false,
-              updated_at: now.toISOString(),
-            })
-            .eq("id", existingSubscription.id)
-            .select()
-            .single();
-
-        if (updateError) {
-          logError("subscription_update_error", updateError, {
-            operationId,
-            userId,
-            subscriptionId: existingSubscription.id,
-          });
-          // 不返回错误，继续处理支付记录
-        } else {
-          subscription = updatedSubscription;
-        }
-      } else {
-        // 创建新的订阅记录
-        const currentPeriodEnd = new Date(now);
-        if (billingCycle === "yearly") {
-          currentPeriodEnd.setFullYear(currentPeriodEnd.getFullYear() + 1);
-        } else {
-          currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 1);
-        }
-
-        const { data: newSubscription, error: insertError } =
-          await supabaseAdmin
-            .from("subscriptions")
-            .insert({
-              user_id: userId,
-              plan_id: planType,
-              status: "active",
-              current_period_start: now.toISOString(),
-              current_period_end: currentPeriodEnd.toISOString(),
-              cancel_at_period_end: false,
-            })
-            .select()
-            .single();
-
-        if (insertError) {
-          logError("subscription_create_error", insertError, {
-            operationId,
-            userId,
-            planType,
-            billingCycle,
-          });
-          // 不返回错误，继续处理支付记录
-        } else {
-          subscription = newSubscription;
-        }
-      }
-
-      // 记录或更新支付信息
-      if (subscription && subscription.id) {
-        // 关键修复：首先查找是否已有 pending 状态的支付记录
-        const { data: existingPayment, error: findPaymentError } =
-          await supabaseAdmin
-            .from("payments")
-            .select("id, status, created_at")
-            .eq("user_id", userId)
-            .in("status", ["pending", "completed"])
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-        if (findPaymentError && findPaymentError.code !== "PGRST116") {
-          logError("find_payment_error", findPaymentError, {
-            operationId,
-            userId,
-            subscriptionId: subscription.id,
-          });
-        }
-
-        if (existingPayment) {
-          // 更新现有的支付记录为 completed
-          if (existingPayment.status === "pending") {
-            logBusinessEvent("payment_update_to_completed", userId, {
-              operationId,
-              paymentId: existingPayment.id,
-              transactionId: confirmation.transactionId,
-            });
-
-            const { error: updatePaymentError } = await supabaseAdmin
-              .from("payments")
-              .update({
-                subscription_id: subscription.id,
-                status: "completed",
-                transaction_id: confirmation.transactionId,
-                amount: confirmation.amount,
-                currency: confirmation.currency,
-                updated_at: now.toISOString(),
-              })
-              .eq("id", existingPayment.id);
-
-            if (updatePaymentError) {
-              logError("payment_update_error", updatePaymentError, {
-                operationId,
-                userId,
-                paymentId: existingPayment.id,
-              });
-            }
-          } else {
-            // 已经是 completed 状态，可能是 webhook 先处理了
-            logBusinessEvent("payment_already_completed", userId, {
-              operationId,
-              paymentId: existingPayment.id,
-              existingStatus: existingPayment.status,
-            });
-          }
-        } else {
-          // 没有找到现有支付记录，创建新的（兜底逻辑）
-          logBusinessEvent("payment_create_new", userId, {
-            operationId,
-            subscriptionId: subscription.id,
-            transactionId: confirmation.transactionId,
-            note: "No existing payment found, creating new",
-          });
-
-          const { error: paymentError } = await supabaseAdmin
-            .from("payments")
-            .insert({
-              user_id: userId,
-              subscription_id: subscription.id,
-              amount: confirmation.amount,
-              currency: confirmation.currency,
-              status: "completed",
-              payment_method: paymentMethod,
-              transaction_id: confirmation.transactionId,
-            });
-
-          if (paymentError) {
-            logError("payment_record_error", paymentError, {
-              operationId,
-              userId,
-              subscriptionId: subscription.id,
-              transactionId: confirmation.transactionId,
-            });
-            // 不返回错误，因为主要操作已成功
-          }
-        }
-      }
-
-      logBusinessEvent("payment_confirm_success", userId, {
-        operationId,
-        transactionId: confirmation.transactionId,
-        amount: confirmation.amount,
-        currency: confirmation.currency,
-        paymentMethod,
-        subscriptionId: subscription?.id || null,
-        planType,
-        billingCycle,
-      });
-
-      return NextResponse.json({
-        success: true,
-        transactionId: confirmation.transactionId,
-        amount: confirmation.amount,
-        currency: confirmation.currency,
-        subscription: {
-          id: subscription?.id || null,
-          planId: planType,
-          status: "active",
-          billingCycle,
+          paymentOwnerId: payment.user_id,
+          references: rawReferences,
         },
-      });
-    } else {
-      logBusinessEvent("payment_confirm_failed", userId, {
+      );
+      return NextResponse.json(
+        { success: false, error: "Forbidden" },
+        { status: 403 },
+      );
+    }
+
+    const reference =
+      rawReferences.find((item) => item === payment.transaction_id) ||
+      payment.out_trade_no ||
+      payment.transaction_id ||
+      rawReferences[0];
+
+    logBusinessEvent("payment_confirm_started", user.id, {
+      operationId,
+      paymentId: payment.id || payment._id,
+      reference,
+      method: payment.payment_method,
+      status: payment.status,
+    });
+
+    const confirmation = await confirmPaymentWithProvider(payment, reference);
+
+    if (!confirmation.success) {
+      logBusinessEvent("payment_confirm_provider_rejected", user.id, {
         operationId,
-        subscriptionId,
-        paymentMethod,
-        confirmation,
+        paymentId: payment.id || payment._id,
+        reference,
+        method: payment.payment_method,
       });
       return NextResponse.json(
         { success: false, error: "Payment confirmation failed" },
-        { status: 400 }
+        { status: 400 },
       );
     }
+
+    const syncResult = await applySubscriptionPaymentSuccess({
+      payment,
+      finalTransactionId: confirmation.transactionId,
+      providerReference: confirmation.providerReference || reference,
+      amount: confirmation.amount || payment.amount,
+      currency: confirmation.currency || payment.currency,
+      paymentMethod: payment.payment_method,
+    });
+
+    logBusinessEvent("payment_confirm_success", user.id, {
+      operationId,
+      paymentId: syncResult.paymentId,
+      subscriptionId: syncResult.subscriptionId,
+      method: payment.payment_method,
+      transactionId: confirmation.transactionId,
+      planType: syncResult.metadata.planType,
+      billingCycle: syncResult.metadata.billingCycle,
+    });
+
+    return NextResponse.json({
+      success: true,
+      transactionId: confirmation.transactionId,
+      amount: confirmation.amount || payment.amount,
+      currency: confirmation.currency || payment.currency,
+      subscription: {
+        id: syncResult.subscriptionId,
+        planId: syncResult.metadata.planType,
+        status: "active",
+        billingCycle: syncResult.metadata.billingCycle,
+      },
+    });
   } catch (error) {
     logError(
       "payment_confirm_error",
@@ -331,14 +236,15 @@ async function handlePaymentConfirm(request: NextRequest) {
         operationId,
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
-      }
+      },
     );
+
     return NextResponse.json(
       {
         success: false,
         error: error instanceof Error ? error.message : "Internal server error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

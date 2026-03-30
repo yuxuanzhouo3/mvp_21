@@ -16,6 +16,9 @@ import "./globals.css";
 
 const appName = getAppDisplayName();
 const defaultLanguage = getDefaultLanguage();
+const enableVercelAnalytics =
+  process.env.VERCEL === "1" ||
+  process.env.NEXT_PUBLIC_ENABLE_VERCEL_ANALYTICS === "true";
 const metadataDescription =
   defaultLanguage === "zh"
     ? "面向合作双方的数字合同平台，支持合同生成、在线确认、电子签署与长期留存。"
@@ -59,7 +62,7 @@ export default function RootLayout({
           </UserProvider>
         </ThemeProvider>
         <Toaster position="top-center" richColors />
-        <Analytics />
+        {enableVercelAnalytics ? <Analytics /> : null}
       </body>
     </html>
   );

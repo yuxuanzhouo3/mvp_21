@@ -22,8 +22,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { AIAnalysisResult } from "@/lib/ai/types";
 import { CONTRACT_TYPE_NAMES } from "@/lib/ai/prompts/generate";
+import { AIAnalysisResult } from "@/lib/ai/types";
+import { type ContractDetail, getContractForCurrentUser, updateContractForCurrentUser } from "@/lib/contracts/client";
+import {
+  appendContractVersionHistory,
+  buildContractParties,
+  createVersionEntry,
+  deriveDraftTitle,
+  normalizeContractContent,
+} from "@/lib/contracts/format";
 import { cn } from "@/lib/utils";
 
 function AnalyzePageContent() {
@@ -31,39 +39,75 @@ function AnalyzePageContent() {
   const searchParams = useSearchParams();
   const { language } = useLanguage();
   const isEn = language === "en";
+  const draftId = searchParams.get("id") || "";
+  const flowContext = searchParams.get("ctx") === "dashboard" ? "dashboard" : "standalone";
+
+  const [contractRecord, setContractRecord] = useState<ContractDetail | null>(null);
   const [analysis, setAnalysis] = useState<AIAnalysisResult | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingTerm, setEditingTerm] = useState<string | null>(null);
-  const flowContext = searchParams.get("ctx") === "dashboard" ? "dashboard" : "standalone";
+
   const fallbackHref = flowContext === "dashboard" ? "/dashboard/contracts/new" : "/create";
   const importHref =
-    flowContext === "dashboard" ? "/create/import?method=text&ctx=dashboard" : "/create/import?method=text";
-
-  const termTypeConfig: Record<string, { label: string; colorClass: string }> = {
-    salary: { label: isEn ? "Compensation" : "薪资报酬", colorClass: "bg-primary/10 text-primary" },
-    duration: { label: isEn ? "Duration" : "工作期限", colorClass: "bg-chart-2/10 text-chart-2" },
-    payment: { label: isEn ? "Payment Method" : "付款方式", colorClass: "bg-chart-3/10 text-chart-3" },
-    workContent: { label: isEn ? "Work Scope" : "工作内容", colorClass: "bg-chart-4/10 text-chart-4" },
-    benefit: { label: isEn ? "Benefits" : "福利待遇", colorClass: "bg-chart-5/10 text-chart-5" },
-    probation: { label: isEn ? "Probation" : "试用期", colorClass: "bg-accent/10 text-accent" },
-    other: { label: isEn ? "Other" : "其他", colorClass: "bg-muted text-muted-foreground" },
-  };
+    flowContext === "dashboard"
+      ? "/create/import?method=text&ctx=dashboard"
+      : "/create/import?method=text";
 
   useEffect(() => {
-    const stored = sessionStorage.getItem("contractAnalysis");
-    if (!stored) {
-      toast.error(isEn ? "Please import conversation content first" : "请先导入对话内容");
-      router.push(fallbackHref);
-      return;
+    let cancelled = false;
+
+    async function loadDraft() {
+      if (!draftId) {
+        toast.error(isEn ? "Draft ID is missing." : "缺少合同草稿 ID");
+        router.replace(fallbackHref);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        const contract = await getContractForCurrentUser(draftId);
+        const nextAnalysis = contract.analysisResult as AIAnalysisResult | null;
+
+        if (!nextAnalysis) {
+          throw new Error(isEn ? "Draft analysis not found." : "草稿分析结果不存在");
+        }
+
+        if (!cancelled) {
+          setContractRecord(contract);
+          setAnalysis(nextAnalysis);
+        }
+      } catch (error) {
+        console.error("[CreateAnalyzePage] Failed to load draft:", error);
+
+        if (!cancelled) {
+          if (error instanceof Error && error.message === "UNAUTHORIZED") {
+            router.replace(`/auth?redirect=${encodeURIComponent(importHref)}`);
+            return;
+          }
+
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : isEn
+                ? "Failed to load draft."
+                : "加载草稿失败",
+          );
+          router.replace(fallbackHref);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
     }
 
-    try {
-      setAnalysis(JSON.parse(stored));
-    } catch {
-      toast.error(isEn ? "Failed to load analysis result" : "加载分析结果失败");
-      router.push(fallbackHref);
-    }
-  }, [router, fallbackHref, isEn]);
+    void loadDraft();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draftId, fallbackHref, importHref, isEn, router]);
 
   const updateKeyTerm = (index: number, value: string) => {
     if (!analysis) return;
@@ -73,7 +117,7 @@ function AnalyzePageContent() {
   };
 
   const handleGenerate = async () => {
-    if (!analysis) return;
+    if (!analysis || !contractRecord) return;
     setIsGenerating(true);
 
     try {
@@ -88,18 +132,60 @@ function AnalyzePageContent() {
         throw new Error(result.error?.message || (isEn ? "Generation failed" : "生成失败"));
       }
 
-      sessionStorage.setItem("generatedContract", JSON.stringify(result.data));
-      sessionStorage.setItem("contractAnalysis", JSON.stringify(analysis));
-      router.push(flowContext === "dashboard" ? "/create/edit?ctx=dashboard" : "/create/edit");
+      const hadGeneratedContent = Boolean(normalizeContractContent(contractRecord.content));
+      const updatedContract = await updateContractForCurrentUser(contractRecord.id, {
+        title: result.data.title || deriveDraftTitle(analysis),
+        type: result.data.contractType || analysis.contractType || contractRecord.type,
+        status: "draft",
+        content: result.data,
+        analysisResult: analysis,
+        parties: buildContractParties(analysis),
+        metadata: {
+          ...appendContractVersionHistory(
+            contractRecord.metadata,
+            createVersionEntry({
+              action: "analysis_generated",
+              title: result.data.title || deriveDraftTitle(analysis),
+              summary: hadGeneratedContent
+                ? isEn
+                  ? "Regenerated contract body from the latest analysis."
+                  : "已根据最新分析结果重新生成合同正文。"
+                : isEn
+                  ? "Generated the first full contract body from analysis."
+                  : "已根据分析结果生成首版合同正文。",
+            }),
+          ),
+          draftStage: "generated",
+          flowVersion: "create-v2",
+        },
+      });
+
+      router.push(
+        flowContext === "dashboard"
+          ? `/create/edit?id=${updatedContract.id}&ctx=dashboard`
+          : `/create/edit?id=${updatedContract.id}`,
+      );
     } catch (error) {
-      console.error("生成失败:", error);
-      toast.error(error instanceof Error ? error.message : isEn ? "Generation failed, please retry." : "生成失败，请重试");
+      console.error("[CreateAnalyzePage] Failed to generate contract:", error);
+
+      if (error instanceof Error && error.message === "UNAUTHORIZED") {
+        router.replace(`/auth?redirect=${encodeURIComponent(importHref)}`);
+        return;
+      }
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : isEn
+            ? "Generation failed, please retry."
+            : "生成失败，请重试",
+      );
     } finally {
       setIsGenerating(false);
     }
   };
 
-  if (!analysis) {
+  if (isLoading || !analysis) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -108,15 +194,24 @@ function AnalyzePageContent() {
   }
 
   const confidencePercent = Math.max(0, Math.min(100, Math.round(analysis.confidence * 100)));
+  const termTypeConfig: Record<string, { label: string; colorClass: string }> = {
+    salary: { label: isEn ? "Compensation" : "薪资/报酬", colorClass: "bg-primary/10 text-primary" },
+    duration: { label: isEn ? "Duration" : "期限", colorClass: "bg-chart-2/10 text-chart-2" },
+    payment: { label: isEn ? "Payment Method" : "付款方式", colorClass: "bg-chart-3/10 text-chart-3" },
+    workContent: { label: isEn ? "Work Scope" : "工作内容", colorClass: "bg-chart-4/10 text-chart-4" },
+    benefit: { label: isEn ? "Benefits" : "福利待遇", colorClass: "bg-chart-5/10 text-chart-5" },
+    probation: { label: isEn ? "Probation" : "试用期", colorClass: "bg-accent/10 text-accent" },
+    other: { label: isEn ? "Other" : "其他", colorClass: "bg-muted text-muted-foreground" },
+  };
 
   return (
     <CreateFlowShell
       step={3}
-      title={isEn ? "Confirm AI Analysis" : "AI 分析确认"}
+      title={isEn ? "Confirm AI Analysis" : "确认 AI 分析结果"}
       description={
         isEn
-          ? "Review each extracted field, especially amount, duration, role, and breach clauses."
-          : "请逐项确认识别结果，尤其是金额、期限、岗位和违约条款。确认后进入生成阶段。"
+          ? "Review each extracted field before generating the draft contract."
+          : "请逐项确认提取结果，确认无误后再生成合同草稿。"
       }
       backHref={importHref}
       backLabel={isEn ? "Back to Import" : "返回导入"}
@@ -128,7 +223,7 @@ function AnalyzePageContent() {
               <div>
                 <CardTitle className="text-lg">{isEn ? "Extraction Overview" : "识别结果概览"}</CardTitle>
                 <CardDescription>
-                  {isEn ? "The model extracted contract type and key fields." : "模型已提取合同类型和关键字段。"}
+                  {isEn ? "The model extracted contract type and key fields." : "模型已提取合同类型与关键字段。"}
                 </CardDescription>
               </div>
               <Badge variant="secondary" className="px-3 py-1 text-sm">
@@ -144,11 +239,11 @@ function AnalyzePageContent() {
               <Progress value={confidencePercent} className="h-2" />
             </div>
           </CardHeader>
-          {analysis.summary && (
+          {analysis.summary ? (
             <CardContent>
               <p className="text-sm text-muted-foreground">{analysis.summary}</p>
             </CardContent>
-          )}
+          ) : null}
         </Card>
 
         <div className="grid gap-5 md:grid-cols-2">
@@ -203,20 +298,20 @@ function AnalyzePageContent() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Briefcase className="h-4 w-4 text-primary" />
-              {isEn ? "Review Key Terms" : "关键条款校对"}
+              {isEn ? "Review Key Terms" : "核对关键条款"}
             </CardTitle>
             <CardDescription>
               {isEn
-                ? "Click any term value to edit. Low-confidence fields should be reviewed first."
-                : "点击条款值可直接编辑，低置信字段建议优先人工复核。"}
+                ? "Click any term value to edit before generating the contract."
+                : "点击任一条款值即可编辑，确认后再生成合同。"}
             </CardDescription>
           </CardHeader>
           <CardContent>
             {analysis.keyTerms.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
                 {isEn
-                  ? "No clear terms extracted. Return to previous step and provide a fuller conversation."
-                  : "未提取到明确条款，请返回上一步补充更完整对话。"}
+                  ? "No clear terms extracted. Please go back and provide a fuller conversation."
+                  : "未提取到明确条款，请返回上一步补充更完整的对话内容。"}
               </div>
             ) : (
               <div className="space-y-3">
@@ -235,12 +330,12 @@ function AnalyzePageContent() {
                           {config.label}
                         </Badge>
                         <span className="text-sm font-medium">{term.label}</span>
-                        {isLowConfidence && (
+                        {isLowConfidence ? (
                           <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
                             <AlertCircle className="h-3 w-3" />
                             {isEn ? "Low confidence" : "低置信度"}
                           </span>
-                        )}
+                        ) : null}
                       </div>
 
                       {isEditing ? (
@@ -265,11 +360,11 @@ function AnalyzePageContent() {
                         </button>
                       )}
 
-                      {term.source && (
+                      {term.source ? (
                         <p className="mt-1 text-xs italic text-muted-foreground">
                           {isEn ? "Source" : "来源"}: "{term.source}"
                         </p>
-                      )}
+                      ) : null}
                     </div>
                   );
                 })}
@@ -281,7 +376,7 @@ function AnalyzePageContent() {
         <div className="flex flex-col-reverse gap-3 rounded-xl border border-border/70 bg-card/80 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <CheckCircle2 className="h-4 w-4 text-primary" />
-            {isEn ? "Generate the final contract after confirmation" : "确认无误后可生成正式合同"}
+            {isEn ? "Generate the contract draft after confirmation" : "确认无误后生成合同草稿"}
           </div>
           <Button size="lg" onClick={handleGenerate} disabled={isGenerating}>
             {isGenerating ? (

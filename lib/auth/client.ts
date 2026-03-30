@@ -1,4 +1,5 @@
 import { getAuth } from "@/lib/auth/adapter";
+import { resolveUserRole } from "@/lib/auth/user-role";
 import { isChinaRegion } from "@/lib/config/region";
 
 export interface AuthUser {
@@ -286,6 +287,7 @@ class SupabaseAuthClient implements AuthClient {
               user_metadata: {
                 full_name: cachedUser.name,
                 avatar_url: cachedUser.avatar,
+                role: cachedUser.role,
               },
             },
           },
@@ -676,6 +678,7 @@ class CloudBaseAuthClient implements AuthClient {
             authState.user.email?.split("@")[0] ||
             "用户",
           avatar_url: authState.user.avatar,
+          role: authState.user.role,
         },
       };
 
@@ -716,6 +719,7 @@ class CloudBaseAuthClient implements AuthClient {
                       authState.user.email?.split("@")[0] ||
                       "用户",
                     avatar_url: authState.user.avatar,
+                    role: authState.user.role,
                   },
                 },
               },
@@ -748,6 +752,7 @@ class CloudBaseAuthClient implements AuthClient {
                         userData.email?.split("@")[0] ||
                         "用户",
                       avatar_url: userData.avatar,
+                      role: resolveUserRole(userData),
                     },
                   },
                 },
@@ -810,6 +815,7 @@ class CloudBaseAuthClient implements AuthClient {
                       userData.email?.split("@")[0] ||
                       "用户",
                     avatar_url: userData.avatar,
+                    role: resolveUserRole(userData),
                   },
                 },
               },

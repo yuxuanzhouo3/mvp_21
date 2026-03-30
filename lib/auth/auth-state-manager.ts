@@ -9,6 +9,7 @@ export interface AuthUser {
   email: string;
   name?: string;
   avatar?: string;
+  role?: string;
   subscription_plan?: string;
   [key: string]: any;
 }
@@ -24,7 +25,14 @@ export interface StoredAuthState {
   savedAt: number; // 毫秒
 }
 
+import { initializeAuthTokenPreloader } from "@/lib/auth/auth-token-preloader";
+
 const AUTH_STATE_KEY = "app-auth-state";
+
+function syncAuthCookies(maxAge: number, role?: string): void {
+  document.cookie = `auth-logged-in=1; path=/; max-age=${maxAge}; SameSite=Lax`;
+  document.cookie = `auth-role=${role || "user"}; path=/; max-age=${maxAge}; SameSite=Lax`;
+}
 
 /**
  * 初始化认证状态管理器
@@ -78,7 +86,7 @@ export function saveAuthState(
 
     // 同步写入 cookie，供 middleware 服务端路由保护使用
     const maxAge = tokenMeta.refreshTokenExpiresIn || 7 * 24 * 3600;
-    document.cookie = `auth-logged-in=1; path=/; max-age=${maxAge}; SameSite=Lax`;
+    syncAuthCookies(maxAge, user.role);
 
     // 触发自定义事件（用于同标签页内同步）
     window.dispatchEvent(new CustomEvent("auth-state-changed"));
@@ -297,6 +305,7 @@ export function clearAuthState(): void {
 
     // 同步清除 cookie
     document.cookie = "auth-logged-in=; path=/; max-age=0; SameSite=Lax";
+    document.cookie = "auth-role=; path=/; max-age=0; SameSite=Lax";
 
     window.dispatchEvent(new CustomEvent("auth-state-changed"));
   } catch (error) {
@@ -323,12 +332,10 @@ export function isAuthenticated(): boolean {
  * P2: 获取 token 预加载器
  * 用于在应用启动时初始化预加载机制
  */
-export async function initializeTokenPreloader() {
+export function initializeTokenPreloader() {
   if (typeof window === "undefined") return;
 
   try {
-    const { initializeAuthTokenPreloader } =
-      await import("@/lib/auth/auth-token-preloader");
     initializeAuthTokenPreloader({
       preloadThreshold: 300, // 5 分钟
       checkInterval: 30000, // 30 秒

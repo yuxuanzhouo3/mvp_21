@@ -1,12 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 
-import { getAdminAnalytics } from '@/lib/data/admin-insights-store';
+import {
+  logAdminApiError,
+  requireAdmin,
+  type AdminAuditContext,
+} from "@/lib/auth/admin-auth";
+import { getAdminAnalytics } from "@/lib/data/admin-insights-store";
 
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const days = parseInt(searchParams.get('days') || '30', 10);
+  let auditContext: AdminAuditContext | undefined;
 
+  try {
+    const admin = await requireAdmin(request);
+    if ("error" in admin) {
+      return admin.error;
+    }
+
+    auditContext = admin.auditContext;
+    const { searchParams } = new URL(request.url);
+    const days = parseInt(searchParams.get("days") || "30", 10);
     const data = await getAdminAnalytics(days);
 
     return NextResponse.json({
@@ -14,11 +26,11 @@ export async function GET(request: NextRequest) {
       data,
     });
   } catch (error) {
-    console.error('[admin/analytics] Failed to load analytics:', error);
+    logAdminApiError("Failed to load admin analytics", error, auditContext);
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to load analytics data',
+        error: "Failed to load analytics data",
       },
       { status: 500 },
     );

@@ -19,9 +19,8 @@ import { getWechatLoginUrl } from "@/lib/wechat/oauth";
 import { isChinaDeployment } from "@/lib/config/deployment.config";
 import { useAuthConfig } from "@/lib/hooks/useAuthConfig";
 
-const authClient = getAuthClient();
-
 function AuthPageContent() {
+  const authClient = useMemo(() => getAuthClient(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: userLoading } = useUser();
@@ -494,12 +493,20 @@ function AuthPageContent() {
   );
 }
 
-export default function AuthPage() {
-  const { language } = useLanguage();
-  const t = useTranslations(language);
-
+function AuthPageFallback() {
   return (
-    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-gray-50"><div className="text-center"><div className="mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" /><p className="mt-2 text-gray-600">{t.common.loading}</p></div></div>}>
+    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="text-center">
+        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
+        <p className="mt-2 text-gray-600">Loading...</p>
+      </div>
+    </div>
+  );
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={<AuthPageFallback />}>
       <AuthPageContent />
     </Suspense>
   );

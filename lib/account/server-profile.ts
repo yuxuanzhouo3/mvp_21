@@ -2,9 +2,12 @@ import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 import {
   normalizeAccountProfile,
+  normalizeAccountSecuritySettings,
+  normalizeAccountSessions,
   normalizeUserPreferences,
   type AccountProfile,
 } from "@/lib/account/profile";
+import { resolveUserRole } from "@/lib/auth/user-role";
 import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
 import { getSupabaseAdmin } from "@/lib/integrations/supabase-admin";
 
@@ -93,12 +96,19 @@ export async function loadChinaAccountProfile(
     name: user.name || user.full_name || "",
     avatar: user.avatar || user.avatar_url || "",
     phone: user.phone || "",
+    role: resolveUserRole(user),
     subscription_plan: subscriptionSnapshot.plan,
     subscription_status: subscriptionSnapshot.status,
     subscription_expires_at:
       subscription?.current_period_end || user.subscription_expires_at,
     membership_expires_at: subscriptionSnapshot.membershipExpiresAt,
     preferences: normalizeUserPreferences(user.preferences),
+    security: normalizeAccountSecuritySettings(user.security_settings),
+    sessions: normalizeAccountSessions(user.account_sessions),
+    activeCompanyProfileId:
+      typeof user.active_company_profile_id === "string"
+        ? user.active_company_profile_id
+        : undefined,
   });
 }
 
@@ -163,11 +173,18 @@ export async function loadIntlAccountProfile(
     name: metadata.displayName || metadata.full_name || metadata.name || "",
     avatar: metadata.avatar || metadata.avatar_url || "",
     phone: metadata.phone || "",
+    role: resolveUserRole(resolvedUser),
     subscription_plan: subscriptionSnapshot.plan,
     subscription_status: subscriptionSnapshot.status,
     subscription_expires_at:
       subscription?.current_period_end || metadata.subscription_expires_at,
     membership_expires_at: subscriptionSnapshot.membershipExpiresAt,
     preferences: normalizeUserPreferences(metadata.preferences),
+    security: normalizeAccountSecuritySettings(metadata.security_settings),
+    sessions: normalizeAccountSessions(metadata.account_sessions),
+    activeCompanyProfileId:
+      typeof metadata.active_company_profile_id === "string"
+        ? metadata.active_company_profile_id
+        : undefined,
   });
 }

@@ -2,6 +2,7 @@ import {
   validateEnvironment,
   checkSensitiveDataExposure,
 } from "@/lib/validation/env-validation";
+import { isInternationalDeployment } from "@/lib/config/deployment.config";
 
 /**
  * 应用启动时的安全检查
@@ -37,11 +38,14 @@ export function performStartupSecurityChecks(): void {
     console.log("🏭 Running in production mode");
 
     // 生产环境额外检查
-    const requiredProdVars = [
-      "NEXT_PUBLIC_SUPABASE_URL",
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-      "APP_URL",
-    ];
+    const requiredProdVars = ["APP_URL"];
+
+    if (isInternationalDeployment()) {
+      requiredProdVars.push(
+        "NEXT_PUBLIC_SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY"
+      );
+    }
 
     const missing = requiredProdVars.filter((key) => !process.env[key]);
     if (missing.length > 0) {

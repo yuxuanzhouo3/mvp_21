@@ -1,9 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 
-import { getAdminOverviewStats } from '@/lib/data/admin-insights-store';
+import {
+  logAdminApiError,
+  requireAdmin,
+  type AdminAuditContext,
+} from "@/lib/auth/admin-auth";
+import { getAdminOverviewStats } from "@/lib/data/admin-insights-store";
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
+  let auditContext: AdminAuditContext | undefined;
+
   try {
+    const admin = await requireAdmin(request);
+    if ("error" in admin) {
+      return admin.error;
+    }
+
+    auditContext = admin.auditContext;
     const data = await getAdminOverviewStats();
 
     return NextResponse.json({
@@ -11,11 +24,11 @@ export async function GET(_request: NextRequest) {
       data,
     });
   } catch (error) {
-    console.error('[admin/stats] Failed to load stats:', error);
+    logAdminApiError("Failed to load admin stats", error, auditContext);
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to load admin stats',
+        error: "Failed to load admin stats",
       },
       { status: 500 },
     );

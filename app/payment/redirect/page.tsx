@@ -62,23 +62,22 @@ function PaymentRedirectContent() {
   );
 }
 
-export default function PaymentRedirectPage() {
-  const { language } = useLanguage();
-  const t = useTranslations(language);
-
+function PaymentRedirectFallback() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-md">
-            <CardHeader className="text-center">
-              <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />
-              <CardTitle className="text-xl">{t.common.loading}</CardTitle>
-            </CardHeader>
-          </Card>
-        </div>
-      }
-    >
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-blue-500 mx-auto mb-4" />
+          <CardTitle className="text-xl">Loading...</CardTitle>
+        </CardHeader>
+      </Card>
+    </div>
+  );
+}
+
+export default function PaymentRedirectPage() {
+  return (
+    <Suspense fallback={<PaymentRedirectFallback />}>
       <PaymentRedirectContent />
     </Suspense>
   );

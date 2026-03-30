@@ -33,6 +33,7 @@ export interface UnifiedUserRecord {
 export interface UnifiedCompanyProfile {
   id: string;
   userId: string;
+  profileName?: string;
   companyName: string;
   creditCode: string;
   legalPerson: string;
@@ -40,6 +41,13 @@ export interface UnifiedCompanyProfile {
   contactPerson: string;
   contactPhone: string;
   contactEmail: string;
+  status?: "active" | "archived";
+  isDefault?: boolean;
+  source?: string;
+  ocrStatus?: "pending" | "completed" | "failed";
+  licenseFileUrl?: string;
+  metadata?: Record<string, unknown>;
+  lastVerifiedAt?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -242,6 +250,7 @@ export function normalizeCompanyProfileRecord(
   return {
     id: record.id || record._id || "",
     userId: record.user_id || record.userId || "",
+    profileName: record.profile_name || record.profileName,
     companyName: record.company_name || record.companyName || "",
     creditCode: record.credit_code || record.creditCode || "",
     legalPerson: record.legal_person || record.legalPerson || "",
@@ -249,6 +258,18 @@ export function normalizeCompanyProfileRecord(
     contactPerson: record.contact_person || record.contactPerson || "",
     contactPhone: record.contact_phone || record.contactPhone || "",
     contactEmail: record.contact_email || record.contactEmail || "",
+    status: record.status || "active",
+    isDefault:
+      typeof record.is_default === "boolean"
+        ? record.is_default
+        : typeof record.isDefault === "boolean"
+          ? record.isDefault
+          : false,
+    source: record.source,
+    ocrStatus: record.ocr_status || record.ocrStatus,
+    licenseFileUrl: record.license_file_url || record.licenseFileUrl,
+    metadata: ensureObject(record.metadata),
+    lastVerifiedAt: record.last_verified_at || record.lastVerifiedAt,
     createdAt: record.created_at || record.createdAt,
     updatedAt: record.updated_at || record.updatedAt,
   };

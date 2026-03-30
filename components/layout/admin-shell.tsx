@@ -1,68 +1,127 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   CreditCard,
   FileText,
   LayoutDashboard,
   LogOut,
-  Megaphone,
   Menu,
+  Megaphone,
+  ScrollText,
   Settings,
   Users,
   X,
 } from "lucide-react";
 
 import { useLanguage } from "@/components/language-provider";
+import { useUser } from "@/components/user-context";
 import { Button } from "@/components/ui/button";
+import { isAdminRole, resolveUserRole } from "@/lib/auth/user-role";
 import { cn } from "@/lib/utils";
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { language } = useLanguage();
+  const { user, loading, isAuthInitialized } = useUser();
   const isEn = language === "en";
+  const role = resolveUserRole(user);
+  const hasAdminAccess = isAdminRole(role);
 
   const navItems = [
     { href: "/admin", label: isEn ? "Dashboard" : "仪表盘", icon: LayoutDashboard },
     { href: "/admin/users", label: isEn ? "Users" : "用户管理", icon: Users },
-    { href: "/admin/ads", label: isEn ? "Ads" : "广告管理", icon: Megaphone },
-    { href: "/admin/subscriptions", label: isEn ? "Subscriptions" : "订阅管理", icon: CreditCard },
+    { href: "/admin/ads", label: isEn ? "Ads" : "广告位", icon: Megaphone },
+    {
+      href: "/admin/subscriptions",
+      label: isEn ? "Subscriptions" : "订阅管理",
+      icon: CreditCard,
+    },
     { href: "/admin/analytics", label: isEn ? "Analytics" : "数据分析", icon: BarChart3 },
+    { href: "/admin/versions", label: isEn ? "Versions" : "版本发布", icon: FileText },
+    { href: "/admin/audit", label: isEn ? "Audit" : "操作审计", icon: ScrollText },
     { href: "/admin/settings", label: isEn ? "Settings" : "系统设置", icon: Settings },
-    { href: "/admin/versions", label: isEn ? "Versions" : "版本管理", icon: FileText },
   ];
 
   const titleMap: Record<string, string> = {
-    "/admin": isEn ? "Admin Dashboard" : "管理员仪表盘",
+    "/admin": isEn ? "Admin Dashboard" : "后台仪表盘",
     "/admin/users": isEn ? "User Management" : "用户管理",
-    "/admin/ads": isEn ? "Ad Management" : "广告管理",
+    "/admin/ads": isEn ? "Ad Management" : "广告位管理",
     "/admin/subscriptions": isEn ? "Subscription Management" : "订阅管理",
     "/admin/analytics": isEn ? "Analytics" : "数据分析",
+    "/admin/versions": isEn ? "Version Management" : "版本发布管理",
+    "/admin/audit": isEn ? "Admin Audit" : "后台操作审计",
     "/admin/settings": isEn ? "System Settings" : "系统设置",
-    "/admin/versions": isEn ? "Version Management" : "版本管理",
   };
 
   const pageTitle = useMemo(() => {
     const matched = Object.keys(titleMap).find((key) =>
       key === "/admin" ? pathname === key : pathname.startsWith(key),
     );
-    return matched ? titleMap[matched] : isEn ? "Admin Console" : "后台管理";
+    return matched ? titleMap[matched] : isEn ? "Admin Console" : "后台管理台";
   }, [pathname, titleMap, isEn]);
+
+  const userDisplayName =
+    user?.name || user?.email?.split("@")[0] || (isEn ? "Administrator" : "管理员");
+  const roleLabel =
+    role === "super_admin"
+      ? isEn
+        ? "Super Admin"
+        : "超级管理员"
+      : isEn
+        ? "Administrator"
+        : "管理员";
+
+  useEffect(() => {
+    if (!isAuthInitialized || loading) {
+      return;
+    }
+
+    if (!user) {
+      router.replace(`/auth?mode=signin&redirect=${encodeURIComponent(pathname)}`);
+      return;
+    }
+
+    if (!hasAdminAccess) {
+      router.replace("/dashboard");
+    }
+  }, [hasAdminAccess, isAuthInitialized, loading, pathname, router, user]);
+
+  if (!isAuthInitialized || loading || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/25">
+        <p className="text-sm text-muted-foreground">
+          {isEn ? "Checking admin access..." : "正在校验后台访问权限..."}
+        </p>
+      </div>
+    );
+  }
+
+  if (!hasAdminAccess) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/25">
+        <p className="text-sm text-muted-foreground">
+          {isEn ? "Redirecting to an allowed workspace..." : "正在跳转到可访问的工作区..."}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-muted/25">
-      {sidebarOpen && (
+      {sidebarOpen ? (
         <button
           type="button"
           className="fixed inset-0 z-40 bg-black/45 lg:hidden"
           onClick={() => setSidebarOpen(false)}
-          aria-label={isEn ? "Close admin sidebar" : "关闭后台侧栏"}
+          aria-label={isEn ? "Close admin sidebar" : "关闭后台侧边栏"}
         />
-      )}
+      ) : null}
 
       <aside
         className={cn(
@@ -145,16 +204,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <div>
                 <p className="text-base font-semibold">{pageTitle}</p>
                 <p className="text-xs text-muted-foreground">
-                  {isEn ? "Admin Workspace" : "管理工作区"}
+                  {isEn ? "Protected admin workspace" : "受保护的后台工作区"}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <div className="hidden rounded-md border border-border/70 bg-card px-3 py-1.5 text-xs text-muted-foreground sm:block">
-                {isEn ? "Role: Administrator" : "角色：管理员"}
+                {isEn ? `Role: ${roleLabel}` : `角色：${roleLabel}`}
               </div>
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                A
+                {userDisplayName.slice(0, 1).toUpperCase()}
               </div>
             </div>
           </div>

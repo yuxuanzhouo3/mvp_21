@@ -1,4 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
+import { isInternationalDeployment } from "@/lib/config/deployment.config";
 
 // Server-side Supabase client with service-role access for admin operations.
 // Do not import this module into client components.
@@ -10,25 +11,25 @@ export function getSupabaseAdmin() {
     return supabaseAdminInstance;
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
-  if (process.env.NODE_ENV === 'production' && !supabaseUrl) {
-    console.error(
-      'Missing NEXT_PUBLIC_SUPABASE_URL. Please configure it in the deployment environment.',
+  if (isInternationalDeployment() && process.env.NODE_ENV === "production" && !supabaseUrl) {
+    console.warn(
+      "Missing NEXT_PUBLIC_SUPABASE_URL. Please configure it in the deployment environment.",
     );
   }
 
-  if (process.env.NODE_ENV === 'production' && !serviceRoleKey) {
+  if (isInternationalDeployment() && process.env.NODE_ENV === "production" && !serviceRoleKey) {
     console.warn(
-      'SUPABASE_SERVICE_ROLE_KEY is missing. Admin writes may fall back to ANON_KEY and fail under RLS.',
+      "SUPABASE_SERVICE_ROLE_KEY is missing. Admin writes may fall back to ANON_KEY and fail under RLS.",
     );
   }
 
   supabaseAdminInstance = createClient(
-    supabaseUrl || 'https://placeholder.supabase.co',
-    serviceRoleKey || anonKey || 'placeholder-key',
+    supabaseUrl || "https://placeholder.supabase.co",
+    serviceRoleKey || anonKey || "placeholder-key",
     {
       auth: { persistSession: false },
     },

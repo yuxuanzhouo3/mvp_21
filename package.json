@@ -5,6 +5,7 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev -p 3000",
+    "init:governance": "node scripts/init-unified-governance.mjs",
     "lint": "next lint",
     "start": "next start",
     "test": "jest --passWithNoTests"

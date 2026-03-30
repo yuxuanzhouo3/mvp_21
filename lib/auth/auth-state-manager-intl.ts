@@ -10,6 +10,7 @@ export interface SupabaseUserProfile {
   email: string;
   name?: string;
   avatar?: string;
+  role?: string;
   subscription_plan?: string;
   subscription_status?: string;
   membership_expires_at?: string;
@@ -27,16 +28,19 @@ const DEFAULT_CACHE_DURATION = 3600;
 
 export function syncSupabaseAuthCookie(
   expiresIn: number = DEFAULT_CACHE_DURATION,
+  role: string = "user",
 ): void {
   if (typeof document === "undefined") return;
 
   document.cookie = `auth-logged-in=1; path=/; max-age=${expiresIn}; SameSite=Lax`;
+  document.cookie = `auth-role=${role}; path=/; max-age=${expiresIn}; SameSite=Lax`;
 }
 
 export function clearSupabaseAuthCookie(): void {
   if (typeof document === "undefined") return;
 
   document.cookie = "auth-logged-in=; path=/; max-age=0; SameSite=Lax";
+  document.cookie = "auth-role=; path=/; max-age=0; SameSite=Lax";
 }
 
 export function saveSupabaseUserCache(
@@ -51,6 +55,7 @@ export function saveSupabaseUserCache(
       email: user.email,
       name: user.name,
       avatar: user.avatar,
+      role: user.role,
       subscription_plan: user.subscription_plan,
       subscription_status: user.subscription_status,
       membership_expires_at: user.membership_expires_at,
@@ -64,7 +69,7 @@ export function saveSupabaseUserCache(
     };
 
     localStorage.setItem(SUPABASE_USER_CACHE_KEY, JSON.stringify(cache));
-    syncSupabaseAuthCookie(expiresIn);
+    syncSupabaseAuthCookie(expiresIn, sanitizedUser.role || "user");
 
     window.dispatchEvent(
       new CustomEvent("supabase-user-changed", {
@@ -157,7 +162,7 @@ export function updateSupabaseUserCache(
     cache.cachedAt = Date.now();
 
     localStorage.setItem(SUPABASE_USER_CACHE_KEY, JSON.stringify(cache));
-    syncSupabaseAuthCookie(cache.expiresIn);
+    syncSupabaseAuthCookie(cache.expiresIn, cache.user.role || "user");
 
     window.dispatchEvent(
       new CustomEvent("supabase-user-changed", {

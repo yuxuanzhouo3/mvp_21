@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
 import {
+  createCompanyProfile,
+  deleteCompanyProfile,
   getCompanyProfile,
-  upsertCompanyProfile,
+  listCompanyProfiles,
+  updateCompanyProfile,
 } from "@/lib/data/company-profile-store";
 import { getDEPLOY_REGION } from "@/lib/config/region";
 
@@ -33,6 +36,68 @@ async function requireUserId(request: NextRequest) {
   return { userId: authResult.userId };
 }
 
+function normalizeBody(body: any) {
+  return {
+    companyName: typeof body?.companyName === "string" ? body.companyName : "",
+    creditCode: typeof body?.creditCode === "string" ? body.creditCode : "",
+    legalPerson: typeof body?.legalPerson === "string" ? body.legalPerson : "",
+    address: typeof body?.address === "string" ? body.address : "",
+    contactPerson: typeof body?.contactPerson === "string" ? body.contactPerson : "",
+    contactPhone: typeof body?.contactPhone === "string" ? body.contactPhone : "",
+    contactEmail: typeof body?.contactEmail === "string" ? body.contactEmail : "",
+  };
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const auth = await requireUserId(request);
+    if (auth.error) {
+      return auth.error;
+    }
+
+    const requestedId = request.nextUrl.searchParams.get("id") || undefined;
+    const profiles = await listCompanyProfiles(auth.userId);
+    const selectedProfile =
+      (requestedId
+        ? profiles.find((profile) => profile.id === requestedId)
+        : profiles[0]) || null;
+
+    if (!selectedProfile) {
+      return NextResponse.json({
+        success: true,
+        hasCompanyInfo: false,
+        data: null,
+        profiles: [],
+        region: getDEPLOY_REGION(),
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      hasCompanyInfo: true,
+      data: selectedProfile,
+      profiles,
+      region: getDEPLOY_REGION(),
+      ...selectedProfile,
+      company_name: selectedProfile.companyName,
+      credit_code: selectedProfile.creditCode,
+      legal_person: selectedProfile.legalPerson,
+      contact_person: selectedProfile.contactPerson,
+      contact_phone: selectedProfile.contactPhone,
+      contact_email: selectedProfile.contactEmail,
+      user_id: selectedProfile.userId,
+      created_at: selectedProfile.createdAt,
+      updated_at: selectedProfile.updatedAt,
+    });
+  } catch (error) {
+    console.error("[/api/company-info GET] Error:", error);
+    return NextResponse.json(
+      { success: false, error: "Failed to load company profile" },
+      { status: 500 },
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const auth = await requireUserId(request);
@@ -41,17 +106,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const {
-      companyName,
-      creditCode,
-      legalPerson,
-      address,
-      contactPerson = "",
-      contactPhone = "",
-      contactEmail = "",
-    } = body ?? {};
+    const payload = normalizeBody(body);
+    const id = typeof body?.id === "string" ? body.id : "";
 
-    if (!companyName || !creditCode || !legalPerson || !address) {
+    if (!payload.companyName || !payload.creditCode || !payload.legalPerson || !payload.address) {
       return NextResponse.json(
         {
           success: false,
@@ -62,19 +120,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const profile = await upsertCompanyProfile(auth.userId, {
-      companyName,
-      creditCode,
-      legalPerson,
-      address,
-      contactPerson,
-      contactPhone,
-      contactEmail,
-    });
+    const profile = id
+      ? await updateCompanyProfile(id, auth.userId, payload)
+      : await createCompanyProfile(auth.userId, payload);
+
+    const profiles = await listCompanyProfiles(auth.userId);
 
     return NextResponse.json({
       success: true,
       data: profile,
+      profiles,
       region: getDEPLOY_REGION(),
     });
   } catch (error) {
@@ -86,45 +141,41 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function DELETE(request: NextRequest) {
   try {
     const auth = await requireUserId(request);
     if (auth.error) {
       return auth.error;
     }
 
-    const profile = await getCompanyProfile(auth.userId);
-    if (!profile) {
-      return NextResponse.json({
-        success: true,
-        hasCompanyInfo: false,
-        data: null,
-        region: getDEPLOY_REGION(),
-      });
+    const id = request.nextUrl.searchParams.get("id") || "";
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: "Missing company profile id" },
+        { status: 400 },
+      );
     }
+
+    const existing = await getCompanyProfile(auth.userId, id);
+    if (!existing) {
+      return NextResponse.json(
+        { success: false, error: "Company profile not found" },
+        { status: 404 },
+      );
+    }
+
+    await deleteCompanyProfile(id, auth.userId);
 
     return NextResponse.json({
       success: true,
-      hasCompanyInfo: true,
-      data: profile,
+      profiles: await listCompanyProfiles(auth.userId),
       region: getDEPLOY_REGION(),
-      ...profile,
-      company_name: profile.companyName,
-      credit_code: profile.creditCode,
-      legal_person: profile.legalPerson,
-      contact_person: profile.contactPerson,
-      contact_phone: profile.contactPhone,
-      contact_email: profile.contactEmail,
-      user_id: profile.userId,
-      created_at: profile.createdAt,
-      updated_at: profile.updatedAt,
     });
   } catch (error) {
-    console.error("[/api/company-info GET] Error:", error);
+    console.error("[/api/company-info DELETE] Error:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to load company profile" },
+      { success: false, error: "Failed to delete company profile" },
       { status: 500 },
     );
   }
 }
-

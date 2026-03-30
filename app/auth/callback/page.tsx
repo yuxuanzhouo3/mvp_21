@@ -207,25 +207,24 @@ function AuthCallbackContent() {
   );
 }
 
-export default function AuthCallbackPage() {
-  const { language } = useLanguage();
-  const t = useTranslations(language);
-
+function AuthCallbackFallback() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <Card className="w-full max-w-md">
-            <CardContent className="pt-6">
-              <div className="flex flex-col items-center space-y-4">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                <p className="text-center text-gray-600">{t.common.loading}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      }
-    >
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <Card className="w-full max-w-md">
+        <CardContent className="pt-6">
+          <div className="flex flex-col items-center space-y-4">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            <p className="text-center text-gray-600">Loading...</p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={<AuthCallbackFallback />}>
       <AuthCallbackContent />
     </Suspense>
   );

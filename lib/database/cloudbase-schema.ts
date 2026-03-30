@@ -36,6 +36,7 @@ export interface WebUser {
 export interface CompanyProfileRecord {
   _id?: string;
   user_id: string;
+  profile_name?: string;
   company_name: string;
   credit_code: string;
   legal_person: string;
@@ -43,8 +44,31 @@ export interface CompanyProfileRecord {
   contact_person?: string;
   contact_phone?: string;
   contact_email?: string;
+  status?: "active" | "archived";
+  is_default?: boolean;
+  source?: string;
+  ocr_status?: "pending" | "completed" | "failed";
+  license_file_url?: string;
+  metadata?: Record<string, unknown>;
+  last_verified_at?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface AdminAuditLogRecord {
+  _id?: string;
+  id?: string;
+  actor_user_id?: string;
+  action: string;
+  message: string;
+  path?: string;
+  method?: string;
+  ip?: string;
+  user_agent?: string;
+  status: "success" | "error" | "denied";
+  severity: "info" | "warn" | "error";
+  meta?: Record<string, unknown>;
+  created_at: string;
 }
 
 export interface ContractRecord {
@@ -211,6 +235,7 @@ export const CLOUDBASE_COLLECTIONS = {
   WECHAT_LOGINS: "wechat_logins",
   SECURITY_LOGS: "security_logs",
   REFRESH_TOKENS: "refresh_tokens",
+  ADMIN_AUDIT_LOGS: "admin_audit_logs",
 } as const;
 
 export const CLOUDBASE_INDEXES = {
@@ -220,7 +245,9 @@ export const CLOUDBASE_INDEXES = {
     { key: { subscription_status: 1 } },
   ],
   [CLOUDBASE_COLLECTIONS.COMPANY_PROFILES]: [
-    { key: { user_id: 1 }, unique: true },
+    { key: { user_id: 1, updated_at: -1 } },
+    { key: { user_id: 1, is_default: -1, updated_at: -1 } },
+    { key: { credit_code: 1 } },
     { key: { updated_at: -1 } },
   ],
   [CLOUDBASE_COLLECTIONS.CONTRACTS]: [
@@ -261,5 +288,11 @@ export const CLOUDBASE_INDEXES = {
     { key: { userId: 1, createdAt: -1 } },
     { key: { isRevoked: 1, expiresAt: 1 } },
     { key: { expiresAt: 1 } },
+  ],
+  [CLOUDBASE_COLLECTIONS.ADMIN_AUDIT_LOGS]: [
+    { key: { created_at: -1 } },
+    { key: { actor_user_id: 1, created_at: -1 } },
+    { key: { status: 1, created_at: -1 } },
+    { key: { path: 1, method: 1, created_at: -1 } },
   ],
 } as const;

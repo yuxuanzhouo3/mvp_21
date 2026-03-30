@@ -7,6 +7,7 @@ import { captureException } from "@/lib/integrations/sentry";
 import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
 import { isChinaRegion } from "@/lib/config/region";
 import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
+import { buildSubscriptionPaymentFields } from "@/lib/payment/subscription-payment-sync";
 import { z } from "zod";
 
 // ֧������������֤schema
@@ -172,6 +173,11 @@ async function handlePaymentCreate(request: NextRequest) {
     }
 
     // ��ȡ֧��������
+    const paymentFields = buildSubscriptionPaymentFields({
+      planType: planType || "pro",
+      billingCycle: billingCycle || "monthly",
+    });
+
     const payment = getPayment();
 
     // ����֧������
@@ -183,8 +189,8 @@ async function handlePaymentCreate(request: NextRequest) {
         `${billingCycle === "monthly" ? "1 Month" : "1 Year"
         } Premium Membership`,
       userId,
-      planType: planType || "pro",
-      billingCycle: billingCycle || "monthly",
+      planType: paymentFields.metadata.planType,
+      billingCycle: paymentFields.metadata.billingCycle,
       method,
     };
 
@@ -208,7 +214,14 @@ async function handlePaymentCreate(request: NextRequest) {
           currency: currency || "CNY",
           status: "pending",
           payment_method: method,
+          order_id: orderResult.orderId,
+          out_trade_no: orderResult.orderId,
           transaction_id: orderResult.orderId,
+          billing_cycle: paymentFields.billing_cycle,
+          product_type: paymentFields.product_type,
+          product_name: paymentFields.product_name,
+          metadata: paymentFields.metadata,
+          region: "CN",
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
@@ -218,27 +231,25 @@ async function handlePaymentCreate(request: NextRequest) {
       }
     } else {
       // 国际用户：记录到 Supabase
-      const days = billingCycle === "yearly" ? 365 : 30;
-      const metadataObj = {
-        days,
-        billingCycle: billingCycle || "monthly",
-        planType: planType || "pro",
-      };
-
       const { error } = await supabaseAdmin.from("payments").insert({
         user_id: userId,
         amount,
         currency,
         status: "pending",
         payment_method: method,
+        order_id: orderResult.orderId,
+        out_trade_no: orderResult.orderId,
         transaction_id: orderResult.orderId,
-        metadata: metadataObj,
+        billing_cycle: paymentFields.billing_cycle,
+        product_type: paymentFields.product_type,
+        product_name: paymentFields.product_name,
+        metadata: paymentFields.metadata,
       });
 
       if (!error) {
         console.log("✅ Payment recorded with metadata:", {
           transactionId: orderResult.orderId,
-          metadata: metadataObj,
+          metadata: paymentFields.metadata,
         });
       }
 

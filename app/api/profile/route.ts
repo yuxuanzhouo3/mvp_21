@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { normalizeUserPreferences } from "@/lib/account/profile";
+import {
+  normalizeAccountSecuritySettings,
+  normalizeAccountSessions,
+  normalizeUserPreferences,
+  type AccountProfile,
+  type AccountSessionRecord,
+} from "@/lib/account/profile";
 import {
   loadChinaAccountProfile,
   loadIntlAccountProfile,
@@ -36,6 +42,64 @@ async function requireUserId(request: NextRequest) {
   return { userId: authResult.userId };
 }
 
+function detectDeviceName(userAgent: string) {
+  const browser = /Edg/i.test(userAgent)
+    ? "Edge"
+    : /Chrome/i.test(userAgent)
+      ? "Chrome"
+      : /Safari/i.test(userAgent) && !/Chrome/i.test(userAgent)
+        ? "Safari"
+        : /Firefox/i.test(userAgent)
+          ? "Firefox"
+          : "Browser";
+  const platform = /Windows/i.test(userAgent)
+    ? "Windows"
+    : /Mac OS X/i.test(userAgent)
+      ? "macOS"
+      : /Android/i.test(userAgent)
+        ? "Android"
+        : /iPhone|iPad|iOS/i.test(userAgent)
+          ? "iOS"
+          : "Desktop";
+
+  return `${platform} · ${browser}`;
+}
+
+function buildCurrentSession(request: NextRequest): AccountSessionRecord {
+  const userAgent = request.headers.get("user-agent") || "";
+  const forwardedFor = request.headers.get("x-forwarded-for") || "";
+  const ipAddress = forwardedFor.split(",")[0]?.trim() || "Unknown IP";
+
+  return {
+    id: "current-session",
+    device: detectDeviceName(userAgent),
+    location: "Current session",
+    ipAddress,
+    lastActiveAt: new Date().toISOString(),
+    trusted: true,
+    current: true,
+    userAgent: userAgent || undefined,
+  };
+}
+
+function attachCurrentSession(
+  profile: AccountProfile,
+  request: NextRequest,
+): AccountProfile {
+  const currentSession = buildCurrentSession(request);
+  const nextSessions = [
+    currentSession,
+    ...profile.sessions
+      .filter((session) => session.id !== currentSession.id)
+      .map((session) => ({ ...session, current: false })),
+  ].slice(0, 12);
+
+  return {
+    ...profile,
+    sessions: nextSessions,
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireUserId(request);
@@ -54,7 +118,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(profile);
+    return NextResponse.json(attachCurrentSession(profile, request));
   } catch (error) {
     console.error("[/api/profile GET] Error:", error);
     return NextResponse.json(
@@ -78,11 +142,17 @@ export async function POST(request: NextRequest) {
       avatar,
       phone,
       preferences,
+      security,
+      sessions,
+      activeCompanyProfileId,
     }: {
       name?: string;
       avatar?: string;
       phone?: string;
       preferences?: Record<string, unknown>;
+      security?: Record<string, unknown>;
+      sessions?: Array<Record<string, unknown>>;
+      activeCompanyProfileId?: string;
     } = body;
 
     if (isChinaRegion()) {
@@ -110,6 +180,20 @@ export async function POST(request: NextRequest) {
           ...preferences,
         });
       }
+      if (security !== undefined) {
+        updateData.security_settings = normalizeAccountSecuritySettings({
+          ...existingUser.security_settings,
+          ...security,
+        });
+      }
+      if (sessions !== undefined) {
+        updateData.account_sessions = normalizeAccountSessions(
+          sessions.filter((session) => !session.current),
+        );
+      }
+      if (activeCompanyProfileId !== undefined) {
+        updateData.active_company_profile_id = activeCompanyProfileId || null;
+      }
 
       await db.collection("web_users").doc(userId).update(updateData);
 
@@ -121,7 +205,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      return NextResponse.json(profile);
+      return NextResponse.json(attachCurrentSession(profile, request));
     }
 
     const {
@@ -159,6 +243,20 @@ export async function POST(request: NextRequest) {
         ...preferences,
       });
     }
+    if (security !== undefined) {
+      nextMetadata.security_settings = normalizeAccountSecuritySettings({
+        ...(existingMetadata.security_settings as Record<string, unknown> | undefined),
+        ...security,
+      });
+    }
+    if (sessions !== undefined) {
+      nextMetadata.account_sessions = normalizeAccountSessions(
+        sessions.filter((session) => !session.current),
+      );
+    }
+    if (activeCompanyProfileId !== undefined) {
+      nextMetadata.active_company_profile_id = activeCompanyProfileId || null;
+    }
 
     const { data, error } = await getSupabaseAdmin().auth.admin.updateUserById(
       userId,
@@ -183,7 +281,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(profile);
+    return NextResponse.json(attachCurrentSession(profile, request));
   } catch (error) {
     console.error("[/api/profile POST] Error:", error);
     return NextResponse.json(

@@ -5,6 +5,7 @@ import { csrfProtection } from "@/lib/security/csrf";
 
 // 需要登录才能访问的路由前缀
 const PROTECTED_ROUTES = [
+  "/admin",
   "/create",
   "/dashboard",
   "/contracts",
@@ -37,6 +38,13 @@ export async function middleware(request: NextRequest) {
       const loginUrl = new URL("/auth?mode=signin", request.url);
       loginUrl.searchParams.set("redirect", pathname);
       return NextResponse.redirect(loginUrl);
+    }
+
+    if (pathname.startsWith("/admin")) {
+      const role = request.cookies.get("auth-role")?.value?.toLowerCase();
+      if (role && role !== "admin" && role !== "super_admin") {
+        return NextResponse.redirect(new URL("/dashboard", request.url));
+      }
     }
   }
 

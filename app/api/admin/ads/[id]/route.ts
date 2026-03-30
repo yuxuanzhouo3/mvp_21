@@ -1,23 +1,37 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 
+import {
+  logAdminApiError,
+  logAdminAudit,
+  requireAdmin,
+  type AdminAuditContext,
+} from "@/lib/auth/admin-auth";
 import {
   deleteAdminAdById,
   getAdminAdById,
   updateAdminAdById,
-} from '@/lib/data/admin-insights-store';
+} from "@/lib/data/admin-insights-store";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
+  let auditContext: AdminAuditContext | undefined;
+
   try {
+    const admin = await requireAdmin(request);
+    if ("error" in admin) {
+      return admin.error;
+    }
+
+    auditContext = admin.auditContext;
     const { id } = await context.params;
     const ad = await getAdminAdById(id);
 
     if (!ad) {
       return NextResponse.json(
-        { success: false, error: { message: 'Ad not found' } },
+        { success: false, error: { message: "Ad not found" } },
         { status: 404 },
       );
     }
@@ -27,23 +41,31 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       data: { ad },
     });
   } catch (error) {
-    console.error('[admin/ads/:id] Failed to fetch ad:', error);
+    logAdminApiError("Failed to fetch admin ad", error, auditContext);
     return NextResponse.json(
-      { success: false, error: { message: 'Failed to fetch ad' } },
+      { success: false, error: { message: "Failed to fetch ad" } },
       { status: 500 },
     );
   }
 }
 
 export async function PUT(request: NextRequest, context: RouteContext) {
+  let auditContext: AdminAuditContext | undefined;
+
   try {
+    const admin = await requireAdmin(request);
+    if ("error" in admin) {
+      return admin.error;
+    }
+
+    auditContext = admin.auditContext;
     const { id } = await context.params;
     const body = await request.json();
 
     const existing = await getAdminAdById(id);
     if (!existing) {
       return NextResponse.json(
-        { success: false, error: { message: 'Ad not found' } },
+        { success: false, error: { message: "Ad not found" } },
         { status: 404 },
       );
     }
@@ -59,41 +81,52 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       end_date: body.end_date,
     });
 
+    logAdminAudit("Admin updated ad", auditContext, { adId: id });
+
     return NextResponse.json({
       success: true,
       data: { ad },
     });
   } catch (error) {
-    console.error('[admin/ads/:id] Failed to update ad:', error);
+    logAdminApiError("Failed to update admin ad", error, auditContext);
     return NextResponse.json(
-      { success: false, error: { message: 'Failed to update ad' } },
+      { success: false, error: { message: "Failed to update ad" } },
       { status: 500 },
     );
   }
 }
 
-export async function DELETE(_request: NextRequest, context: RouteContext) {
-  try {
-    const { id } = await context.params;
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  let auditContext: AdminAuditContext | undefined;
 
+  try {
+    const admin = await requireAdmin(request);
+    if ("error" in admin) {
+      return admin.error;
+    }
+
+    auditContext = admin.auditContext;
+    const { id } = await context.params;
     const existing = await getAdminAdById(id);
+
     if (!existing) {
       return NextResponse.json(
-        { success: false, error: { message: 'Ad not found' } },
+        { success: false, error: { message: "Ad not found" } },
         { status: 404 },
       );
     }
 
     await deleteAdminAdById(id);
+    logAdminAudit("Admin deleted ad", auditContext, { adId: id });
 
     return NextResponse.json({
       success: true,
-      data: { message: 'Ad deleted successfully' },
+      data: { message: "Ad deleted successfully" },
     });
   } catch (error) {
-    console.error('[admin/ads/:id] Failed to delete ad:', error);
+    logAdminApiError("Failed to delete admin ad", error, auditContext);
     return NextResponse.json(
-      { success: false, error: { message: 'Failed to delete ad' } },
+      { success: false, error: { message: "Failed to delete ad" } },
       { status: 500 },
     );
   }

@@ -7,43 +7,15 @@ import {
   type UnifiedCompanyProfile,
 } from "@/lib/data/unified-models";
 
-export async function getCompanyProfile(
-  userId: string,
-): Promise<UnifiedCompanyProfile | null> {
-  if (isChinaRegion()) {
-    const db = getDatabase();
-    const result = await db
-      .collection("company_profiles")
-      .where({ user_id: userId })
-      .limit(1)
-      .get();
+type CompanyProfileInput = Omit<
+  UnifiedCompanyProfile,
+  "id" | "userId" | "createdAt" | "updatedAt"
+>;
 
-    if (!result.data?.length) {
-      return null;
-    }
-
-    return normalizeCompanyProfileRecord(result.data[0]);
-  }
-
-  const { data, error } = await getSupabaseAdmin()
-    .from("company_profiles")
-    .select("*")
-    .eq("user_id", userId)
-    .single();
-
-  if (error || !data) {
-    return null;
-  }
-
-  return normalizeCompanyProfileRecord(data as Record<string, any>);
-}
-
-export async function upsertCompanyProfile(
-  userId: string,
-  input: Omit<UnifiedCompanyProfile, "id" | "userId" | "createdAt" | "updatedAt">,
-): Promise<UnifiedCompanyProfile> {
-  const payload = {
+function buildPayload(userId: string, input: CompanyProfileInput) {
+  return {
     user_id: userId,
+    profile_name: input.profileName,
     company_name: input.companyName,
     credit_code: input.creditCode,
     legal_person: input.legalPerson,
@@ -51,35 +23,82 @@ export async function upsertCompanyProfile(
     contact_person: input.contactPerson,
     contact_phone: input.contactPhone,
     contact_email: input.contactEmail,
+    status: input.status || "active",
+    is_default: Boolean(input.isDefault),
+    source: input.source,
+    ocr_status: input.ocrStatus,
+    license_file_url: input.licenseFileUrl,
+    metadata: input.metadata || {},
+    last_verified_at: input.lastVerifiedAt,
     updated_at: new Date().toISOString(),
   };
+}
+
+export async function listCompanyProfiles(
+  userId: string,
+): Promise<UnifiedCompanyProfile[]> {
+  if (isChinaRegion()) {
+    const db = getDatabase();
+    const result = await db
+      .collection("company_profiles")
+      .where({ user_id: userId })
+      .orderBy("updated_at", "desc")
+      .get();
+
+    return (result.data || []).map((record: Record<string, any>) =>
+      normalizeCompanyProfileRecord(record),
+    );
+  }
+
+  const supabaseAdmin = getSupabaseAdmin() as any;
+  const { data, error } = await supabaseAdmin
+    .from("company_profiles")
+    .select("*")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data || []).map((record: Record<string, any>) =>
+    normalizeCompanyProfileRecord(record as Record<string, any>),
+  );
+}
+
+export async function getCompanyProfile(
+  userId: string,
+  companyId?: string,
+): Promise<UnifiedCompanyProfile | null> {
+  const profiles = await listCompanyProfiles(userId);
+
+  if (!profiles.length) {
+    return null;
+  }
+
+  if (companyId) {
+    return profiles.find((profile) => profile.id === companyId) || null;
+  }
+
+  return profiles[0];
+}
+
+export async function createCompanyProfile(
+  userId: string,
+  input: CompanyProfileInput,
+): Promise<UnifiedCompanyProfile> {
+  const payload = buildPayload(userId, input);
 
   if (isChinaRegion()) {
     const db = getDatabase();
-    const collection = db.collection("company_profiles");
-    const existing = await collection.where({ user_id: userId }).limit(1).get();
-
-    if (existing.data?.length) {
-      const existingRecord = existing.data[0];
-      await collection.doc(existingRecord._id).update(payload);
-      return (
-        (await getCompanyProfile(userId)) || {
-          id: existingRecord._id,
-          userId,
-          ...input,
-          updatedAt: payload.updated_at,
-        }
-      );
-    }
-
     const createdAt = new Date().toISOString();
-    const createResult = await collection.add({
+    const result = await db.collection("company_profiles").add({
       ...payload,
       created_at: createdAt,
     });
 
     return {
-      id: createResult.id,
+      id: result.id,
       userId,
       ...input,
       createdAt,
@@ -87,40 +106,92 @@ export async function upsertCompanyProfile(
     };
   }
 
-  const { data: existing, error: existingError } = await getSupabaseAdmin()
+  const supabaseAdmin = getSupabaseAdmin() as any;
+  const { data, error } = await supabaseAdmin
     .from("company_profiles")
-    .select("id")
-    .eq("user_id", userId)
+    .insert({
+      ...payload,
+      created_at: new Date().toISOString(),
+    })
+    .select("*")
     .single();
 
-  if (existingError && existingError.code !== "PGRST116") {
-    throw existingError;
+  if (error || !data) {
+    throw error || new Error("Failed to create company profile");
   }
 
-  if (existing?.id) {
-    const { error } = await getSupabaseAdmin()
-      .from("company_profiles")
-      .update(payload)
-      .eq("id", existing.id);
-    if (error) {
-      throw error;
+  return normalizeCompanyProfileRecord(data as Record<string, any>);
+}
+
+export async function updateCompanyProfile(
+  id: string,
+  userId: string,
+  input: CompanyProfileInput,
+): Promise<UnifiedCompanyProfile> {
+  const payload = buildPayload(userId, input);
+
+  if (isChinaRegion()) {
+    const db = getDatabase();
+    await db.collection("company_profiles").doc(id).update(payload);
+    const profile = await getCompanyProfile(userId, id);
+
+    if (!profile) {
+      throw new Error("Failed to load company profile after update");
     }
-  } else {
-    const { error } = await getSupabaseAdmin()
-      .from("company_profiles")
-      .insert({
-        ...payload,
-        created_at: new Date().toISOString(),
-      });
-    if (error) {
-      throw error;
-    }
+
+    return profile;
   }
 
-  const profile = await getCompanyProfile(userId);
-  if (!profile) {
-    throw new Error("Failed to load company profile after save");
+  const supabaseAdmin = getSupabaseAdmin() as any;
+  const { data, error } = await supabaseAdmin
+    .from("company_profiles")
+    .update(payload)
+    .eq("id", id)
+    .eq("user_id", userId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw error || new Error("Failed to update company profile");
   }
 
-  return profile;
+  return normalizeCompanyProfileRecord(data as Record<string, any>);
+}
+
+export async function deleteCompanyProfile(
+  id: string,
+  userId: string,
+): Promise<void> {
+  if (isChinaRegion()) {
+    const db = getDatabase();
+    await db.collection("company_profiles").doc(id).remove();
+    return;
+  }
+
+  const supabaseAdmin = getSupabaseAdmin() as any;
+  const { error } = await supabaseAdmin
+    .from("company_profiles")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function upsertCompanyProfile(
+  userId: string,
+  input: CompanyProfileInput & { id?: string },
+): Promise<UnifiedCompanyProfile> {
+  if (input.id) {
+    return updateCompanyProfile(input.id, userId, input);
+  }
+
+  const existing = await getCompanyProfile(userId);
+  if (!existing) {
+    return createCompanyProfile(userId, input);
+  }
+
+  return updateCompanyProfile(existing.id, userId, input);
 }

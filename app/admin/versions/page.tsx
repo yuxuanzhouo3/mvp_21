@@ -14,6 +14,7 @@ import {
 import { toast } from 'sonner';
 
 import { useLanguage } from '@/components/language-provider';
+import { adminFetchJson } from '@/lib/admin/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -82,11 +83,10 @@ export default function VersionsPage() {
   const fetchVersions = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/admin/versions');
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Failed to fetch versions');
-      }
+      const result = await adminFetchJson<{
+        success: true;
+        data: Version[];
+      }>('/api/admin/versions');
       setVersions(result.data || []);
     } catch (error) {
       console.error('Failed to fetch versions:', error);
@@ -134,16 +134,15 @@ export default function VersionsPage() {
       uploadFormData.append('file', form.file);
       uploadFormData.append('folder', 'app-releases');
 
-      const uploadResponse = await fetch('/api/admin/upload', {
+      const uploadResult = await adminFetchJson<{
+        success: true;
+        data: { url: string; size: number };
+      }>('/api/admin/upload', {
         method: 'POST',
         body: uploadFormData,
       });
-      const uploadResult = await uploadResponse.json();
-      if (!uploadResponse.ok || !uploadResult.success) {
-        throw new Error(uploadResult.error || 'Upload failed');
-      }
 
-      const createResponse = await fetch('/api/admin/versions', {
+      await adminFetchJson('/api/admin/versions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -158,10 +157,6 @@ export default function VersionsPage() {
           forceUpdate: form.forceUpdate,
         }),
       });
-      const createResult = await createResponse.json();
-      if (!createResponse.ok || !createResult.success) {
-        throw new Error(createResult.error || 'Create version failed');
-      }
 
       toast.success(isEn ? 'Version uploaded successfully.' : '版本上传成功。');
       resetForm();
@@ -176,7 +171,7 @@ export default function VersionsPage() {
 
   const handleToggle = async (version: Version) => {
     try {
-      const response = await fetch(`/api/admin/versions/${version.id}`, {
+      await adminFetchJson(`/api/admin/versions/${version.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -186,10 +181,6 @@ export default function VersionsPage() {
           forceUpdate: version.forceUpdate,
         }),
       });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Update failed');
-      }
 
       toast.success(isEn ? 'Version status updated.' : '版本状态已更新。');
       await fetchVersions();
@@ -208,13 +199,9 @@ export default function VersionsPage() {
     }
 
     try {
-      const response = await fetch(`/api/admin/versions/${version.id}`, {
+      await adminFetchJson(`/api/admin/versions/${version.id}`, {
         method: 'DELETE',
       });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Delete failed');
-      }
 
       toast.success(isEn ? 'Version deleted.' : '版本已删除。');
       await fetchVersions();

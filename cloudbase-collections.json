@@ -2,7 +2,7 @@
   "collections": [
     {
       "name": "web_users",
-      "description": "用户主表",
+      "description": "Primary user records",
       "indexes": [
         {
           "name": "email_index",
@@ -36,17 +36,32 @@
     },
     {
       "name": "company_profiles",
-      "description": "企业档案表",
+      "description": "Multi-entity company profiles",
       "indexes": [
         {
-          "name": "user_id_unique_index",
-          "keys": [{ "field": "user_id", "order": "asc" }],
-          "unique": true
+          "name": "user_updated_index",
+          "keys": [
+            { "field": "user_id", "order": "asc" },
+            { "field": "updated_at", "order": "desc" }
+          ]
+        },
+        {
+          "name": "user_default_index",
+          "keys": [
+            { "field": "user_id", "order": "asc" },
+            { "field": "is_default", "order": "desc" },
+            { "field": "updated_at", "order": "desc" }
+          ]
+        },
+        {
+          "name": "credit_code_index",
+          "keys": [{ "field": "credit_code", "order": "asc" }]
         }
       ],
       "schema": {
         "_id": "string",
         "user_id": "string",
+        "profile_name": "string",
         "company_name": "string",
         "credit_code": "string",
         "legal_person": "string",
@@ -54,13 +69,20 @@
         "contact_person": "string",
         "contact_phone": "string",
         "contact_email": "string",
+        "status": "string",
+        "is_default": "boolean",
+        "source": "string",
+        "ocr_status": "string",
+        "license_file_url": "string",
+        "metadata": "object",
+        "last_verified_at": "date",
         "created_at": "date",
         "updated_at": "date"
       }
     },
     {
       "name": "contracts",
-      "description": "合同表",
+      "description": "Unified contracts",
       "indexes": [
         {
           "name": "user_id_index",
@@ -95,7 +117,7 @@
     },
     {
       "name": "subscriptions",
-      "description": "订阅表",
+      "description": "Unified subscriptions",
       "indexes": [
         {
           "name": "user_id_index",
@@ -125,7 +147,7 @@
     },
     {
       "name": "payments",
-      "description": "支付表",
+      "description": "Unified payments",
       "indexes": [
         {
           "name": "user_id_index",
@@ -157,7 +179,7 @@
     },
     {
       "name": "refresh_tokens",
-      "description": "刷新令牌表",
+      "description": "Refresh token records",
       "indexes": [
         {
           "name": "token_id_index",
@@ -190,7 +212,46 @@
         "usageCount": "number",
         "region": "string"
       }
+    },
+    {
+      "name": "admin_audit_logs",
+      "description": "Persistent admin audit events",
+      "indexes": [
+        {
+          "name": "created_at_index",
+          "keys": [{ "field": "created_at", "order": "desc" }]
+        },
+        {
+          "name": "actor_created_at_index",
+          "keys": [
+            { "field": "actor_user_id", "order": "asc" },
+            { "field": "created_at", "order": "desc" }
+          ]
+        },
+        {
+          "name": "status_created_at_index",
+          "keys": [
+            { "field": "status", "order": "asc" },
+            { "field": "created_at", "order": "desc" }
+          ]
+        }
+      ],
+      "schema": {
+        "_id": "string",
+        "id": "string",
+        "actor_user_id": "string",
+        "action": "string",
+        "message": "string",
+        "path": "string",
+        "method": "string",
+        "ip": "string",
+        "user_agent": "string",
+        "status": "string",
+        "severity": "string",
+        "meta": "object",
+        "created_at": "date"
+      }
     }
   ],
-  "instructions": "请在 CloudBase 控制台中按以上集合名创建集合和索引。当前前后端统一以 web_users、company_profiles、contracts、subscriptions、payments、refresh_tokens 为主集合，不再建议继续使用旧的 users / orders 命名。"
+  "instructions": "Create or verify the collections and indexes above in the CloudBase console. The canonical collections are web_users, company_profiles, contracts, subscriptions, payments, refresh_tokens, and admin_audit_logs."
 }

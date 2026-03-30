@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   CreditCard,
+  ImagePlus,
   LogOut,
   Mail,
   Phone,
@@ -20,8 +21,8 @@ import { useUser } from "@/components/user-context";
 import { useTranslations } from "@/lib/i18n";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MembershipStatusCard } from "@/components/account/membership-status-card";
 import {
   Card,
   CardContent,
@@ -31,6 +32,41 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+async function readAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("read_failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function compressAvatar(file: File) {
+  const dataUrl = await readAsDataUrl(file);
+
+  return new Promise<string>((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => {
+      const maxSize = 320;
+      const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      const context = canvas.getContext("2d");
+
+      if (!context) {
+        reject(new Error("canvas_unavailable"));
+        return;
+      }
+
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", 0.86));
+    };
+    image.onerror = () => reject(new Error("decode_failed"));
+    image.src = dataUrl;
+  });
+}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -108,6 +144,23 @@ export default function ProfilePage() {
     value: string,
   ) => {
     setProfile((prev) => (prev ? { ...prev, [field]: value } : prev));
+  };
+
+  const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const avatar = await compressAvatar(file);
+      handleChange("avatar", avatar);
+    } catch (uploadError) {
+      console.error("[ProfilePage] Failed to process avatar:", uploadError);
+      setError(content.saveFailed);
+    } finally {
+      event.target.value = "";
+    }
   };
 
   const handleSave = async () => {
@@ -200,15 +253,6 @@ export default function ProfilePage() {
     );
   }
 
-  const membershipLabel =
-    profile.subscription_status === "active" ? content.active : content.inactive;
-  const planLabel =
-    profile.subscription_plan === "pro"
-      ? "Pro"
-      : profile.subscription_plan === "enterprise"
-        ? "Enterprise"
-        : content.free;
-
   return (
     <div className="min-h-screen bg-muted/20">
       <Header />
@@ -242,28 +286,31 @@ export default function ProfilePage() {
                   <div className="truncate text-sm text-muted-foreground">
                     {profile.email}
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Badge variant="secondary">{planLabel}</Badge>
-                    <Badge variant="outline">{membershipLabel}</Badge>
+                  <div className="mt-2">
+                    <Label
+                      htmlFor="profile-avatar-upload"
+                      className="inline-flex cursor-pointer items-center rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm"
+                    >
+                      <ImagePlus className="mr-2 h-4 w-4" />
+                      {content.avatar}
+                    </Label>
+                    <input
+                      id="profile-avatar-upload"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handleAvatarUpload}
+                    />
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-3 rounded-xl border border-border/70 bg-muted/30 p-4">
-                <div className="text-sm font-medium">{content.membership}</div>
-                <div className="text-sm text-muted-foreground">
-                  {profile.membership_expires_at
-                    ? new Date(profile.membership_expires_at).toLocaleDateString(
-                        language === "zh" ? "zh-CN" : "en-US",
-                        {
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                        },
-                      )
-                    : content.membershipNone}
-                </div>
-              </div>
+              <MembershipStatusCard
+                plan={profile.subscription_plan}
+                status={profile.subscription_status}
+                expiresAt={profile.membership_expires_at || profile.subscription_expires_at}
+                language={language}
+              />
 
               <div className="grid gap-3">
                 <Button

@@ -1,19 +1,21 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  Users,
-  FileText,
-  CreditCard,
-  TrendingUp,
-  Eye,
-  MousePointer,
-  DollarSign,
   Activity,
+  CreditCard,
+  DollarSign,
+  Eye,
+  FileText,
   Loader2,
+  MousePointer,
+  TrendingUp,
+  Users,
 } from 'lucide-react';
+
+import { adminFetchJson } from '@/lib/admin/client';
 import { useLanguage } from '@/components/language-provider';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface Stats {
   totalUsers: number;
@@ -46,24 +48,27 @@ export default function AdminDashboard() {
   const currencyPrefix = isEn ? '$' : '¥';
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    const fetchStats = async () => {
+      try {
+        const result = await adminFetchJson<{
+          success: true;
+          data: {
+            stats: Stats;
+            recentUsers?: RecentUser[];
+          };
+        }>('/api/admin/stats');
 
-  const fetchStats = async () => {
-    try {
-      const response = await fetch('/api/admin/stats');
-      const result = await response.json();
-
-      if (result.success) {
         setStats(result.data.stats);
         setRecentUsers(result.data.recentUsers || []);
+      } catch (error) {
+        console.error('Failed to fetch admin stats:', error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Failed to fetch admin stats:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    void fetchStats();
+  }, []);
 
   const paidRate = useMemo(() => {
     if (!stats?.totalUsers) {
@@ -100,7 +105,7 @@ export default function AdminDashboard() {
     if (plan === 'pro') {
       return 'Pro';
     }
-    return isEn ? 'Enterprise' : '企业';
+    return isEn ? 'Enterprise' : '企业版';
   };
 
   if (loading) {
@@ -115,7 +120,7 @@ export default function AdminDashboard() {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="text-gray-500">
-          {isEn ? 'Failed to load dashboard data. Please refresh.' : '加载失败，请刷新页面后重试。'}
+          {isEn ? 'Failed to load dashboard data. Please refresh.' : '加载仪表盘数据失败，请刷新后重试。'}
         </p>
       </div>
     );
@@ -126,9 +131,7 @@ export default function AdminDashboard() {
       <div>
         <h1 className="text-2xl font-bold">{isEn ? 'Dashboard' : '仪表盘'}</h1>
         <p className="text-gray-500">
-          {isEn
-            ? "Welcome back. Here's today's platform overview."
-            : '欢迎回来，这里是今天的平台概览。'}
+          {isEn ? "Welcome back. Here's today's platform overview." : '欢迎回来，这里是今天的平台总览。'}
         </p>
       </div>
 
@@ -193,7 +196,7 @@ export default function AdminDashboard() {
             </div>
             <p className="flex items-center gap-1 text-xs text-green-600">
               <TrendingUp className="h-3 w-3" />
-              {isEn ? 'Revenue trend vs last month' : '相较上月的收入趋势'}
+              {isEn ? 'Revenue trend vs last month' : '对比上月的收入趋势'}
             </p>
           </CardContent>
         </Card>
@@ -208,9 +211,7 @@ export default function AdminDashboard() {
             <Eye className="h-4 w-4 text-gray-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {stats.adImpressions.toLocaleString(locale)}
-            </div>
+            <div className="text-2xl font-bold">{stats.adImpressions.toLocaleString(locale)}</div>
             <p className="text-xs text-gray-500">
               {isEn ? 'Total this month' : '本月累计'}
             </p>
@@ -245,7 +246,7 @@ export default function AdminDashboard() {
               {stats.adRevenue.toLocaleString(locale)}
             </div>
             <p className="text-xs text-green-600">
-              {isEn ? 'Estimated revenue from ad clicks' : '基于点击的广告收入估算'}
+              {isEn ? 'Estimated revenue from ad clicks' : '基于点击估算的广告收入'}
             </p>
           </CardContent>
         </Card>
@@ -256,9 +257,7 @@ export default function AdminDashboard() {
           <CardHeader>
             <CardTitle>{isEn ? 'Contract Metrics' : '合同数据'}</CardTitle>
             <CardDescription>
-              {isEn
-                ? 'Core metrics for generated contracts.'
-                : '已生成合同的核心指标。'}
+              {isEn ? 'Core metrics for generated contracts.' : '已生成合同的核心指标。'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -269,17 +268,11 @@ export default function AdminDashboard() {
                     <FileText className="h-5 w-5 text-blue-600" />
                   </div>
                   <div>
-                    <p className="font-medium">
-                      {isEn ? 'Total Contracts' : '累计合同数'}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {isEn ? 'All time' : '历史累计'}
-                    </p>
+                    <p className="font-medium">{isEn ? 'Total Contracts' : '累计合同数'}</p>
+                    <p className="text-sm text-gray-500">{isEn ? 'All time' : '历史累计'}</p>
                   </div>
                 </div>
-                <span className="text-xl font-bold">
-                  {stats.totalContracts.toLocaleString(locale)}
-                </span>
+                <span className="text-xl font-bold">{stats.totalContracts.toLocaleString(locale)}</span>
               </div>
 
               <div className="flex items-center justify-between">
@@ -288,17 +281,11 @@ export default function AdminDashboard() {
                     <TrendingUp className="h-5 w-5 text-green-600" />
                   </div>
                   <div>
-                    <p className="font-medium">
-                      {isEn ? 'Generated Today' : '今日生成'}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {isEn ? 'Real-time metric' : '实时统计'}
-                    </p>
+                    <p className="font-medium">{isEn ? 'Generated Today' : '今日生成'}</p>
+                    <p className="text-sm text-gray-500">{isEn ? 'Real-time metric' : '实时统计'}</p>
                   </div>
                 </div>
-                <span className="text-xl font-bold">
-                  {stats.contractsToday.toLocaleString(locale)}
-                </span>
+                <span className="text-xl font-bold">{stats.contractsToday.toLocaleString(locale)}</span>
               </div>
 
               <div className="flex items-center justify-between">
@@ -307,11 +294,9 @@ export default function AdminDashboard() {
                     <Users className="h-5 w-5 text-purple-600" />
                   </div>
                   <div>
-                    <p className="font-medium">
-                      {isEn ? 'Contracts per User' : '人均合同数'}
-                    </p>
+                    <p className="font-medium">{isEn ? 'Contracts per User' : '人均合同数'}</p>
                     <p className="text-sm text-gray-500">
-                      {isEn ? 'Average generated contracts' : '平均每位用户的合同数量'}
+                      {isEn ? 'Average generated contracts' : '平均每位用户生成的合同数'}
                     </p>
                   </div>
                 </div>
@@ -325,7 +310,7 @@ export default function AdminDashboard() {
           <CardHeader>
             <CardTitle>{isEn ? 'Recent Users' : '最近注册用户'}</CardTitle>
             <CardDescription>
-              {isEn ? 'Newest users who joined the platform.' : '最新加入平台的用户。'}
+              {isEn ? 'Newest users who joined the platform.' : '最近加入平台的新用户。'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -370,7 +355,7 @@ export default function AdminDashboard() {
                 ))
               ) : (
                 <p className="py-4 text-center text-gray-400">
-                  {isEn ? 'No recent user data yet.' : '暂无最近用户数据。'}
+                  {isEn ? 'No recent user data yet.' : '暂时还没有最近用户数据。'}
                 </p>
               )}
             </div>

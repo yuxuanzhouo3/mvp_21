@@ -30,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { useTranslations, type Language } from "@/lib/i18n";
 
 interface CompanyInfo {
+  id?: string;
   companyName: string;
   creditCode: string;
   legalPerson: string;
@@ -65,6 +66,7 @@ function mergeCompanyInfo(
   incoming?: Partial<CompanyInfo> | null,
 ): CompanyInfo {
   return {
+    id: incoming?.id ?? current.id,
     companyName: incoming?.companyName ?? current.companyName,
     creditCode: incoming?.creditCode ?? current.creditCode,
     legalPerson: incoming?.legalPerson ?? current.legalPerson,
@@ -327,7 +329,7 @@ export default function CompanySetupPage() {
       }
 
       toast.success(content.saveSuccess);
-      router.push("/contracts/new");
+      router.push("/create");
     } catch (error) {
       console.error("[company-setup] Save failed:", error);
       toast.error(content.saveFailed);

@@ -1,41 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
-import { accountLockout } from "@/lib/security/account-lockout";
-import { logSecurityEvent } from "@/lib/utils/logger";
-import { requireAuth } from "@/lib/auth/auth";
 import { z } from "zod";
 
-// 解锁请求验证schema
+import {
+  logAdminApiError,
+  logAdminAudit,
+  requireAdmin,
+  type AdminAuditContext,
+} from "@/lib/auth/admin-auth";
+import { accountLockout } from "@/lib/security/account-lockout";
+import { logSecurityEvent } from "@/lib/utils/logger";
+
 const unlockSchema = z.object({
   email: z.string().email("Invalid email format"),
   reason: z.string().min(1, "Reason is required"),
 });
 
-/**
- * POST /api/auth/unlock
- * 管理员手动解锁账户（需要认证）
- */
 export async function POST(request: NextRequest) {
+  let auditContext: AdminAuditContext | undefined;
+
   try {
-    // 验证管理员权限
-    const authResult = await requireAuth(request);
-    if (!authResult) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
+    const admin = await requireAdmin(request);
+    if ("error" in admin) {
+      return admin.error;
     }
 
-    // TODO: 添加管理员角色检查
-    // 这里应该检查用户是否是管理员
-    // 暂时允许所有认证用户访问（生产环境应该限制）
-
+    auditContext = admin.auditContext;
     const body = await request.json();
     const clientIP =
       request.headers.get("x-forwarded-for") ||
       request.headers.get("x-real-ip") ||
       "unknown";
 
-    // 验证输入
     const validationResult = unlockSchema.safeParse(body);
     if (!validationResult.success) {
       return NextResponse.json(
@@ -44,13 +39,11 @@ export async function POST(request: NextRequest) {
           code: "VALIDATION_ERROR",
           details: validationResult.error.errors,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const { email, reason } = validationResult.data;
-
-    // 检查账户当前状态
     const beforeStatus = accountLockout.getAccountStatus(email);
     const wasLocked = accountLockout.isLocked(email).locked;
 
@@ -60,46 +53,50 @@ export async function POST(request: NextRequest) {
           error: "Account is not locked",
           code: "ACCOUNT_NOT_LOCKED",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // 解锁账户
     const unlocked = accountLockout.unlockAccount(email);
 
-    if (unlocked) {
-      logSecurityEvent("account_unlocked", authResult.user.id, clientIP, {
-        targetEmail: email,
-        reason,
-        adminUserId: authResult.user.id,
-        previousFailedAttempts: beforeStatus.failedAttempts,
-        previousProgressiveLevel: beforeStatus.progressiveLevel,
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: "Account unlocked successfully",
-        email,
-        unlockedAt: new Date().toISOString(),
-      });
-    } else {
+    if (!unlocked) {
       return NextResponse.json(
         {
           error: "Failed to unlock account",
           code: "UNLOCK_FAILED",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
+
+    logSecurityEvent("account_unlocked", admin.userId, clientIP, {
+      targetEmail: email,
+      reason,
+      adminUserId: admin.userId,
+      previousFailedAttempts: beforeStatus.failedAttempts,
+      previousProgressiveLevel: beforeStatus.progressiveLevel,
+    });
+    logAdminAudit("Admin unlocked a locked account", auditContext, {
+      targetEmail: email,
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Account unlocked successfully",
+      email,
+      unlockedAt: new Date().toISOString(),
+    });
   } catch (error) {
-    console.error("Account unlock error:", error);
+    logAdminApiError("Failed to unlock account", error, auditContext, {
+      action: "auth.unlock",
+    });
     logSecurityEvent(
       "account_unlock_error",
-      undefined,
+      auditContext?.actorUserId,
       request.headers.get("x-forwarded-for") || "unknown",
       {
         error: error instanceof Error ? error.message : "Unknown error",
-      }
+      },
     );
 
     return NextResponse.json(
@@ -107,7 +104,7 @@ export async function POST(request: NextRequest) {
         error: "Internal server error",
         code: "INTERNAL_ERROR",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

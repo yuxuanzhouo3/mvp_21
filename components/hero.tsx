@@ -38,7 +38,7 @@ export function Hero() {
 
         <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
           <Button size="lg" asChild className="w-full sm:w-auto">
-            <Link href="/contracts/new">
+            <Link href="/create">
               {t.hero.cta}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>

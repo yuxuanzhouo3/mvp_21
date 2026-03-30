@@ -19,6 +19,7 @@ import {
 } from "@/lib/auth/auth-state-manager";
 import { getAuthClient } from "@/lib/auth/client";
 import type { UserPreferences } from "@/lib/account/profile";
+import { resolveUserRole } from "@/lib/auth/user-role";
 import { isChinaRegion } from "@/lib/config/region";
 import { supabase } from "@/lib/integrations/supabase";
 
@@ -27,6 +28,7 @@ export interface UserProfile {
   email: string;
   name?: string;
   avatar?: string;
+  role?: string;
   subscription_plan?: string;
   subscription_status?: string;
   subscription_expires_at?: string;
@@ -49,6 +51,7 @@ const PREVIEW_USER: UserProfile = {
   id: "preview-user",
   email: "preview@contracthub.local",
   name: "Preview User",
+  role: "admin",
   subscription_plan: "pro",
   subscription_status: "active",
 };
@@ -71,6 +74,7 @@ function mapSupabaseSessionUser(sessionUser: {
       sessionUser.user_metadata?.avatar ||
       sessionUser.user_metadata?.avatar_url ||
       "",
+    role: resolveUserRole(sessionUser),
     preferences: sessionUser.user_metadata?.preferences,
   };
 }
@@ -168,7 +172,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
           if (cachedUser) {
             console.log("[UserContext] Restored user from Supabase cache");
-            syncSupabaseAuthCookie();
+            syncSupabaseAuthCookie(undefined, cachedUser.role || "user");
             authState = { user: cachedUser as UserProfile };
           } else {
             console.log("[UserContext] Cache miss, reading Supabase session");

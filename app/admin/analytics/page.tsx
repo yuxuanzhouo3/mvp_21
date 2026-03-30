@@ -28,6 +28,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useLanguage } from '@/components/language-provider';
+import { adminFetchJson } from '@/lib/admin/client';
 
 interface AnalyticsData {
   userTrend: Array<{ date: string; count: number }>;
@@ -98,12 +99,12 @@ export default function AnalyticsPage() {
   const fetchAnalytics = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/analytics?days=${days}`);
-      const result = await response.json();
+      const result = await adminFetchJson<{
+        success: true;
+        data: AnalyticsData;
+      }>(`/api/admin/analytics?days=${days}`);
 
-      if (result.success) {
-        setData(result.data);
-      }
+      setData(result.data);
     } catch (error) {
       console.error('Failed to fetch analytics:', error);
     } finally {

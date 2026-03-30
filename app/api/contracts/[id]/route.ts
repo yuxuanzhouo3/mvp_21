@@ -6,6 +6,10 @@ import {
   updateContractRecord,
 } from "@/lib/data/contracts-store";
 import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
+import {
+  appendContractUpdateLog,
+  applyContractAction,
+} from "@/lib/contracts/enhancements";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -41,11 +45,19 @@ async function requireCurrentUser(request: NextRequest) {
     authResult.user?.role ||
     authResult.user?.user_metadata?.role ||
     "user";
+  const actor =
+    authResult.user?.name ||
+    authResult.user?.email ||
+    authResult.user?.user_metadata?.displayName ||
+    authResult.user?.user_metadata?.full_name ||
+    authResult.user?.user_metadata?.email ||
+    "Current User";
 
   return {
     user: {
       id: authResult.userId,
       role,
+      actor,
     },
   };
 }
@@ -119,7 +131,26 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     }
 
     const body = await request.json();
-    const contract = await updateContractRecord(id, {
+    const action =
+      body.action === "archive" ||
+      body.action === "unarchive" ||
+      body.action === "start_signing" ||
+      body.action === "confirm_sender" ||
+      body.action === "confirm_counterparty" ||
+      body.action === "send_reminder"
+        ? body.action
+        : null;
+
+    if (action) {
+      const updated = await updateContractRecord(id, applyContractAction(existing, action, auth.user.actor, body.note));
+
+      return NextResponse.json({
+        success: true,
+        data: { contract: updated },
+      });
+    }
+
+    const updateInput = {
       title: body.title,
       type: body.type,
       status: body.status,
@@ -137,6 +168,18 @@ export async function PUT(request: NextRequest, context: RouteContext) {
           ? body.metadata
           : undefined,
       region: body.region,
+    };
+
+    const nextMetadata = appendContractUpdateLog(
+      existing,
+      auth.user.actor,
+      body.updateDescription || "Contract content and workflow settings were updated",
+      updateInput.metadata,
+    );
+
+    const contract = await updateContractRecord(id, {
+      ...updateInput,
+      metadata: nextMetadata,
     });
 
     return NextResponse.json({
