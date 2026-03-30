@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,8 @@ function AuthPageContent() {
   const [loginMethod, setLoginMethod] = useState<"password" | "otp">("password");
   const [forgotStep, setForgotStep] = useState<"off" | "request" | "verify" | "reset">("off");
   const [region, setRegion] = useState<RegionType>(isChinaDeployment() ? RegionType.CHINA : RegionType.USA);
+  const authActionLockRef = useRef(false);
+  const redirectingRef = useRef(false);
   const supportsOtp = region !== RegionType.CHINA;
   const thirdPartyUnavailable =
     (region === RegionType.CHINA && !config.features.wechatAuth) ||
@@ -70,9 +72,6 @@ function AuthPageContent() {
   const postAuthUrl = useMemo(() => buildUrl(postAuthPath), [buildUrl, postAuthPath]);
 
   useEffect(() => setRegion(isChinaDeployment() ? RegionType.CHINA : RegionType.USA), []);
-  useEffect(() => {
-    if (user && !userLoading) router.replace(postAuthUrl);
-  }, [postAuthUrl, router, user, userLoading]);
 
   const clearFeedback = () => {
     setNotice("");
@@ -105,48 +104,108 @@ function AuthPageContent() {
     setConfirmNewPassword("");
   };
 
-  const goSignedIn = () => {
-    window.dispatchEvent(new Event("auth-state-changed"));
+  const goSignedIn = useCallback(() => {
+    if (redirectingRef.current) {
+      return;
+    }
+
+    redirectingRef.current = true;
+
+    if (region === RegionType.CHINA && typeof window !== "undefined") {
+      window.location.replace(postAuthUrl);
+      return;
+    }
+
     router.replace(postAuthUrl);
-  };
+  }, [postAuthUrl, region, router]);
+
+  const runLockedAuthAction = useCallback(async (action: () => Promise<void>) => {
+    if (authActionLockRef.current) {
+      return;
+    }
+
+    authActionLockRef.current = true;
+    try {
+      await action();
+    } finally {
+      authActionLockRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      authActionLockRef.current = false;
+    }
+  }, [loading]);
+
+  useEffect(() => {
+    if (!user) {
+      redirectingRef.current = false;
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!userLoading && user) {
+      goSignedIn();
+    }
+  }, [goSignedIn, user, userLoading]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handlePageShow = () => {
+      redirectingRef.current = false;
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
 
   const onSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading || !requirePrivacy()) return;
-    clearFeedback();
-    setLoading(true);
-    try {
-      const { error: err } = await authClient.signInWithPassword({ email, password });
-      if (err) throw err;
-      goSignedIn();
-    } catch (err) {
-      setError(msg(err) || t.auth.loginFailed);
-    } finally {
-      setLoading(false);
-    }
+
+    await runLockedAuthAction(async () => {
+      clearFeedback();
+      setLoading(true);
+      try {
+        const { error: err } = await authClient.signInWithPassword({ email, password });
+        if (err) throw err;
+        goSignedIn();
+      } catch (err) {
+        setError(msg(err) || t.auth.loginFailed);
+      } finally {
+        setLoading(false);
+      }
+    });
   };
 
   const onOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading || !supportsOtp) return;
-    clearFeedback();
-    setLoading(true);
-    try {
-      if (!otpSent) {
-        const { error: err } = await authClient.signInWithOtp({ email });
-        if (err) throw err;
-        setOtpSent(true);
-        setNotice(t.auth.otpSent);
-      } else {
-        const { error: err } = await authClient.verifyOtp({ email, token: otp, type: "email" });
-        if (err) throw err;
-        goSignedIn();
+
+    await runLockedAuthAction(async () => {
+      clearFeedback();
+      setLoading(true);
+      try {
+        if (!otpSent) {
+          const { error: err } = await authClient.signInWithOtp({ email });
+          if (err) throw err;
+          setOtpSent(true);
+          setNotice(t.auth.otpSent);
+        } else {
+          const { error: err } = await authClient.verifyOtp({ email, token: otp, type: "email" });
+          if (err) throw err;
+          goSignedIn();
+        }
+      } catch (err) {
+        setError(msg(err));
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setError(msg(err));
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   const onSignUp = async (e: React.FormEvent) => {
