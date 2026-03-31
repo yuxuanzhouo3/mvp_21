@@ -1,10 +1,26 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
+  },
+  async redirects() {
+    return [
+      {
+        source: "/contracts/create",
+        destination: "/create",
+        permanent: true,
+      },
+      {
+        source: "/contracts/new",
+        destination: "/create",
+        permanent: true,
+      },
+      {
+        source: "/contracts/upload-template",
+        destination: "/create/import?method=screenshot&legacy=upload-template",
+        permanent: true,
+      },
+    ];
   },
   images: {
     unoptimized: true,

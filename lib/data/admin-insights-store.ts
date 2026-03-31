@@ -37,6 +37,8 @@ type AdStats = {
   revenue: number;
 };
 
+type RawRecord = Record<string, any>;
+
 export interface AdminStatsPayload {
   stats: {
     totalUsers: number;
@@ -165,6 +167,10 @@ function toSafeString(value: unknown, fallback = '') {
   return typeof value === 'string' ? value : fallback;
 }
 
+function getIntlTable(table: string) {
+  return getSupabaseAdmin().from(table as any) as any;
+}
+
 function isWithinRange(value: unknown, startDate: Date) {
   if (!value || typeof value !== 'string') {
     return false;
@@ -247,7 +253,7 @@ function countByName(values: string[]) {
 }
 
 async function safeSupabaseSelect<T>(
-  queryFactory: () => Promise<{ data: T[] | null; error: any }>,
+  queryFactory: () => PromiseLike<{ data: T[] | null; error: any }>,
 ) {
   try {
     const { data, error } = await queryFactory();
@@ -261,7 +267,7 @@ async function safeSupabaseSelect<T>(
 }
 
 async function safeSupabaseCount(
-  queryFactory: () => Promise<{ count: number | null; error: any }>,
+  queryFactory: () => PromiseLike<{ count: number | null; error: any }>,
 ) {
   try {
     const { count, error } = await queryFactory();
@@ -276,8 +282,7 @@ async function safeSupabaseCount(
 
 async function loadIntlUsersFromTable() {
   const rows = await safeSupabaseSelect<Record<string, any>>(() =>
-    getSupabaseAdmin()
-      .from('users')
+    getIntlTable('users')
       .select('id,email,nickname,subscription_type,subscription_plan,created_at,updated_at,last_login_at')
       .order('created_at', { ascending: false }),
   );
@@ -408,8 +413,7 @@ async function loadChinaContractsSince(startDate?: Date) {
 
 async function loadIntlContractsSince(startDate?: Date) {
   return safeSupabaseSelect<Record<string, any>>(() => {
-    let query = getSupabaseAdmin()
-      .from('contracts')
+    let query = getIntlTable('contracts')
       .select('id,user_id,type,created_at,updated_at');
 
     if (startDate) {
@@ -448,8 +452,7 @@ async function loadChinaPaymentsSince(startDate?: Date) {
 
 async function loadIntlPaymentsSince(startDate?: Date) {
   const payments = await safeSupabaseSelect<Record<string, any>>(() => {
-    let query = getSupabaseAdmin()
-      .from('payments')
+    let query = getIntlTable('payments')
       .select('id,user_id,amount,status,payment_method,currency,created_at');
 
     if (startDate) {
@@ -464,8 +467,7 @@ async function loadIntlPaymentsSince(startDate?: Date) {
   }
 
   const orders = await safeSupabaseSelect<Record<string, any>>(() => {
-    let query = getSupabaseAdmin()
-      .from('orders')
+    let query = getIntlTable('orders')
       .select('id,user_id,amount,status,payment_method,currency,created_at');
 
     if (startDate) {
@@ -499,8 +501,7 @@ async function loadChinaSubscriptions() {
 
 async function loadIntlSubscriptions() {
   return safeSupabaseSelect<Record<string, any>>(() =>
-    getSupabaseAdmin()
-      .from('subscriptions')
+    getIntlTable('subscriptions')
       .select('id,user_id,plan,plan_id,status,billing_cycle,payment_method,current_period_end,created_at,updated_at'),
   );
 }
@@ -612,8 +613,7 @@ async function loadChinaAdRows() {
 
 async function loadIntlAdRows() {
   return safeSupabaseSelect<Record<string, any>>(() =>
-    getSupabaseAdmin()
-      .from('ads')
+    getIntlTable('ads')
       .select('id,name,position,type,content,link,status,start_date,end_date,impressions,clicks,revenue,created_at,updated_at'),
   );
 }
@@ -642,8 +642,7 @@ async function loadChinaAdStatsRows(days: number) {
 async function loadIntlAdStatsRows(days: number) {
   const startDate = addDays(startOfDay(new Date()), -days + 1);
   const rows = await safeSupabaseSelect<Record<string, any>>(() =>
-    getSupabaseAdmin()
-      .from('ad_stats')
+    getIntlTable('ad_stats')
       .select('date,impressions,clicks,revenue')
       .gte('date', formatDateKey(startDate))
       .order('date', { ascending: true }),
@@ -654,8 +653,7 @@ async function loadIntlAdStatsRows(days: number) {
   }
 
   return safeSupabaseSelect<Record<string, any>>(() =>
-    getSupabaseAdmin()
-      .from('usage_logs')
+    getIntlTable('usage_logs')
       .select('action,created_at')
       .in('action', ['ad_impression', 'ad_click'])
       .gte('created_at', startDate.toISOString())
@@ -754,7 +752,15 @@ export async function getAdminOverviewStats(): Promise<AdminStatsPayload> {
     Math.floor((today.getTime() - monthStart.getTime()) / (24 * 60 * 60 * 1000)) + 1,
   );
 
-  const [users, recentContracts, monthPayments, recentPayments, subscriptions, adRows, adStatsRows] =
+  const [
+    users,
+    recentContracts,
+    monthPayments,
+    recentPayments,
+    subscriptions,
+    adRows,
+    adStatsRows,
+  ]: [AdminUserSummary[], RawRecord[], RawRecord[], RawRecord[], RawRecord[], RawRecord[], RawRecord[]] =
     await Promise.all([
       loadAdminUsers(),
       loadAdminContractsSince(sevenDaysAgo),
@@ -777,16 +783,18 @@ export async function getAdminOverviewStats(): Promise<AdminStatsPayload> {
     }
 
     const total = await safeSupabaseCount(() =>
-      getSupabaseAdmin().from('contracts').select('id', { count: 'exact', head: true }),
+      getIntlTable('contracts').select('id', { count: 'exact', head: true }),
     );
     return total || recentContracts.length;
   })();
 
-  const contractsToday = recentContracts.filter((contract) =>
+  const contractsToday = recentContracts.filter((contract: RawRecord) =>
     isWithinRange(contract.created_at, today),
   ).length;
 
-  const newUsersToday = users.filter((user) => isWithinRange(user.created_at, today)).length;
+  const newUsersToday = users.filter((user: AdminUserSummary) =>
+    isWithinRange(user.created_at, today),
+  ).length;
   const activeUsers = deriveActiveUserCount(
     users,
     recentContracts,
@@ -796,30 +804,34 @@ export async function getAdminOverviewStats(): Promise<AdminStatsPayload> {
   );
   const paidUsers = derivePaidUserCount(users, subscriptions);
   const revenue = Number(
-    monthPayments.reduce((sum, payment) => sum + toNumber(payment.amount), 0).toFixed(2),
+    monthPayments
+      .reduce((sum: number, payment: RawRecord) => sum + toNumber(payment.amount), 0)
+      .toFixed(2),
   );
   const adTrend = buildAdTrend(monthDays, adStatsRows);
   const adStatsFromTrend = {
-    totalImpressions: adTrend.reduce((sum, item) => sum + item.impressions, 0),
-    totalClicks: adTrend.reduce((sum, item) => sum + item.clicks, 0),
+    totalImpressions: adTrend.reduce((sum: number, item: AdTrendPoint) => sum + item.impressions, 0),
+    totalClicks: adTrend.reduce((sum: number, item: AdTrendPoint) => sum + item.clicks, 0),
   };
   const adStats = {
     totalImpressions:
       adStatsFromTrend.totalImpressions > 0
         ? adStatsFromTrend.totalImpressions
-        : adRows.reduce((sum, row) => sum + toNumber(row.impressions), 0),
+        : adRows.reduce((sum: number, row: RawRecord) => sum + toNumber(row.impressions), 0),
     totalClicks:
       adStatsFromTrend.totalClicks > 0
         ? adStatsFromTrend.totalClicks
-        : adRows.reduce((sum, row) => sum + toNumber(row.clicks), 0),
+        : adRows.reduce((sum: number, row: RawRecord) => sum + toNumber(row.clicks), 0),
     revenue:
       adStatsRows.length > 0
         ? Number(
-            adStatsRows.reduce((sum, row) => sum + toNumber(row.revenue), 0).toFixed(2),
+            adStatsRows
+              .reduce((sum: number, row: RawRecord) => sum + toNumber(row.revenue), 0)
+              .toFixed(2),
           )
         : Number(
             adRows
-              .reduce((sum, row) => sum + toNumber(row.revenue), 0)
+              .reduce((sum: number, row: RawRecord) => sum + toNumber(row.revenue), 0)
               .toFixed(2),
           ),
     ctr: '0',
@@ -842,7 +854,7 @@ export async function getAdminOverviewStats(): Promise<AdminStatsPayload> {
       adClicks: adStats.totalClicks,
       adRevenue: adStats.revenue,
     },
-    recentUsers: users.slice(0, 5).map((user) => ({
+    recentUsers: users.slice(0, 5).map((user: AdminUserSummary) => ({
       id: user.id,
       email: user.email,
       nickname: user.nickname,
@@ -857,7 +869,12 @@ export async function getAdminAnalytics(days: number): Promise<AdminAnalyticsPay
   const startDate = addDays(startOfDay(new Date()), -normalizedDays + 1);
   const activeWindowStart = addDays(startOfDay(new Date()), -6);
 
-  const [users, contracts, payments, subscriptions] = await Promise.all([
+  const [users, contracts, payments, subscriptions]: [
+    AdminUserSummary[],
+    RawRecord[],
+    RawRecord[],
+    RawRecord[],
+  ] = await Promise.all([
     loadAdminUsers(),
     loadAdminContractsSince(startDate),
     loadAdminPaymentsSince(startDate),
@@ -876,16 +893,20 @@ export async function getAdminAnalytics(days: number): Promise<AdminAnalyticsPay
   const activeRate = totalUsers > 0 ? ((activeUsers7d / totalUsers) * 100).toFixed(1) : '0';
 
   return {
-    userTrend: bucketCountsByDate(users, (user) => user.created_at, normalizedDays),
+    userTrend: bucketCountsByDate(
+      users,
+      (user: AdminUserSummary) => user.created_at,
+      normalizedDays,
+    ),
     contractTrend: bucketCountsByDate(
       contracts,
-      (contract) => toSafeString(contract.created_at),
+      (contract: RawRecord) => toSafeString(contract.created_at),
       normalizedDays,
     ),
     revenueTrend: bucketAmountByDate(
       payments,
-      (payment) => toSafeString(payment.created_at),
-      (payment) => toNumber(payment.amount),
+      (payment: RawRecord) => toSafeString(payment.created_at),
+      (payment: RawRecord) => toNumber(payment.amount),
       normalizedDays,
     ),
     subscriptionChart: deriveSubscriptionDistribution(users, subscriptions),
@@ -919,8 +940,8 @@ export async function listAdminAds(): Promise<AdminAdRecord[]> {
   const rows = await loadAdminAdRows();
 
   return rows
-    .map((record) => normalizeAdminAdRecord(record))
-    .sort((left, right) =>
+    .map((record: RawRecord) => normalizeAdminAdRecord(record))
+    .sort((left: AdminAdRecord, right: AdminAdRecord) =>
       toSafeString(right.updated_at || right.created_at).localeCompare(
         toSafeString(left.updated_at || left.created_at),
       ),
@@ -953,8 +974,7 @@ export async function createAdminAd(
     return getAdminAdById(result.id);
   }
 
-  const { data: created, error } = await getSupabaseAdmin()
-    .from("ads")
+  const { data: created, error } = await getIntlTable("ads")
     .insert(payload)
     .select("*")
     .single();
@@ -982,8 +1002,7 @@ export async function getAdminAdById(id: string): Promise<AdminAdRecord | null> 
   }
 
   const rows = await safeSupabaseSelect<Record<string, any>>(() =>
-    getSupabaseAdmin()
-      .from('ads')
+    getIntlTable('ads')
       .select('*')
       .eq('id', id)
       .limit(1),
@@ -1009,7 +1028,7 @@ export async function updateAdminAdById(
     return getAdminAdById(id);
   }
 
-  const { error } = await getSupabaseAdmin().from('ads').update(payload).eq('id', id);
+  const { error } = await getIntlTable('ads').update(payload).eq('id', id);
   if (error) {
     throw error;
   }
@@ -1023,7 +1042,7 @@ export async function deleteAdminAdById(id: string) {
     return;
   }
 
-  const { error } = await getSupabaseAdmin().from('ads').delete().eq('id', id);
+  const { error } = await getIntlTable('ads').delete().eq('id', id);
   if (error) {
     throw error;
   }

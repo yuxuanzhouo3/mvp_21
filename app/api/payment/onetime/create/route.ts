@@ -17,6 +17,15 @@ import {
 } from "@/lib/payment/payment-config";
 import type { PaymentMethod, BillingCycle } from "@/lib/payment/payment-config";
 
+type CreatedPaymentResult = {
+  success: boolean;
+  paymentId?: string;
+  paymentUrl?: string;
+  codeUrl?: string;
+  transactionId?: string;
+  error?: string;
+};
+
 export async function POST(request: NextRequest) {
   // 应用速率限制
   return new Promise<NextResponse>((resolve) => {
@@ -196,7 +205,7 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
     };
 
     // 根据支付方式创建支付
-    let result;
+    let result: CreatedPaymentResult | null = null;
 
     try {
       if (method === "stripe") {

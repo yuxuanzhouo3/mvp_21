@@ -35,14 +35,28 @@ function deepMerge<T extends Record<string, unknown>, U extends Record<string, u
   return result as T & U;
 }
 
-export const translations = {
-  zh: deepMerge(baseTranslations.zh, translationOverrides.zh),
-  en: deepMerge(baseTranslations.en, translationOverrides.en),
-} as const;
-
 export type Language = "zh" | "en";
 export type Locale = Language;
-export type Translations = typeof translations.zh;
+
+type DeepWidenLiterals<T> =
+  T extends string ? string
+  : T extends number ? number
+  : T extends boolean ? boolean
+  : T extends readonly (infer U)[] ? DeepWidenLiterals<U>[]
+  : T extends (...args: never[]) => unknown ? T
+  : T extends object ? { [K in keyof T]: DeepWidenLiterals<T[K]> }
+  : T;
+
+export type Translations =
+  DeepWidenLiterals<typeof zh> &
+  DeepWidenLiterals<typeof en> &
+  DeepWidenLiterals<typeof translationOverrides.zh> &
+  DeepWidenLiterals<typeof translationOverrides.en>;
+
+export const translations: Record<Language, Translations> = {
+  zh: deepMerge(baseTranslations.zh, translationOverrides.zh) as unknown as Translations,
+  en: deepMerge(baseTranslations.en, translationOverrides.en) as unknown as Translations,
+};
 
 export function useTranslations(language: Language): Translations {
   return translations[language] || translations.zh;

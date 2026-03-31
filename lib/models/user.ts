@@ -154,6 +154,10 @@ export function createProfileFromWechatUser(
     unionid?: string;
     nickname?: string;
     headimgurl?: string;
+    sex?: number;
+    province?: string;
+    city?: string;
+    country?: string;
   },
 ): UserProfile {
   return {

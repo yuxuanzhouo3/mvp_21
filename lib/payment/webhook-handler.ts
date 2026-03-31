@@ -41,7 +41,7 @@ export class WebhookHandler {
   async processWebhook(
     provider: string,
     eventType: string,
-    eventData: any
+    eventData: any,
   ): Promise<boolean> {
     const startTime = Date.now();
 
@@ -1222,7 +1222,9 @@ export class WebhookHandler {
       logInfo("Found recent pending PayPal payments", {
         subscriptionId,
         count: recentPayments.length,
-        transactionIds: recentPayments.map((p) => p.transaction_id),
+        transactionIds: recentPayments.map(
+          (p: { transaction_id?: string }) => p.transaction_id
+        ),
       });
 
       // 使用第一个最近的 pending 支付（假设用户刚刚创建）

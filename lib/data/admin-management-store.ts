@@ -10,6 +10,10 @@ import { getSupabaseAdmin } from '@/lib/integrations/supabase-admin';
 
 type RawRecord = Record<string, any>;
 
+function getIntlTable(table: string) {
+  return getSupabaseAdmin().from(table as any) as any;
+}
+
 export interface AdminManagedUser {
   id: string;
   email: string;
@@ -222,7 +226,7 @@ function getContentTypeFromName(fileName: string, fallback = 'application/octet-
 }
 
 async function safeSupabaseRows<T>(
-  factory: () => Promise<{ data: T[] | null; error: any }>,
+  factory: () => PromiseLike<{ data: T[] | null; error: any }>,
 ): Promise<T[]> {
   try {
     const { data, error } = await factory();
@@ -236,7 +240,7 @@ async function safeSupabaseRows<T>(
 }
 
 async function safeSupabaseSingle<T>(
-  factory: () => Promise<{ data: T | null; error: any }>,
+  factory: () => PromiseLike<{ data: T | null; error: any }>,
 ): Promise<T | null> {
   try {
     const { data, error } = await factory();
@@ -250,7 +254,7 @@ async function safeSupabaseSingle<T>(
 }
 
 async function safeSupabaseCount(
-  factory: () => Promise<{ count: number | null; error: any }>,
+  factory: () => PromiseLike<{ count: number | null; error: any }>,
 ): Promise<number> {
   try {
     const { count, error } = await factory();
@@ -263,7 +267,7 @@ async function safeSupabaseCount(
   }
 }
 
-async function trySupabaseMutation(factory: () => Promise<{ error: any }>) {
+async function trySupabaseMutation(factory: () => PromiseLike<{ error: any }>) {
   try {
     await factory();
   } catch {
@@ -301,8 +305,7 @@ async function loadIntlAuthUsers() {
 
 async function loadIntlUserRows() {
   return safeSupabaseRows<RawRecord>(() =>
-    getSupabaseAdmin()
-      .from('users')
+    getIntlTable('users')
       .select('id,email,phone,nickname,avatar,subscription_type,role,created_at,updated_at,last_login_at')
       .order('created_at', { ascending: false }),
   );
@@ -310,16 +313,14 @@ async function loadIntlUserRows() {
 
 async function loadIntlProfileRows() {
   return safeSupabaseRows<RawRecord>(() =>
-    getSupabaseAdmin()
-      .from('user_profiles')
+    getIntlTable('user_profiles')
       .select('id,email,full_name,avatar_url,subscription_plan,subscription_status,created_at,updated_at'),
   );
 }
 
 async function loadIntlSubscriptionRows() {
   return safeSupabaseRows<RawRecord>(() =>
-    getSupabaseAdmin()
-      .from('subscriptions')
+    getIntlTable('subscriptions')
       .select('id,user_id,plan_id,status,current_period_end,created_at,updated_at')
       .order('updated_at', { ascending: false }),
   );
@@ -684,11 +685,11 @@ export async function updateAdminUser(id: string, payload: Partial<AdminManagedU
   if (payload.role !== undefined) usersUpdate.role = normalizeRole(payload.role);
 
   await trySupabaseMutation(() =>
-    getSupabaseAdmin().from('users').update(usersUpdate).eq('id', id),
+    getIntlTable('users').update(usersUpdate).eq('id', id),
   );
 
   await trySupabaseMutation(() =>
-    getSupabaseAdmin().from('user_profiles').upsert(
+    getIntlTable('user_profiles').upsert(
       {
         id,
         email: payload.email,
@@ -720,9 +721,9 @@ export async function deleteAdminUser(id: string) {
     // Keep removing compatibility rows even when auth user is gone.
   }
 
-  await trySupabaseMutation(() => getSupabaseAdmin().from('users').delete().eq('id', id));
+  await trySupabaseMutation(() => getIntlTable('users').delete().eq('id', id));
   await trySupabaseMutation(() =>
-    getSupabaseAdmin().from('user_profiles').delete().eq('id', id),
+    getIntlTable('user_profiles').delete().eq('id', id),
   );
 }
 
@@ -746,8 +747,7 @@ async function deactivateVersionsByPlatform(platform: string, excludeId?: string
     return;
   }
 
-  let query = getSupabaseAdmin()
-    .from('app_versions')
+  let query = getIntlTable('app_versions')
     .update({ is_active: false })
     .eq('platform', platform);
   if (excludeId) {
@@ -768,8 +768,7 @@ export async function listAdminVersions(): Promise<AdminManagedVersion[]> {
   }
 
   const rows = await safeSupabaseRows<RawRecord>(() =>
-    getSupabaseAdmin()
-      .from('app_versions')
+    getIntlTable('app_versions')
       .select('id,platform,version,build_number,file_url,file_size,changelog,force_update,is_active,created_at')
       .order('created_at', { ascending: false }),
   );
@@ -790,8 +789,7 @@ async function getAdminVersionById(id: string): Promise<AdminManagedVersion | nu
   }
 
   const row = await safeSupabaseSingle<RawRecord>(() =>
-    getSupabaseAdmin()
-      .from('app_versions')
+    getIntlTable('app_versions')
       .select('id,platform,version,build_number,file_url,file_size,changelog,force_update,is_active,created_at')
       .eq('id', id)
       .single(),
@@ -824,8 +822,7 @@ export async function createAdminVersion(input: VersionInput) {
     return getAdminVersionById(result.id);
   }
 
-  const { data, error } = await getSupabaseAdmin()
-    .from('app_versions')
+  const { data, error } = await getIntlTable('app_versions')
     .insert(payload)
     .select('id,platform,version,build_number,file_url,file_size,changelog,force_update,is_active,created_at')
     .single();
@@ -875,7 +872,7 @@ export async function updateAdminVersion(id: string, input: UpdateVersionInput) 
   if (input.forceUpdate !== undefined) updateData.force_update = Boolean(input.forceUpdate);
   if (input.isActive !== undefined) updateData.is_active = Boolean(input.isActive);
 
-  const { error } = await getSupabaseAdmin().from('app_versions').update(updateData).eq('id', id);
+  const { error } = await getIntlTable('app_versions').update(updateData).eq('id', id);
   if (error) {
     throw error;
   }
@@ -890,7 +887,7 @@ export async function deleteAdminVersion(id: string) {
     return;
   }
 
-  const { error } = await getSupabaseAdmin().from('app_versions').delete().eq('id', id);
+  const { error } = await getIntlTable('app_versions').delete().eq('id', id);
   if (error) {
     throw error;
   }

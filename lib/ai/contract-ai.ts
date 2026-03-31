@@ -3,6 +3,7 @@
  * 核心功能：专家角色分析、专业合同生成
  * 支持：OpenAI (国际) / 通义千问 (国内)
  */
+/* eslint-disable react-hooks/rules-of-hooks */
 
 import OpenAI from 'openai';
 import {

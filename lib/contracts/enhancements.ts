@@ -31,7 +31,13 @@ export interface ContractEvidenceRecord {
   label: string;
   description: string;
   createdAt: string;
-  type: "confirmation" | "reminder" | "archive" | "final_copy" | "update";
+  type:
+    | "confirmation"
+    | "reminder"
+    | "archive"
+    | "final_copy"
+    | "update"
+    | "signature";
 }
 
 export interface ContractSigningParticipant {
@@ -216,7 +222,8 @@ export function normalizeContractEnhancementMeta(
             evidence.type === "confirmation" ||
             evidence.type === "reminder" ||
             evidence.type === "archive" ||
-            evidence.type === "final_copy"
+            evidence.type === "final_copy" ||
+            evidence.type === "signature"
               ? evidence.type
               : "update",
         }),

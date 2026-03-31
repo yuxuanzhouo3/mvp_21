@@ -9,10 +9,19 @@ import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
 import {
   appendContractUpdateLog,
   applyContractAction,
+  normalizeContractEnhancementMeta,
 } from "@/lib/contracts/enhancements";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
+}
+
+function ensureRecord(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  return undefined;
 }
 
 async function requireCurrentUser(request: NextRequest) {
@@ -141,15 +150,6 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         ? body.action
         : null;
 
-    if (action) {
-      const updated = await updateContractRecord(id, applyContractAction(existing, action, auth.user.actor, body.note));
-
-      return NextResponse.json({
-        success: true,
-        data: { contract: updated },
-      });
-    }
-
     const updateInput = {
       title: body.title,
       type: body.type,
@@ -169,6 +169,128 @@ export async function PUT(request: NextRequest, context: RouteContext) {
           : undefined,
       region: body.region,
     };
+
+    if (action) {
+      const signatureInput = ensureRecord(body.signatureInput);
+      const enhancement = normalizeContractEnhancementMeta(existing.metadata, existing);
+      const nextSignatures = updateInput.signatures ?? existing.signatures;
+      let nextMetadata = updateInput.metadata ?? existing.metadata;
+
+      if (signatureInput) {
+        const role =
+          signatureInput.role === "counterparty" ? "counterparty" : "sender";
+        const method =
+          signatureInput.method === "draw" ||
+          signatureInput.method === "type" ||
+          signatureInput.method === "upload"
+            ? signatureInput.method
+            : "type";
+        const signerName =
+          typeof signatureInput.signerName === "string" && signatureInput.signerName.trim()
+            ? signatureInput.signerName.trim()
+            : role === "sender"
+              ? "Sender"
+              : "Counterparty";
+        const createdAt =
+          typeof signatureInput.createdAt === "string"
+            ? signatureInput.createdAt
+            : new Date().toISOString();
+
+        const signatureRecord = {
+          id:
+            typeof signatureInput.id === "string" && signatureInput.id.trim()
+              ? signatureInput.id
+              : `signature-${Date.now()}`,
+          role,
+          method,
+          signerName,
+          source: "mobile",
+          legalConsent: signatureInput.legalConsent === true,
+          typedName:
+            typeof signatureInput.typedName === "string"
+              ? signatureInput.typedName
+              : undefined,
+          imageDataUrl:
+            typeof signatureInput.imageDataUrl === "string"
+              ? signatureInput.imageDataUrl
+              : undefined,
+          imageMimeType:
+            typeof signatureInput.imageMimeType === "string"
+              ? signatureInput.imageMimeType
+              : undefined,
+          fileName:
+            typeof signatureInput.fileName === "string"
+              ? signatureInput.fileName
+              : undefined,
+          createdAt,
+        };
+
+        nextMetadata = {
+          ...nextMetadata,
+          signFlow: {
+            ...enhancement.signFlow,
+            evidence: [
+              {
+                id: `signature-evidence-${Date.now()}`,
+                label: role === "sender" ? "Sender signature captured" : "Counterparty signature captured",
+                description: `Signature captured on mobile via ${method}${signatureRecord.fileName ? ` (${signatureRecord.fileName})` : ""}.`,
+                createdAt,
+                type: "signature",
+              },
+              ...enhancement.signFlow.evidence,
+            ].slice(0, 20),
+          },
+        };
+
+        const mergedSignatures = [...nextSignatures, signatureRecord].slice(-20);
+
+        const updated = await updateContractRecord(
+          id,
+          {
+            ...applyContractAction(
+              {
+                ...existing,
+                signatures: mergedSignatures,
+                metadata: nextMetadata,
+              },
+              action,
+              auth.user.actor,
+              body.note,
+            ),
+            ...updateInput,
+            signatures: mergedSignatures,
+          },
+        );
+
+        return NextResponse.json({
+          success: true,
+          data: { contract: updated },
+        });
+      }
+
+      const updated = await updateContractRecord(
+        id,
+        {
+          ...updateInput,
+          ...applyContractAction(
+            {
+              ...existing,
+              ...updateInput,
+              signatures: nextSignatures,
+              metadata: nextMetadata,
+            },
+            action,
+            auth.user.actor,
+            body.note,
+          ),
+        },
+      );
+
+      return NextResponse.json({
+        success: true,
+        data: { contract: updated },
+      });
+    }
 
     const nextMetadata = appendContractUpdateLog(
       existing,

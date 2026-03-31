@@ -7,24 +7,20 @@ import { useLanguage } from "@/components/language-provider";
 import { ContractList } from "@/components/dashboard/contract-list";
 import { ConsoleShell } from "@/components/layout/console-shell";
 import { Button } from "@/components/ui/button";
-import { useTranslations } from "@/lib/i18n";
 
 export default function ContractsPage() {
   const { language } = useLanguage();
-  const t = useTranslations(language);
+  const isEn = language === "en";
 
-  const labels = t.platform?.consoleModules || {
-    overview: language === "en" ? "Overview" : "总览",
-    contracts: language === "en" ? "Contracts" : "合同",
+  const labels = {
+    overview: isEn ? "Overview" : "总览",
+    contracts: isEn ? "Contracts" : "合同",
   };
 
-  const content = t.pages?.contracts || {
-    title: language === "en" ? "Contracts" : "合同管理",
-    description:
-      language === "en"
-        ? "Manage all your contracts in one place."
-        : "在一个页面统一管理所有合同。",
-    primaryAction: language === "en" ? "New Contract" : "新建合同",
+  const content = {
+    title: isEn ? "Contracts" : "合同管理",
+    description: isEn ? "Manage all your contracts in one place." : "在一个页面中统一管理所有合同。",
+    primaryAction: isEn ? "New Contract" : "新建合同",
   };
 
   return (

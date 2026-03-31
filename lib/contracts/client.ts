@@ -31,7 +31,7 @@ export interface ContractListItem {
 }
 
 export type ContractDetail = UnifiedContractRecord;
-export type ContractExportFormat = "html" | "word";
+export type ContractExportFormat = "html" | "word" | "pdf";
 export type ContractAction =
   | "archive"
   | "unarchive"
@@ -253,7 +253,7 @@ export async function downloadContractForCurrentUser(
   const blob = await response.blob();
   const fileName = getDownloadFileName(
     response.headers.get("content-disposition"),
-    `contract-${id}.${format === "word" ? "doc" : "html"}`,
+    `contract-${id}.${format === "word" ? "doc" : format}`,
   );
 
   const downloadUrl = window.URL.createObjectURL(blob);
@@ -267,20 +267,5 @@ export async function downloadContractForCurrentUser(
 }
 
 export async function exportContractPdfForCurrentUser(id: string): Promise<void> {
-  const printWindow = window.open("", "_blank", "noopener,noreferrer");
-  if (!printWindow) {
-    throw new Error("PRINT_WINDOW_BLOCKED");
-  }
-
-  const response = await fetchContractExportResponse(id, { format: "pdf" });
-  const html = await response.text();
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-
-  printWindow.onload = () => {
-    printWindow.focus();
-    printWindow.print();
-  };
+  await downloadContractForCurrentUser(id, "pdf");
 }

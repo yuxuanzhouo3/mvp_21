@@ -150,10 +150,14 @@ export class SessionManager {
       if (result.error) {
         throw new Error(`Failed to update session: ${String(result.error)}`);
       }
-      return this.mapCloudBaseSession(result.data);
+      const updatedSession = await this.getSession(sessionId, userId);
+      if (!updatedSession) {
+        throw new Error("Failed to load updated session");
+      }
+      return updatedSession;
     } else {
       // Supabase
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await (supabaseAdmin
         .from("gpt_sessions")
         .update({
           ...updates,
@@ -162,7 +166,7 @@ export class SessionManager {
         .eq("id", sessionId)
         .eq("user_id", userId)
         .select()
-        .single();
+        .single() as Promise<{ data: any; error: { message: string } | null }>);
 
       if (error) {
         throw new Error(`Failed to update session: ${error.message}`);

@@ -40,9 +40,8 @@ import {
   listContractsForCurrentUser,
   type ContractListItem,
 } from "@/lib/contracts/client";
-import { useTranslations } from "@/lib/i18n";
 
-type ContractFilter = "all" | ContractListItem["status"];
+type ContractFilter = "all" | "pending" | "completed" | "draft" | "signed";
 
 function formatDate(value?: string, locale = "zh-CN") {
   if (!value) {
@@ -64,9 +63,34 @@ function formatDate(value?: string, locale = "zh-CN") {
 export function ContractList() {
   const router = useRouter();
   const { language } = useLanguage();
-  const t = useTranslations(language);
   const isEn = language === "en";
-  const content = t.pages.contracts;
+
+  const content = {
+    title: isEn ? "Contracts" : "合同管理",
+    primaryAction: isEn ? "New Contract" : "新建合同",
+    searchPlaceholder: isEn ? "Search contract title, parties, or region..." : "搜索合同标题、签约方或地区...",
+    emptyTitle: isEn ? "No contracts yet" : "暂无合同",
+    emptyDescription: isEn ? "Create your first contract to get started." : "开始创建你的第一份合同吧。",
+    noResultsTitle: isEn ? "No matching contracts" : "没有匹配的合同",
+    noResultsDescription: isEn ? "Try a different keyword or status filter." : "试试更换关键字或筛选状态。",
+    loadFailed: isEn ? "Failed to load contracts." : "加载合同失败，请稍后重试。",
+    deleteConfirm: isEn ? "Delete this contract? This action cannot be undone." : "确定要删除这份合同吗？此操作无法撤销。",
+    deleteSuccess: isEn ? "Contract deleted." : "合同已删除。",
+    deleteFailed: isEn ? "Failed to delete contract." : "删除合同失败，请稍后重试。",
+    viewAction: isEn ? "View" : "查看",
+    downloadAction: isEn ? "Download" : "下载",
+    deleteAction: isEn ? "Delete" : "删除",
+    statusDraft: isEn ? "Draft" : "草稿",
+    statusPending: isEn ? "Pending" : "待处理",
+    statusActive: isEn ? "Active" : "生效中",
+    statusSigned: isEn ? "Signed" : "已签署",
+    statusCompleted: isEn ? "Completed" : "已完成",
+    statusExpired: isEn ? "Expired" : "已过期",
+    statusCancelled: isEn ? "Cancelled" : "已取消",
+    untitled: isEn ? "Untitled Contract" : "未命名合同",
+    loadingDescription: isEn ? "Loading contracts..." : "正在加载合同列表...",
+    allLabel: isEn ? "All" : "全部",
+  };
 
   const [contracts, setContracts] = useState<ContractListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -142,14 +166,14 @@ export function ContractList() {
   };
 
   const tabItems: Array<{ value: ContractFilter; label: string }> = [
-    { value: "all", label: t.common.all },
+    { value: "all", label: content.allLabel },
     { value: "pending", label: content.statusPending },
     { value: "completed", label: content.statusCompleted },
     { value: "draft", label: content.statusDraft },
     { value: "signed", label: content.statusSigned },
   ];
 
-  const counts = useMemo(() => {
+  const counts = useMemo<Record<ContractFilter, number>>(() => {
     return {
       all: contracts.length,
       pending: contracts.filter((item) => item.status === "pending").length,
@@ -169,11 +193,7 @@ export function ContractList() {
           return true;
         }
 
-        return [
-          contract.title,
-          contract.region,
-          contract.parties.join(" "),
-        ]
+        return [contract.title, contract.region, contract.parties.join(" ")]
           .filter(Boolean)
           .join(" ")
           .toLowerCase()
@@ -307,9 +327,7 @@ export function ContractList() {
                   </div>
 
                   <div className="flex items-center gap-2 self-end sm:self-center">
-                    {contract.region ? (
-                      <Badge variant="outline">{contract.region}</Badge>
-                    ) : null}
+                    {contract.region ? <Badge variant="outline">{contract.region}</Badge> : null}
                     <Badge className={cn("border", meta.className)}>{meta.label}</Badge>
 
                     <DropdownMenu>
@@ -319,7 +337,9 @@ export function ContractList() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => router.push(`/contracts/${contract.id}?ctx=dashboard`)}>
+                        <DropdownMenuItem
+                          onClick={() => router.push(`/contracts/${contract.id}?ctx=dashboard`)}
+                        >
                           <Eye className="mr-2 h-4 w-4" />
                           {content.viewAction}
                         </DropdownMenuItem>

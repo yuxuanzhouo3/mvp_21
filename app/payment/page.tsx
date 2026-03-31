@@ -1,192 +1,134 @@
 "use client";
 
-import { useEffect, useState } from "react";
+/* eslint-disable react-hooks/set-state-in-effect */
+
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { SubscriptionPlans } from "@/components/payment/subscription-plans";
-import { PaymentForm } from "@/components/payment/payment-form";
-import { BillingHistory } from "@/components/payment/billing-history";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { ArrowLeft, CheckCircle } from "lucide-react";
-import { RegionType } from "@/lib/architecture-modules/core/types";
-import { isChinaRegion } from "@/lib/config/region";
+
+import { BillingHistory } from "@/components/payment/billing-history";
+import { PaymentForm } from "@/components/payment/payment-form";
+import { SubscriptionPlans } from "@/components/payment/subscription-plans";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useLanguage } from "@/components/language-provider";
 import { useUser } from "@/components/user-context";
 import { useToast } from "@/hooks/use-toast";
-import { useLanguage } from "@/components/language-provider";
+import { RegionType } from "@/lib/architecture-modules/core/types";
+import { isChinaRegion } from "@/lib/config/region";
 import { useTranslations } from "@/lib/i18n";
 import { getAmountByCurrency } from "@/lib/payment/payment-config";
 
+type SelectedPlan = {
+  planId: string;
+  billingCycle: "monthly" | "yearly";
+  amount: number;
+  currency: string;
+  description: string;
+};
+
 export default function PaymentPage() {
-  const { user, loading } = useUser();
   const router = useRouter();
   const { toast } = useToast();
-  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const { language } = useLanguage();
+  const { user, loading } = useUser();
   const t = useTranslations(language);
+  const isZh = language === "zh";
+
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<SelectedPlan | null>(null);
+  const [paymentResult, setPaymentResult] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState("plans");
+
   const currentPlan = user?.subscription_plan || "free";
+  const region = isChinaRegion() ? RegionType.CHINA : RegionType.USA;
+  const currency = isChinaRegion() ? "CNY" : "USD";
 
-  // 获取当前URL的debug参数
-  const currentDebugParam =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("debug")
-      : null;
-
-  // 辅助函数：构建包含debug参数的URL
-  const buildUrl = (path: string) => {
-    if (currentDebugParam) {
-      return `${path}?debug=${currentDebugParam}`;
+  const buildUrl = useCallback((path: string) => {
+    if (typeof window === "undefined") {
+      return path;
     }
-    return path;
-  };
 
-  // 根据区域配置确定货币
-  const getRegionAndCurrency = () => {
-    if (isChinaRegion()) {
-      return { region: RegionType.CHINA, currency: "CNY" };
-    } else {
-      return { region: RegionType.USA, currency: "USD" };
+    const debug = new URLSearchParams(window.location.search).get("debug");
+    return debug ? `${path}?debug=${debug}` : path;
+  }, []);
+
+  const convertPrice = useCallback((usdPrice: number, targetCurrency: string) => {
+    if (targetCurrency === "CNY") {
+      return Math.round(usdPrice * 7.2 * 100) / 100;
     }
-  };
 
-  const { region, currency } = getRegionAndCurrency();
+    return usdPrice;
+  }, []);
 
-  // 货币转换函数（基于当前汇率，大约1 USD = 7.2 CNY）
-  const convertPrice = (usdPrice: number, targetCurrency: string) => {
-    switch (targetCurrency) {
-      case "CNY":
-        return Math.round(usdPrice * 7.2 * 100) / 100; // 人民币
-      case "USD":
-      default:
-        return usdPrice; // 美元
-    }
-  };
-
-  // 当加载状态超过一定时间，提示用户网络缓慢，避免误以为页面卡死
   useEffect(() => {
-    if (!loading) return;
-    const id = setTimeout(() => {
+    if (!loading) {
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
       toast({
         title: t.common.loading,
         description: t.payment.subtitle,
       });
     }, 10000);
-    return () => clearTimeout(id);
-  }, [loading, toast, t]);
 
-  // 标记初始加载完成，增加超时保护
+    return () => clearTimeout(timeoutId);
+  }, [loading, t, toast]);
+
   useEffect(() => {
     if (!loading) {
       setInitialLoadComplete(true);
-    } else {
-      // 如果loading超过30秒，强制标记为完成
-      const timeoutId = setTimeout(() => {
-        console.warn("Payment页面加载超时，强制完成加载状态");
-        setInitialLoadComplete(true);
-      }, 30000);
-      return () => clearTimeout(timeoutId);
+      return;
     }
+
+    const timeoutId = setTimeout(() => {
+      console.warn("Payment page loading timed out, forcing the initial load state to finish.");
+      setInitialLoadComplete(true);
+    }, 30000);
+
+    return () => clearTimeout(timeoutId);
   }, [loading]);
 
-  const [selectedPlan, setSelectedPlan] = useState<{
-    planId: string;
-    billingCycle: "monthly" | "yearly";
-    amount: number;
-    currency: string;
-    description: string;
-  } | null>(null);
-  const [paymentResult, setPaymentResult] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState("plans");
-
-  // 处理用户未登录的重定向
   useEffect(() => {
     if (!loading && !user && initialLoadComplete) {
       router.push(buildUrl("/auth"));
     }
-  }, [loading, user, initialLoadComplete, router, buildUrl]);
+  }, [buildUrl, initialLoadComplete, loading, router, user]);
 
-  // 如果正在重定向或用户未登录，显示加载状态
-  if (!loading && !user && initialLoadComplete) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-4 flex items-center justify-center">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-muted-foreground">
-                {language === "zh"
-                  ? "正在跳转到登录页面..."
-                  : "Redirecting to login page..."}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // 只在首次加载时显示全屏加载状态
-  // 后续的 loading 状态不应该重置整个页面
-  // 如果 initialLoadComplete 为 true，即使 loading 为 true 也显示页面
-  if (loading && !initialLoadComplete) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-4 flex items-center justify-center">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-muted-foreground">{t.common.loading}</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                {language === "zh"
-                  ? "如果加载时间过长，请刷新页面"
-                  : "If loading takes too long, please refresh the page"}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  const handleSelectPlan = (
-    planId: string,
-    billingCycle: "monthly" | "yearly",
-  ) => {
-    // 根据货币类型确定价格（使用统一配置）
-    const amount = getAmountByCurrency(currency, billingCycle);
-
-    const description =
-      language === "zh"
+  const handleSelectPlan = useCallback(
+    (planId: string, billingCycle: "monthly" | "yearly") => {
+      const amount = getAmountByCurrency(currency, billingCycle);
+      const description = isZh
         ? `专业版 - ${billingCycle === "monthly" ? "月付" : "年付"}`
         : `Pro Plan - ${billingCycle === "monthly" ? "Monthly" : "Yearly"}`;
 
-    setSelectedPlan({
-      planId,
-      billingCycle,
-      amount,
-      currency,
-      description,
-    });
-    setPaymentResult(null);
-  };
+      setSelectedPlan({
+        planId,
+        billingCycle,
+        amount,
+        currency,
+        description,
+      });
+      setPaymentResult(null);
+    },
+    [currency, isZh],
+  );
 
-  const handlePaymentSuccess = (result: any) => {
-    setPaymentResult(result);
+  const handlePaymentSuccess = useCallback(
+    (result: any) => {
+      setPaymentResult(result);
 
-    // 如果有支付URL或微信二维码，处理支付
-    if (result.paymentUrl) {
-      // 检查是否是微信支付（codeUrl 格式的二维码链接）
+      if (!result.paymentUrl) {
+        return;
+      }
+
       if (
         typeof result.paymentUrl === "string" &&
         (result.paymentUrl.startsWith("weixin://") ||
           result.paymentUrl.includes("weixin://"))
       ) {
-        console.log("WeChat Native payment - redirect to QR code page");
-        // 微信支付：跳转到专门的二维码页面
         const qrcodeUrl = `/payment/wechat-qrcode?codeUrl=${encodeURIComponent(
           result.paymentUrl,
         )}&paymentId=${encodeURIComponent(
@@ -196,86 +138,109 @@ export default function PaymentPage() {
         return;
       }
 
-      // 检查是否是HTML表单 (支付宝返回的是HTML)
       if (
         typeof result.paymentUrl === "string" &&
         result.paymentUrl.includes("<form")
       ) {
-        console.log("Redirecting to Alipay payment page...");
-
-        // 支付宝：跳转到专门的支付重定向页面（绕过CSP限制）
-        // 将表单HTML进行base64编码后作为URL参数传递
         const encodedForm = btoa(result.paymentUrl);
-        const redirectUrl = `/payment/redirect?form=${encodeURIComponent(
-          encodedForm,
-        )}`;
-
-        console.log("Redirect URL created");
-        window.location.href = redirectUrl;
-      } else {
-        // 其他支付方式返回的是URL，直接跳转
-        console.log("Redirecting to payment URL:", result.paymentUrl);
-        window.location.href = result.paymentUrl;
+        window.location.href = `/payment/redirect?form=${encodeURIComponent(encodedForm)}`;
+        return;
       }
-    }
-  };
 
-  const handlePaymentError = (error: string) => {
-    console.error("Payment error:", error);
-    toast({
-      title: t.payment.messages.failed,
-      description: error,
-      variant: "destructive",
-    });
-  };
+      window.location.href = result.paymentUrl;
+    },
+    [selectedPlan?.amount],
+  );
 
-  const handleBack = () => {
+  const handlePaymentError = useCallback(
+    (message: string) => {
+      console.error("Payment error:", message);
+      toast({
+        title: t.payment.messages.failed,
+        description: message,
+        variant: "destructive",
+      });
+    },
+    [t.payment.messages.failed, toast],
+  );
+
+  const handleBack = useCallback(() => {
     if (selectedPlan) {
       setSelectedPlan(null);
-    } else {
-      router.back();
+      return;
     }
-  };
+
+    router.back();
+  }, [router, selectedPlan]);
+
+  if (!loading && !user && initialLoadComplete) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50 p-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <p className="text-muted-foreground">
+                {isZh ? "正在跳转到登录页..." : "Redirecting to the login page..."}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (loading && !initialLoadComplete) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50 p-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <p className="text-muted-foreground">{t.common.loading}</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {isZh
+                  ? "如果加载时间过长，请刷新页面后重试。"
+                  : "If loading takes too long, please refresh the page and try again."}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-4">
-      <div className="max-w-6xl mx-auto">
-        {/* 头部导航 */}
+      <div className="mx-auto max-w-6xl">
         <div className="mb-6">
           <Button variant="ghost" onClick={handleBack} className="mb-4">
-            <ArrowLeft className="h-4 w-4 mr-2" />
+            <ArrowLeft className="mr-2 h-4 w-4" />
             {t.common.back}
           </Button>
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold">
-            {t.payment.manage}
-          </h1>
-          <p className="text-sm sm:text-base text-muted-foreground mt-2">
+          <h1 className="text-2xl font-bold sm:text-3xl lg:text-4xl">{t.payment.manage}</h1>
+          <p className="mt-2 text-sm text-muted-foreground sm:text-base">
             {t.payment.subtitle}
           </p>
         </div>
 
-        {/* 支付成功提示 */}
-        {paymentResult && (
+        {paymentResult ? (
           <Card className="mb-6 border-green-200 bg-green-50">
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
                 <CheckCircle className="h-6 w-6 text-green-600" />
                 <div>
                   <h3 className="font-medium text-green-800">
-                    {language === "zh"
-                      ? "支付创建成功"
-                      : "Payment Created Successfully"}
+                    {isZh ? "支付单已创建" : "Payment order created"}
                   </h3>
-                  <p className="text-sm text-green-600 mt-1">
-                    {language === "zh"
-                      ? "请按照提示完成支付流程"
-                      : "Please follow the instructions to complete the payment"}
+                  <p className="mt-1 text-sm text-green-700">
+                    {isZh
+                      ? "请按照页面提示继续完成支付流程。"
+                      : "Follow the next step on screen to finish the payment flow."}
                   </p>
                 </div>
               </div>
             </CardContent>
           </Card>
-        )}
+        ) : null}
 
         <Tabs
           value={activeTab}
@@ -287,14 +252,13 @@ export default function PaymentPage() {
               {t.payment.title}
             </TabsTrigger>
             <TabsTrigger value="payment" className="text-xs sm:text-sm">
-              {language === "zh" ? "支付" : "Payment"}
+              {isZh ? "支付" : "Payment"}
             </TabsTrigger>
             <TabsTrigger value="history" className="text-xs sm:text-sm">
               {t.payment.billing}
             </TabsTrigger>
           </TabsList>
 
-          {/* 订阅计划 */}
           <TabsContent value="plans">
             <SubscriptionPlans
               onSelectPlan={handleSelectPlan}
@@ -305,10 +269,9 @@ export default function PaymentPage() {
             />
           </TabsContent>
 
-          {/* 支付表单 */}
           <TabsContent value="payment">
             {selectedPlan ? (
-              <div className="max-w-2xl mx-auto">
+              <div className="mx-auto max-w-2xl">
                 <PaymentForm
                   planId={selectedPlan.planId}
                   billingCycle={selectedPlan.billingCycle}
@@ -324,20 +287,13 @@ export default function PaymentPage() {
             ) : (
               <Card>
                 <CardContent className="pt-6">
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground mb-4">
-                      {language === "zh"
-                        ? "请先选择一个订阅计划"
-                        : "Please select a subscription plan first"}
+                  <div className="py-8 text-center">
+                    <p className="mb-4 text-muted-foreground">
+                      {isZh
+                        ? "请先选择一个订阅方案。"
+                        : "Please select a subscription plan first."}
                     </p>
-                    <Button
-                      onClick={() => {
-                        const plansTab = document.querySelector(
-                          '[value="plans"]',
-                        ) as HTMLElement;
-                        plansTab?.click();
-                      }}
-                    >
+                    <Button onClick={() => setActiveTab("plans")}>
                       {t.payment.choosePlan}
                     </Button>
                   </div>
@@ -346,7 +302,6 @@ export default function PaymentPage() {
             )}
           </TabsContent>
 
-          {/* 账单历史 */}
           <TabsContent value="history">
             <BillingHistory userId={user?.id || ""} />
           </TabsContent>

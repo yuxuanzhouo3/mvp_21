@@ -55,6 +55,39 @@ export interface CompanyProfileRecord {
   updated_at: string;
 }
 
+export interface ContractTemplateRecord {
+  _id?: string;
+  name: string;
+  description?: string;
+  category?: string;
+  content: string;
+  is_public?: boolean;
+  user_id?: string;
+  status?: "active" | "draft" | "archived";
+  version?: number;
+  source_template_id?: string;
+  usage_count?: number;
+  last_used_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceMemberRecord {
+  _id?: string;
+  workspace_owner_id: string;
+  user_id?: string;
+  email: string;
+  name?: string;
+  avatar?: string;
+  role: "owner" | "admin" | "member";
+  status: "active" | "invited" | "suspended";
+  invited_by?: string;
+  joined_at?: string;
+  last_active_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AdminAuditLogRecord {
   _id?: string;
   id?: string;
@@ -227,7 +260,9 @@ export interface RefreshTokenRecord {
 export const CLOUDBASE_COLLECTIONS = {
   WEB_USERS: "web_users",
   COMPANY_PROFILES: "company_profiles",
+  CONTRACT_TEMPLATES: "contract_templates",
   CONTRACTS: "contracts",
+  WORKSPACE_MEMBERS: "workspace_members",
   AI_CONVERSATIONS: "ai_conversations",
   PAYMENTS: "payments",
   TOKENS: "tokens",
@@ -250,10 +285,19 @@ export const CLOUDBASE_INDEXES = {
     { key: { credit_code: 1 } },
     { key: { updated_at: -1 } },
   ],
+  [CLOUDBASE_COLLECTIONS.CONTRACT_TEMPLATES]: [
+    { key: { is_public: 1, category: 1, created_at: -1 } },
+    { key: { user_id: 1, updated_at: -1 } },
+  ],
   [CLOUDBASE_COLLECTIONS.CONTRACTS]: [
     { key: { user_id: 1, created_at: -1 } },
     { key: { status: 1 } },
     { key: { updated_at: -1 } },
+  ],
+  [CLOUDBASE_COLLECTIONS.WORKSPACE_MEMBERS]: [
+    { key: { workspace_owner_id: 1, created_at: -1 } },
+    { key: { user_id: 1 } },
+    { key: { email: 1 } },
   ],
   [CLOUDBASE_COLLECTIONS.AI_CONVERSATIONS]: [
     { key: { user_id: 1, created_at: -1 } },

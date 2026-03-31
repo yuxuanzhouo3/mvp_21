@@ -39,13 +39,14 @@ interface RecentUser {
 }
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [recentUsers, setRecentUsers] = useState<RecentUser[]>([]);
-  const [loading, setLoading] = useState(true);
   const { language } = useLanguage();
   const isEn = language === 'en';
   const locale = isEn ? 'en-US' : 'zh-CN';
-  const currencyPrefix = isEn ? '$' : '¥';
+  const currency = isEn ? 'USD' : 'CNY';
+
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [recentUsers, setRecentUsers] = useState<RecentUser[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -70,10 +71,16 @@ export default function AdminDashboard() {
     void fetchStats();
   }, []);
 
+  const formatCurrency = useMemo(
+    () => new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: 0 }),
+    [currency, locale],
+  );
+
   const paidRate = useMemo(() => {
     if (!stats?.totalUsers) {
       return '0.0';
     }
+
     return ((stats.paidUsers / stats.totalUsers) * 100).toFixed(1);
   }, [stats]);
 
@@ -81,6 +88,7 @@ export default function AdminDashboard() {
     if (!stats?.totalUsers) {
       return '0.0';
     }
+
     return ((stats.activeUsers / stats.totalUsers) * 100).toFixed(1);
   }, [stats]);
 
@@ -88,6 +96,7 @@ export default function AdminDashboard() {
     if (!stats?.adImpressions) {
       return '0.00';
     }
+
     return ((stats.adClicks / stats.adImpressions) * 100).toFixed(2);
   }, [stats]);
 
@@ -95,6 +104,7 @@ export default function AdminDashboard() {
     if (!stats?.totalUsers) {
       return '0.0';
     }
+
     return (stats.totalContracts / stats.totalUsers).toFixed(1);
   }, [stats]);
 
@@ -120,7 +130,9 @@ export default function AdminDashboard() {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="text-gray-500">
-          {isEn ? 'Failed to load dashboard data. Please refresh.' : '加载仪表盘数据失败，请刷新后重试。'}
+          {isEn
+            ? 'Failed to load dashboard data. Please refresh and try again.'
+            : '加载后台总览失败，请刷新后重试。'}
         </p>
       </div>
     );
@@ -129,9 +141,9 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">{isEn ? 'Dashboard' : '仪表盘'}</h1>
+        <h1 className="text-2xl font-bold">{isEn ? 'Dashboard' : '后台总览'}</h1>
         <p className="text-gray-500">
-          {isEn ? "Welcome back. Here's today's platform overview." : '欢迎回来，这里是今天的平台总览。'}
+          {isEn ? "Welcome back. Here's today's platform overview." : '欢迎回来，这里是今天的平台概览。'}
         </p>
       </div>
 
@@ -177,7 +189,7 @@ export default function AdminDashboard() {
           <CardContent>
             <div className="text-2xl font-bold">{stats.paidUsers.toLocaleString(locale)}</div>
             <p className="text-xs text-gray-500">
-              {isEn ? `Conversion ${paidRate}%` : `转化率 ${paidRate}%`}
+              {isEn ? `Conversion ${paidRate}%` : `付费转化率 ${paidRate}%`}
             </p>
           </CardContent>
         </Card>
@@ -190,13 +202,10 @@ export default function AdminDashboard() {
             <DollarSign className="h-4 w-4 text-gray-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {currencyPrefix}
-              {stats.revenue.toLocaleString(locale)}
-            </div>
+            <div className="text-2xl font-bold">{formatCurrency.format(stats.revenue)}</div>
             <p className="flex items-center gap-1 text-xs text-green-600">
               <TrendingUp className="h-3 w-3" />
-              {isEn ? 'Revenue trend vs last month' : '对比上月的收入趋势'}
+              {isEn ? 'Revenue trend versus last month' : '对比上月收入趋势'}
             </p>
           </CardContent>
         </Card>
@@ -212,9 +221,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.adImpressions.toLocaleString(locale)}</div>
-            <p className="text-xs text-gray-500">
-              {isEn ? 'Total this month' : '本月累计'}
-            </p>
+            <p className="text-xs text-gray-500">{isEn ? 'Accumulated this month' : '本月累计'}</p>
           </CardContent>
         </Card>
 
@@ -241,12 +248,9 @@ export default function AdminDashboard() {
             <DollarSign className="h-4 w-4 text-gray-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {currencyPrefix}
-              {stats.adRevenue.toLocaleString(locale)}
-            </div>
+            <div className="text-2xl font-bold">{formatCurrency.format(stats.adRevenue)}</div>
             <p className="text-xs text-green-600">
-              {isEn ? 'Estimated revenue from ad clicks' : '基于点击估算的广告收入'}
+              {isEn ? 'Estimated revenue attributed to clicks' : '基于点击带来的预估收入'}
             </p>
           </CardContent>
         </Card>
@@ -257,7 +261,7 @@ export default function AdminDashboard() {
           <CardHeader>
             <CardTitle>{isEn ? 'Contract Metrics' : '合同数据'}</CardTitle>
             <CardDescription>
-              {isEn ? 'Core metrics for generated contracts.' : '已生成合同的核心指标。'}
+              {isEn ? 'Core metrics for generated contracts.' : '已生成合同的核心业务指标。'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -281,7 +285,7 @@ export default function AdminDashboard() {
                     <TrendingUp className="h-5 w-5 text-green-600" />
                   </div>
                   <div>
-                    <p className="font-medium">{isEn ? 'Generated Today' : '今日生成'}</p>
+                    <p className="font-medium">{isEn ? 'Created Today' : '今日新增合同'}</p>
                     <p className="text-sm text-gray-500">{isEn ? 'Real-time metric' : '实时统计'}</p>
                   </div>
                 </div>
@@ -296,7 +300,7 @@ export default function AdminDashboard() {
                   <div>
                     <p className="font-medium">{isEn ? 'Contracts per User' : '人均合同数'}</p>
                     <p className="text-sm text-gray-500">
-                      {isEn ? 'Average generated contracts' : '平均每位用户生成的合同数'}
+                      {isEn ? 'Average generated contracts per user' : '平均每位用户生成的合同数量'}
                     </p>
                   </div>
                 </div>
@@ -329,7 +333,7 @@ export default function AdminDashboard() {
                       </div>
                       <div>
                         <p className="text-sm font-medium">
-                          {user.nickname || (isEn ? 'Unnamed' : '未命名用户')}
+                          {user.nickname || (isEn ? 'Unnamed user' : '未命名用户')}
                         </p>
                         <p className="text-xs text-gray-500">{user.email}</p>
                       </div>
@@ -355,7 +359,7 @@ export default function AdminDashboard() {
                 ))
               ) : (
                 <p className="py-4 text-center text-gray-400">
-                  {isEn ? 'No recent user data yet.' : '暂时还没有最近用户数据。'}
+                  {isEn ? 'No recent user data yet.' : '暂时还没有最近注册用户。'}
                 </p>
               )}
             </div>

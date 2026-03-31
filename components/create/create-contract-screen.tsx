@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ElementType } from "react";
+import { useState, type ElementType } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
@@ -74,9 +74,8 @@ export function CreateContractScreen({
     },
   ];
 
-  const selectedMethodInfo = useMemo(
-    () => importMethods.find((item) => item.id === selectedMethod),
-    [selectedMethod],
+  const selectedMethodInfo = importMethods.find(
+    (item) => item.id === selectedMethod,
   );
 
   const handleNext = () => {

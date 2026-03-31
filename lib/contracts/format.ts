@@ -26,6 +26,25 @@ function formatRichText(value: string): string {
   return escapeHtml(value).replace(/\n/g, "<br />");
 }
 
+function encodePdfHexString(value: string): string {
+  const utf16 = Buffer.from(`\uFEFF${value}`, "utf16le");
+  const bytes: string[] = [];
+
+  for (let index = 0; index < utf16.length; index += 2) {
+    bytes.push(utf16[index + 1]!.toString(16).padStart(2, "0").toUpperCase());
+    bytes.push(utf16[index]!.toString(16).padStart(2, "0").toUpperCase());
+  }
+
+  return bytes.join("");
+}
+
+function escapePdfLiteral(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
+}
+
 function isContractSection(value: unknown): value is ContractSection {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return false;
@@ -202,7 +221,7 @@ export function buildContractHtml(
     partyASign: language === "en" ? "Party A (Signature)" : "甲方（签字）",
     partyBSign: language === "en" ? "Party B (Signature)" : "乙方（签字）",
     date: language === "en" ? "Date" : "日期",
-    emptyDate: language === "en" ? "_______ / _____ / _____" : "_______年____月____日",
+    emptyDate: language === "en" ? "_______ / _____ / _____" : "_______年___月___日",
   };
 
   const sections = [...contract.sections].sort((left, right) => left.order - right.order);
@@ -266,4 +285,206 @@ export function buildContractDocumentHtml(
 ${bodyHtml}
 </body>
 </html>`;
+}
+
+function buildPdfTextLines(contract: ContractContent, language: SupportedLanguage) {
+  const labels = {
+    generatedAt: language === "en" ? "Generated At" : "生成时间",
+    type: language === "en" ? "Contract Type" : "合同类型",
+    legalBasis: language === "en" ? "Legal Basis" : "法律依据",
+    disclaimer: language === "en" ? "Disclaimer" : "声明",
+    signatures: language === "en" ? "Signature Blocks" : "签署栏",
+    partyA: language === "en" ? "Party A" : "甲方",
+    partyB: language === "en" ? "Party B" : "乙方",
+    signDate: language === "en" ? "Date" : "日期",
+    blankDate:
+      language === "en" ? "_______ / _____ / _____" : "_______年___月___日",
+  };
+  const lines: string[] = [];
+
+  lines.push(contract.title || (language === "en" ? "Contract Draft" : "合同草稿"));
+  lines.push("");
+  lines.push(
+    `${labels.generatedAt}: ${new Date().toLocaleString(language === "en" ? "en-US" : "zh-CN")}`,
+  );
+
+  if (contract.contractType) {
+    lines.push(`${labels.type}: ${contract.contractType}`);
+  }
+  if (contract.legalBasis) {
+    lines.push(`${labels.legalBasis}: ${contract.legalBasis}`);
+  }
+
+  lines.push("");
+
+  [...contract.sections]
+    .sort((left, right) => left.order - right.order)
+    .forEach((section, index) => {
+      lines.push(`${index + 1}. ${section.title}`);
+      section.content.split(/\r?\n/).forEach((paragraph) => {
+        lines.push(paragraph.trim());
+      });
+      lines.push("");
+    });
+
+  if (contract.disclaimer) {
+    lines.push(labels.disclaimer);
+    contract.disclaimer.split(/\r?\n/).forEach((paragraph) => {
+      lines.push(paragraph.trim());
+    });
+    lines.push("");
+  }
+
+  lines.push(labels.signatures);
+  lines.push(`${labels.partyA}: ______________________________`);
+  lines.push(`${labels.signDate}: ${labels.blankDate}`);
+  lines.push("");
+  lines.push(`${labels.partyB}: ______________________________`);
+  lines.push(`${labels.signDate}: ${labels.blankDate}`);
+
+  return lines;
+}
+
+function getDisplayWidth(value: string) {
+  return Array.from(value).reduce((width, char) => {
+    return width + (/[\u0000-\u00FF]/.test(char) ? 1 : 2);
+  }, 0);
+}
+
+function wrapPdfLine(value: string, maxWidth: number) {
+  if (!value.trim()) {
+    return [""];
+  }
+
+  const lines: string[] = [];
+  let current = "";
+
+  for (const char of Array.from(value)) {
+    const next = `${current}${char}`;
+    if (getDisplayWidth(next) > maxWidth) {
+      if (current) {
+        lines.push(current);
+      }
+      current = char;
+    } else {
+      current = next;
+    }
+  }
+
+  if (current) {
+    lines.push(current);
+  }
+
+  return lines;
+}
+
+function buildPdfContentStreams(lines: string[]) {
+  const pageHeight = 842;
+  const marginTop = 56;
+  const marginBottom = 56;
+  const lineHeight = 18;
+  const maxLinesPerPage = Math.floor((pageHeight - marginTop - marginBottom) / lineHeight);
+  const pages: string[][] = [];
+  let currentPage: string[] = [];
+
+  lines.forEach((line) => {
+    wrapPdfLine(line, 64).forEach((wrappedLine) => {
+      if (currentPage.length >= maxLinesPerPage) {
+        pages.push(currentPage);
+        currentPage = [];
+      }
+      currentPage.push(wrappedLine);
+    });
+  });
+
+  if (currentPage.length === 0) {
+    currentPage.push("");
+  }
+  pages.push(currentPage);
+
+  return pages.map((pageLines) => {
+    const commands = [
+      "BT",
+      "/F1 12 Tf",
+      "50 786 Td",
+      "18 TL",
+    ];
+
+    pageLines.forEach((line, index) => {
+      if (index > 0) {
+        commands.push("T*");
+      }
+
+      if (!line) {
+        return;
+      }
+
+      if (/^[\u0000-\u00FF]+$/.test(line)) {
+        commands.push(`(${escapePdfLiteral(line)}) Tj`);
+      } else {
+        commands.push(`<${encodePdfHexString(line)}> Tj`);
+      }
+    });
+
+    commands.push("ET");
+    return commands.join("\n");
+  });
+}
+
+export function buildContractPdfBuffer(
+  contract: ContractContent,
+  options?: {
+    language?: SupportedLanguage;
+  },
+) {
+  const streams = buildPdfContentStreams(
+    buildPdfTextLines(contract, options?.language || "zh"),
+  );
+  const fontObjectId = 3 + streams.length * 2;
+  const descendantFontObjectId = fontObjectId + 1;
+  const objects: string[] = [];
+
+  objects.push("<< /Type /Catalog /Pages 2 0 R >>");
+  objects.push(
+    `<< /Type /Pages /Kids [${streams
+      .map((_, index) => `${3 + index * 2} 0 R`)
+      .join(" ")}] /Count ${streams.length} >>`,
+  );
+
+  streams.forEach((stream, index) => {
+    const pageObjectId = 3 + index * 2;
+    const contentObjectId = pageObjectId + 1;
+
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontObjectId} 0 R >> >> /Contents ${contentObjectId} 0 R >>`,
+    );
+    objects.push(
+      `<< /Length ${Buffer.byteLength(stream, "utf8")} >>\nstream\n${stream}\nendstream`,
+    );
+  });
+
+  objects.push(
+    `<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light /Encoding /UniGB-UCS2-H /DescendantFonts [${descendantFontObjectId} 0 R] >>`,
+  );
+  objects.push(
+    "<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 4 >> /DW 1000 >>",
+  );
+
+  let pdf = "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n";
+  const offsets: number[] = [0];
+
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(pdf, "utf8"));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+
+  const xrefOffset = Buffer.byteLength(pdf, "utf8");
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += "0000000000 65535 f \n";
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+  return Buffer.from(pdf, "utf8");
 }

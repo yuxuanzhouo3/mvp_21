@@ -75,6 +75,11 @@ CREATE TABLE IF NOT EXISTS contract_templates (
   content TEXT NOT NULL,
   is_public BOOLEAN DEFAULT true,
   user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'draft', 'archived')),
+  version INTEGER DEFAULT 1,
+  source_template_id UUID REFERENCES contract_templates(id) ON DELETE SET NULL,
+  usage_count INTEGER DEFAULT 0,
+  last_used_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -215,11 +220,11 @@ CREATE TRIGGER update_ads_updated_at BEFORE UPDATE ON ads
 -- ========================================
 
 -- 插入默认合同模板
-INSERT INTO contract_templates (name, description, category, content, is_public) VALUES
-('Service Agreement', 'Standard service agreement for B2B transactions', 'Business', 'Service Agreement template content here...', true),
-('Non-Disclosure Agreement', 'NDA for protecting confidential information', 'Legal', 'NDA template content here...', true),
-('Employment Contract', 'Standard employment agreement template', 'HR', 'Employment Contract template content here...', true),
-('Partnership Agreement', 'Template for business partnership agreements', 'Business', 'Partnership Agreement template content here...', true);
+INSERT INTO contract_templates (name, description, category, content, is_public, status, version, usage_count) VALUES
+('Service Agreement', 'Standard service agreement for B2B transactions', 'Business', 'Service Agreement template content here...', true, 'active', 1, 0),
+('Non-Disclosure Agreement', 'NDA for protecting confidential information', 'Legal', 'NDA template content here...', true, 'active', 1, 0),
+('Employment Contract', 'Standard employment agreement template', 'HR', 'Employment Contract template content here...', true, 'active', 1, 0),
+('Partnership Agreement', 'Template for business partnership agreements', 'Business', 'Partnership Agreement template content here...', true, 'active', 1, 0);
 
 -- 插入测试用户 (开发环境)
 INSERT INTO users (id, email, name, role, plan, status) VALUES

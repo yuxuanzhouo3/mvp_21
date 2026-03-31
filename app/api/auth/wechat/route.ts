@@ -32,10 +32,10 @@ const wechatLoginSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const clientIP =
-      request.headers.get("x-forwarded-for") ||
-      request.headers.get("x-real-ip") ||
-      "unknown";
+    const forwardedFor = request.headers.get("x-forwarded-for") ?? undefined;
+    const realIp = request.headers.get("x-real-ip") ?? undefined;
+    const userAgent = request.headers.get("user-agent") ?? undefined;
+    const clientIP = forwardedFor || realIp || "unknown";
 
     // 验证输入
     const validationResult = wechatLoginSchema.safeParse(body);
@@ -151,9 +151,10 @@ export async function POST(request: NextRequest) {
       };
 
       const insertResult = await usersCollection.add(newUser);
-      userId = insertResult._id;
+      const createdUserId = insertResult._id;
+      userId = createdUserId;
 
-      logSecurityEvent("wechat_user_created", userId, clientIP, {
+      logSecurityEvent("wechat_user_created", createdUserId, clientIP, {
         openid,
         nickname: wechatUser.nickname,
       });
@@ -162,7 +163,8 @@ export async function POST(request: NextRequest) {
       logInfo("Updating existing WeChat user", { userId, openid });
 
       const now = new Date().toISOString();
-      await usersCollection.doc(userId).update({
+      const existingUserId = userId;
+      await usersCollection.doc(existingUserId).update({
         login_count: (existingUser?.login_count || 0) + 1,
         last_login_at: now,
         last_login_ip: clientIP,
@@ -204,8 +206,8 @@ export async function POST(request: NextRequest) {
       userId,
       email: `wechat_${openid}@local.wechat`,
       deviceInfo: "wechat-web",
-      ipAddress: clientIP,
-      userAgent: request.headers.get("user-agent") || undefined,
+      ipAddress: clientIP === "unknown" ? undefined : clientIP,
+      userAgent,
     });
 
     if (!refreshTokenResult) {

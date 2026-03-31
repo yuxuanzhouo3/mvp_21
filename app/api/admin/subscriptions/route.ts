@@ -64,6 +64,8 @@ type SubscriptionStats = {
   baseCurrency: string;
 };
 
+type RawDbRecord = Record<string, any>;
+
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const CHURN_STATUSES = ["cancelled", "canceled", "expired"];
@@ -88,6 +90,14 @@ function getSafeString(value: unknown, fallback = ""): string {
 
 function getDefaultCurrency() {
   return isChinaRegion() ? "CNY" : "USD";
+}
+
+function getIntlSubscriptionsTable() {
+  return getSupabaseAdmin().from("subscriptions") as any;
+}
+
+function getIntlPaymentsTable() {
+  return getSupabaseAdmin().from("payments") as any;
 }
 
 function calculateMrrValue(record: UnifiedSubscriptionRecord) {
@@ -297,7 +307,7 @@ async function loadChinaSubscriptionItems(
     .limit(limit)
     .get();
 
-  const records = (result.data || []).map((record: Record<string, any>) =>
+  const records: UnifiedSubscriptionRecord[] = (result.data || []).map((record: Record<string, any>) =>
     normalizeSubscriptionRecord(record),
   );
   const users = await loadChinaUsers(records.map((record) => record.userId));
@@ -330,8 +340,8 @@ async function loadIntlSubscriptionItems(
     throw error;
   }
 
-  const records = (data || []).map((record) =>
-    normalizeSubscriptionRecord(record as Record<string, any>),
+  const records: UnifiedSubscriptionRecord[] = (data || []).map((record: RawDbRecord) =>
+    normalizeSubscriptionRecord(record),
   );
   const users = await loadIntlUsers(records.map((record) => record.userId));
 
@@ -369,7 +379,7 @@ async function loadChinaPaymentItems(
     .limit(limit)
     .get();
 
-  const records = (result.data || []).map((record: Record<string, any>) =>
+  const records: UnifiedPaymentRecord[] = (result.data || []).map((record: Record<string, any>) =>
     normalizePaymentRecord(record),
   );
   const users = await loadChinaUsers(records.map((record) => record.userId));
@@ -402,8 +412,8 @@ async function loadIntlPaymentItems(
     throw error;
   }
 
-  const records = (data || []).map((record) =>
-    normalizePaymentRecord(record as Record<string, any>),
+  const records: UnifiedPaymentRecord[] = (data || []).map((record: RawDbRecord) =>
+    normalizePaymentRecord(record),
   );
   const users = await loadIntlUsers(records.map((record) => record.userId));
 
@@ -458,27 +468,26 @@ async function loadChinaSubscriptionStats() {
         ? Number(((activeRecords.length / (totalCount.total || 0)) * 100).toFixed(1))
         : 0,
     mrr: Number(
-      activeRecords.reduce((sum, record) => sum + calculateMrrValue(record), 0).toFixed(2),
+      activeRecords
+        .reduce((sum: number, record: UnifiedSubscriptionRecord) => sum + calculateMrrValue(record), 0)
+        .toFixed(2),
     ),
     baseCurrency: resolveBaseCurrency(activeRecords),
   };
 }
 
 async function loadIntlSubscriptionStats() {
-  const admin = getSupabaseAdmin();
+  const subscriptionsTable = getIntlSubscriptionsTable();
   const [totalResult, activeCountResult, churnCountResult, activeRowsResult] =
     await Promise.all([
-      admin.from("subscriptions").select("id", { count: "exact", head: true }),
-      admin
-        .from("subscriptions")
+      subscriptionsTable.select("id", { count: "exact", head: true }),
+      getIntlSubscriptionsTable()
         .select("id", { count: "exact", head: true })
         .eq("status", "active"),
-      admin
-        .from("subscriptions")
+      getIntlSubscriptionsTable()
         .select("id", { count: "exact", head: true })
         .in("status", CHURN_STATUSES),
-      admin
-        .from("subscriptions")
+      getIntlSubscriptionsTable()
         .select("price,currency,billing_cycle,status")
         .eq("status", "active"),
     ]);
@@ -496,8 +505,8 @@ async function loadIntlSubscriptionStats() {
     throw activeRowsResult.error;
   }
 
-  const activeRecords = (activeRowsResult.data || []).map((record) =>
-    normalizeSubscriptionRecord(record as Record<string, any>),
+  const activeRecords: UnifiedSubscriptionRecord[] = (activeRowsResult.data || []).map(
+    (record: RawDbRecord) => normalizeSubscriptionRecord(record),
   );
   const total = totalResult.count || 0;
   const activeCount = activeCountResult.count || 0;
@@ -505,7 +514,9 @@ async function loadIntlSubscriptionStats() {
   return {
     activeCount,
     mrr: Number(
-      activeRecords.reduce((sum, record) => sum + calculateMrrValue(record), 0).toFixed(2),
+      activeRecords
+        .reduce((sum: number, record: UnifiedSubscriptionRecord) => sum + calculateMrrValue(record), 0)
+        .toFixed(2),
     ),
     renewalRate: total > 0 ? Number(((activeCount / total) * 100).toFixed(1)) : 0,
     churnCount: churnCountResult.count || 0,
@@ -617,12 +628,10 @@ async function upsertChinaSubscription(body: Record<string, any>) {
 }
 
 async function upsertIntlSubscription(body: Record<string, any>) {
-  const admin = getSupabaseAdmin();
   const now = new Date().toISOString();
   const userId = getSafeString(body.userId);
 
-  const { data: existingRows, error: existingError } = await admin
-    .from("subscriptions")
+  const { data: existingRows, error: existingError } = await getIntlSubscriptionsTable()
     .select("id")
     .eq("user_id", userId)
     .order("updated_at", { ascending: false })
@@ -647,11 +656,12 @@ async function upsertIntlSubscription(body: Record<string, any>) {
         : {},
   });
 
-  const targetId = existingRows?.[0]?.id;
+  const targetId = (existingRows?.[0] as RawDbRecord | undefined)?.id as
+    | string
+    | undefined;
 
   if (targetId) {
-    const { error } = await admin
-      .from("subscriptions")
+    const { error } = await getIntlSubscriptionsTable()
       .update({
         ...payload,
         updated_at: now,
@@ -662,7 +672,7 @@ async function upsertIntlSubscription(body: Record<string, any>) {
       throw error;
     }
   } else {
-    const { error } = await admin.from("subscriptions").insert({
+    const { error } = await getIntlSubscriptionsTable().insert({
       ...payload,
       created_at: now,
       updated_at: now,
@@ -673,8 +683,7 @@ async function upsertIntlSubscription(body: Record<string, any>) {
     }
   }
 
-  const { data: latestRows, error: latestError } = await admin
-    .from("subscriptions")
+  const { data: latestRows, error: latestError } = await getIntlSubscriptionsTable()
     .select(
       "id,user_id,plan,plan_id,status,price,currency,billing_cycle,payment_method,current_period_end,metadata,created_at,updated_at",
     )

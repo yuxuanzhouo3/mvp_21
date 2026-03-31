@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable react-hooks/set-state-in-effect */
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +23,11 @@ import {
 import { isChinaRegion } from "@/lib/config/region";
 import Link from "next/link";
 import { cn } from "@/lib/utils/utils";
+
+const UPDATE_LOG_DATE_LABELS = {
+  latest: "2026-03-30",
+  fixes: "2026-03-27",
+} as const;
 
 export default function DownloadPage() {
   const { language } = useLanguage();
@@ -55,13 +62,13 @@ export default function DownloadPage() {
   const updateLogs = [
     {
       text: `${language === "zh" ? "最新版本发布" : "Latest Version Released"}`,
-      date: new Date().toLocaleDateString(),
+      date: UPDATE_LOG_DATE_LABELS.latest,
     },
     {
       text: `${
         language === "zh" ? "性能优化与Bug修复" : "Performance & Bug Fixes"
       }`,
-      date: new Date(Date.now() - 86400000 * 3).toLocaleDateString(),
+      date: UPDATE_LOG_DATE_LABELS.fixes,
     },
   ];
 

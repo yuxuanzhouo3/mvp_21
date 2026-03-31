@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   try {
     // 1. 解析查询参数
     const searchParams = request.nextUrl.searchParams;
-    const out_trade_no = searchParams.get('out_trade_no');
+    let out_trade_no = searchParams.get('out_trade_no');
 
     const validationResult = querySchema.safeParse({ out_trade_no });
     if (!validationResult.success) {
@@ -34,6 +34,9 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const { out_trade_no: outTradeNo } = validationResult.data;
+    out_trade_no = outTradeNo;
 
     // 2. 初始化微信支付提供商
     const wechatProvider = new WechatProviderV3({

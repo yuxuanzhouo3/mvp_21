@@ -5,6 +5,7 @@ import { getContractById } from "@/lib/data/contracts-store";
 import {
   buildContractDocumentHtml,
   buildContractHtml,
+  buildContractPdfBuffer,
   normalizeContractContent,
   sanitizeDownloadFileName,
 } from "@/lib/contracts/format";
@@ -96,27 +97,34 @@ export async function GET(request: NextRequest, context: RouteContext) {
         ? contract.metadata.editorHtml
         : null;
     const format = request.nextUrl.searchParams.get("format") || "html";
+    const fileStem = sanitizeDownloadFileName(content.title || contract.title || "contract");
+
+    if (format === "pdf") {
+      const pdfBuffer = buildContractPdfBuffer(content);
+      return new NextResponse(new Uint8Array(pdfBuffer), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(`${fileStem}.pdf`)}`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
 
     const bodyHtml = buildContractHtml(content, {
       renderedHtml,
     });
     const documentHtml = buildContractDocumentHtml(content.title || contract.title, bodyHtml);
-    const fileStem = sanitizeDownloadFileName(content.title || contract.title || "contract");
     const responseConfig =
       format === "word"
         ? {
             contentType: "application/msword; charset=utf-8",
             disposition: `attachment; filename*=UTF-8''${encodeURIComponent(`${fileStem}.doc`)}`,
           }
-        : format === "pdf"
-          ? {
-              contentType: "text/html; charset=utf-8",
-              disposition: "inline",
-            }
-          : {
-              contentType: "text/html; charset=utf-8",
-              disposition: `attachment; filename*=UTF-8''${encodeURIComponent(`${fileStem}.html`)}`,
-            };
+        : {
+            contentType: "text/html; charset=utf-8",
+            disposition: `attachment; filename*=UTF-8''${encodeURIComponent(`${fileStem}.html`)}`,
+          };
 
     return new NextResponse(documentHtml, {
       status: 200,

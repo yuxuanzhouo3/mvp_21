@@ -41,49 +41,16 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
-import { useTranslations } from "@/lib/i18n";
 
 const consoleItems = [
-  {
-    key: "overview",
-    url: "/dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    key: "contracts",
-    url: "/dashboard/contracts",
-    icon: FolderOpen,
-  },
-  {
-    key: "templates",
-    url: "/dashboard/templates",
-    icon: FileText,
-  },
-  {
-    key: "signatures",
-    url: "/dashboard/signatures",
-    icon: FileCheck2,
-  },
-  {
-    key: "documents",
-    url: "/dashboard/documents",
-    icon: Files,
-  },
-  {
-    key: "team",
-    url: "/dashboard/team",
-    icon: Users,
-  },
-  {
-    key: "billing",
-    url: "/dashboard/billing",
-    icon: CreditCard,
-  },
-  {
-    key: "settings",
-    url: "/dashboard/settings",
-    icon: Settings,
-  },
+  { key: "overview", url: "/dashboard", icon: LayoutDashboard },
+  { key: "contracts", url: "/dashboard/contracts", icon: FolderOpen },
+  { key: "templates", url: "/dashboard/templates", icon: FileText },
+  { key: "signatures", url: "/dashboard/signatures", icon: FileCheck2 },
+  { key: "documents", url: "/dashboard/documents", icon: Files },
+  { key: "team", url: "/dashboard/team", icon: Users },
+  { key: "billing", url: "/dashboard/billing", icon: CreditCard },
+  { key: "settings", url: "/dashboard/settings", icon: Settings },
 ] as const;
 
 export function AppSidebar() {
@@ -91,28 +58,27 @@ export function AppSidebar() {
   const router = useRouter();
   const { language } = useLanguage();
   const { user, signOut } = useUser();
-  const t = useTranslations(language);
+  const isEn = language === "en";
 
-  const labels = t.platform?.consoleModules || {
-    overview: language === "en" ? "Overview" : "总览",
-    contracts: language === "en" ? "Contracts" : "合同",
-    templates: language === "en" ? "Templates" : "模板",
-    signatures: language === "en" ? "Signatures" : "签署/待办",
-    documents: language === "en" ? "Documents" : "文档库",
-    team: language === "en" ? "Team" : "团队",
-    billing: language === "en" ? "Billing" : "账单",
-    settings: language === "en" ? "Settings" : "设置",
-    mainMenu: language === "en" ? "Main Menu" : "主菜单",
-    quickLinks: language === "en" ? "Quick Links" : "快捷入口",
-    plans: language === "en" ? "Plans" : "套餐",
-    support: language === "en" ? "Support" : "支持",
-    workspace: language === "en" ? "Workspace" : "工作台",
-    newContract: language === "en" ? "New Contract" : "新建合同",
-    user: language === "en" ? "User" : "用户",
-    proPlan: language === "en" ? "Pro Plan" : "专业版",
-    myAccount: language === "en" ? "My Account" : "我的账户",
-    logout: language === "en" ? "Log out" : "退出登录",
-  };
+  const labels = {
+    overview: isEn ? "Overview" : "总览",
+    contracts: isEn ? "Contracts" : "合同",
+    templates: isEn ? "Templates" : "模板",
+    signatures: isEn ? "Signatures" : "签署流程",
+    documents: isEn ? "Documents" : "文档库",
+    team: isEn ? "Team" : "团队",
+    billing: isEn ? "Billing" : "账单",
+    settings: isEn ? "Settings" : "设置",
+    mainMenu: isEn ? "Main Menu" : "主菜单",
+    quickLinks: isEn ? "Quick Links" : "快捷入口",
+    plans: isEn ? "Plans" : "套餐",
+    support: isEn ? "Support" : "支持",
+    workspace: isEn ? "Workspace" : "工作区",
+    newContract: isEn ? "New Contract" : "新建合同",
+    user: isEn ? "User" : "用户",
+    myAccount: isEn ? "My Account" : "我的账户",
+    logout: isEn ? "Log out" : "退出登录",
+  } as const;
 
   const handleLogout = async () => {
     try {
@@ -129,7 +95,7 @@ export function AppSidebar() {
       ? "Pro"
       : user?.subscription_plan === "enterprise"
         ? "Enterprise"
-        : language === "en"
+        : isEn
           ? "Free plan"
           : "免费版";
 

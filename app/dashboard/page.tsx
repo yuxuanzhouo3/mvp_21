@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { CalendarClock, Plus } from "lucide-react";
 
 import { useLanguage } from "@/components/language-provider";
@@ -9,31 +10,64 @@ import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { ConsoleShell } from "@/components/layout/console-shell";
 import { Button } from "@/components/ui/button";
+import { getDashboardOverview } from "@/lib/dashboard/client";
+import type { DashboardOverviewData } from "@/lib/dashboard/types";
 import { useTranslations } from "@/lib/i18n";
 
 export default function DashboardPage() {
   const { language } = useLanguage();
   const t = useTranslations(language);
+  const [overview, setOverview] = useState<DashboardOverviewData | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const labels = t.platform?.consoleModules || {
-    overview: language === "en" ? "Overview" : "总览",
+    overview: "Overview",
   };
 
   const content = t.pages?.dashboard || {
-    title: language === "en" ? "Dashboard" : "控制台总览",
+    title: "Dashboard",
     description:
-      language === "en"
-        ? "Manage contracts, monitor signature progress, and track team activity."
-        : "集中管理合同、跟踪签署进度并查看团队动态。",
-    updated: language === "en" ? "Updated" : "更新于",
-    newContract: language === "en" ? "New Contract" : "新建合同",
+      "Manage contracts, monitor signature progress, and track team activity.",
+    updated: "Updated",
+    newContract: "New Contract",
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadOverview() {
+      try {
+        setLoading(true);
+        const data = await getDashboardOverview();
+        if (!cancelled) {
+          setOverview(data);
+        }
+      } catch (error) {
+        console.error("[DashboardPage] Failed to load overview:", error);
+        if (!cancelled) {
+          setOverview(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadOverview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const lastUpdated = new Intl.DateTimeFormat(language === "en" ? "en-US" : "zh-CN", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(new Date());
+  }).format(
+    overview?.stats?.lastUpdated ? new Date(overview.stats.lastUpdated) : new Date(),
+  );
 
   return (
     <ConsoleShell
@@ -55,14 +89,17 @@ export default function DashboardPage() {
         </>
       }
     >
-      <DashboardStats />
+      <DashboardStats stats={overview?.stats} loading={loading} />
 
       <section className="mt-8 grid gap-6 xl:grid-cols-3">
         <div className="xl:col-span-2">
           <ContractList />
         </div>
         <div>
-          <RecentActivity />
+          <RecentActivity
+            activities={overview?.recentActivity || []}
+            loading={loading}
+          />
         </div>
       </section>
     </ConsoleShell>
