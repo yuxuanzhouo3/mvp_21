@@ -8,6 +8,7 @@ import {
   FileText,
   Image,
   MessageSquare,
+  MessageSquareText,
   ShieldCheck,
 } from "lucide-react";
 
@@ -17,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
-type ImportMethod = "text" | "screenshot" | "wechat";
+type ImportMethod = "text" | "screenshot" | "wechat" | "ai-chat";
 type CreateFlowContext = "standalone" | "dashboard";
 
 interface CreateContractScreenProps {
@@ -47,7 +48,7 @@ export function CreateContractScreen({
       title: isEn ? "Paste Conversation Text" : "粘贴对话文本",
       description: isEn
         ? "Paste chat records from WeChat, Feishu, DingTalk, etc. This is the most stable option."
-        : "直接粘贴微信、飞书、钉钉等聊天记录，当前最稳定。",
+        : "直接粘贴微信、飞书、钉钉等聊天记录，这是当前最稳定的方式。",
       icon: FileText,
       available: true,
       badge: isEn ? "Recommended" : "推荐",
@@ -56,21 +57,31 @@ export function CreateContractScreen({
       id: "screenshot",
       title: isEn ? "Upload Screenshot" : "上传对话截图",
       description: isEn
-        ? "OCR support is coming soon. This option is currently unavailable."
-        : "OCR 识别能力即将开放，当前版本暂不可用。",
+        ? "Extract contract facts from chat screenshots with OCR and continue in the same flow."
+        : "对聊天截图执行 OCR 提取，再继续进入同一条合同创建主线。",
       icon: Image,
-      available: false,
-      badge: isEn ? "Coming Soon" : "即将上线",
+      available: true,
+      badge: "OCR",
     },
     {
       id: "wechat",
-      title: isEn ? "Choose WeChat Chat" : "选择微信对话",
+      title: isEn ? "Choose WeChat Chat" : "导入微信截图",
       description: isEn
-        ? "One-click chat selection in mini-program environment only."
-        : "小程序内一键选择聊天记录，仅小程序环境可用。",
+        ? "Import a WeChat chat screenshot and continue in the standard contract creation flow."
+        : "导入微信聊天截图，并进入标准合同创建流程。",
       icon: MessageSquare,
-      available: false,
-      badge: isEn ? "Mini Program" : "小程序专属",
+      available: true,
+      badge: isEn ? "Beta" : "测试中",
+    },
+    {
+      id: "ai-chat",
+      title: isEn ? "AI Guided Intake" : "AI 对话引导",
+      description: isEn
+        ? "Let the assistant ask for missing facts, then continue into the same contract draft pipeline."
+        : "由 AI 逐步追问缺失信息，再进入同一套合同草稿主线。",
+      icon: MessageSquareText,
+      available: true,
+      badge: isEn ? "Guided" : "引导式",
     },
   ];
 
@@ -80,6 +91,16 @@ export function CreateContractScreen({
 
   const handleNext = () => {
     if (!selectedMethodInfo?.available) return;
+
+    if (selectedMethod === "ai-chat") {
+      const params = new URLSearchParams();
+      if (flowContext === "dashboard") {
+        params.set("ctx", "dashboard");
+      }
+      router.push(`/create/ai-chat${params.toString() ? `?${params.toString()}` : ""}`);
+      return;
+    }
+
     const params = new URLSearchParams({ method: selectedMethod });
     if (flowContext === "dashboard") {
       params.set("ctx", "dashboard");
@@ -93,8 +114,8 @@ export function CreateContractScreen({
       title={isEn ? "Create New Contract" : "创建新合同"}
       description={
         isEn
-          ? "Choose an import method first. To ensure production readiness, only stable channels are enabled now."
-          : "先选择导入方式。为了确保生产可用性，当前只开放稳定通道，未完成功能不会影响主流程。"
+          ? "Choose how you want to start, then continue into one shared create flow."
+          : "先选择启动方式，然后进入统一的合同创建主线。"
       }
       backHref={flowContext === "dashboard" ? "/dashboard/contracts" : "/"}
       backLabel={
@@ -109,7 +130,7 @@ export function CreateContractScreen({
       showSidebarTrigger={showSidebarTrigger}
     >
       <div className="grid gap-6 xl:grid-cols-[2.2fr_1fr]">
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {importMethods.map((method) => {
             const Icon = method.icon;
             const isSelected = selectedMethod === method.id;
@@ -176,7 +197,7 @@ export function CreateContractScreen({
             <CardHeader>
               <CardTitle className="text-base">{isEn ? "Current Selection" : "当前选择"}</CardTitle>
               <CardDescription>
-                {isEn ? "Confirm and proceed to the next step." : "确认后进入下一步导入。"}
+                {isEn ? "Confirm and proceed to the next step." : "确认后进入下一步。"}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -195,15 +216,15 @@ export function CreateContractScreen({
                   <span>
                     {isEn
                       ? "AI extracts key terms such as dates, amounts, roles, and responsibilities."
-                      : "AI 将自动提取时间、金额、岗位、责任等关键条款。"}
+                      : "AI 会自动提取时间、金额、角色、职责等关键条款。"}
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" />
                   <span>
                     {isEn
-                      ? "Step 3 lets you manually review all fields before contract generation."
-                      : "第 3 步可人工校对所有字段，避免误识别直接进入合同。"}
+                      ? "You can review all extracted fields before contract generation."
+                      : "在生成合同前，你可以人工校对所有提取字段。"}
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
@@ -211,7 +232,7 @@ export function CreateContractScreen({
                   <span>
                     {isEn
                       ? "You can still fully edit before final export for production use."
-                      : "最终导出前仍可全量编辑，适合正式业务场景。"}
+                      : "最终导出前仍可完整编辑，适合正式业务场景。"}
                   </span>
                 </div>
               </div>

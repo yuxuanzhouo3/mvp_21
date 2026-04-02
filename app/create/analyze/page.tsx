@@ -27,6 +27,7 @@ import { Progress } from "@/components/ui/progress";
 import { CONTRACT_TYPE_NAMES } from "@/lib/ai/prompts/generate";
 import { AIAnalysisResult } from "@/lib/ai/types";
 import { type ContractDetail, getContractForCurrentUser, updateContractForCurrentUser } from "@/lib/contracts/client";
+import type { ActiveCompanyProfileSnapshot } from "@/lib/contracts/draft-context";
 import {
   appendContractVersionHistory,
   buildContractParties,
@@ -35,6 +36,35 @@ import {
   normalizeContractContent,
 } from "@/lib/contracts/format";
 import { cn } from "@/lib/utils";
+
+function normalizeActiveCompanyProfile(
+  value: unknown,
+): ActiveCompanyProfileSnapshot | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const companyName =
+    typeof record.companyName === "string" ? record.companyName.trim() : "";
+
+  if (!companyName) {
+    return null;
+  }
+
+  return {
+    id: typeof record.id === "string" ? record.id : "",
+    companyName,
+    creditCode: typeof record.creditCode === "string" ? record.creditCode : "",
+    legalPerson: typeof record.legalPerson === "string" ? record.legalPerson : "",
+    address: typeof record.address === "string" ? record.address : "",
+    contactPerson:
+      typeof record.contactPerson === "string" ? record.contactPerson : "",
+    contactPhone: typeof record.contactPhone === "string" ? record.contactPhone : "",
+    contactEmail: typeof record.contactEmail === "string" ? record.contactEmail : "",
+    updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : undefined,
+  };
+}
 
 function AnalyzePageContent() {
   const router = useRouter();
@@ -196,6 +226,9 @@ function AnalyzePageContent() {
   }
 
   const confidencePercent = Math.max(0, Math.min(100, Math.round(analysis.confidence * 100)));
+  const activeCompanyProfile = normalizeActiveCompanyProfile(
+    contractRecord?.metadata?.activeCompanyProfile,
+  );
   const termTypeConfig: Record<string, { label: string; colorClass: string }> = {
     salary: { label: isEn ? "Compensation" : "薪资/报酬", colorClass: "bg-primary/10 text-primary" },
     duration: { label: isEn ? "Duration" : "期限", colorClass: "bg-chart-2/10 text-chart-2" },
@@ -255,6 +288,13 @@ function AnalyzePageContent() {
                 <Building className="h-4 w-4 text-primary" />
                 {isEn ? "Party A" : "甲方信息"}
               </CardTitle>
+              {activeCompanyProfile ? (
+                <CardDescription>
+                  {isEn
+                    ? "Auto-filled from the active company profile."
+                    : "已自动带入当前激活的企业主体信息。"}
+                </CardDescription>
+              ) : null}
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div>
@@ -269,6 +309,26 @@ function AnalyzePageContent() {
                 <Label className="text-muted-foreground">{isEn ? "Company" : "公司"}</Label>
                 <p>{analysis.partyA.company || (isEn ? "Not detected" : "未识别")}</p>
               </div>
+              <div>
+                <Label className="text-muted-foreground">{isEn ? "Contact" : "联系方式"}</Label>
+                <p>{analysis.partyA.contact || (isEn ? "Not detected" : "未识别")}</p>
+              </div>
+              {activeCompanyProfile ? (
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+                  <p>
+                    {isEn ? "Credit Code" : "统一社会信用代码"}:
+                    <span className="ml-1 font-medium text-foreground">
+                      {activeCompanyProfile.creditCode || (isEn ? "N/A" : "未填写")}
+                    </span>
+                  </p>
+                  <p className="mt-1">
+                    {isEn ? "Legal Representative" : "法定代表人"}:
+                    <span className="ml-1 font-medium text-foreground">
+                      {activeCompanyProfile.legalPerson || (isEn ? "N/A" : "未填写")}
+                    </span>
+                  </p>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 

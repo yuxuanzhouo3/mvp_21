@@ -8,6 +8,7 @@ describe("routing governance mainline coverage", () => {
   test("legacy contract entrypoints resolve to the canonical create flow", () => {
     expect(getLegacyContractEntrypointHref("create")).toBe("/create");
     expect(getLegacyContractEntrypointHref("new")).toBe("/create");
+    expect(getLegacyContractEntrypointHref("aiGenerate")).toBe("/create/ai-chat");
     expect(getLegacyContractEntrypointHref("uploadTemplate")).toBe(
       "/create/import?method=screenshot&legacy=upload-template",
     );
@@ -22,6 +23,8 @@ describe("routing governance mainline coverage", () => {
     expect(nextConfigSource).toContain('source: "/contracts/create"');
     expect(nextConfigSource).toContain('destination: "/create"');
     expect(nextConfigSource).toContain('source: "/contracts/new"');
+    expect(nextConfigSource).toContain('source: "/contracts/ai-generate"');
+    expect(nextConfigSource).toContain('destination: "/create/ai-chat"');
     expect(nextConfigSource).toContain('source: "/contracts/upload-template"');
     expect(nextConfigSource).toContain(
       'destination: "/create/import?method=screenshot&legacy=upload-template"',

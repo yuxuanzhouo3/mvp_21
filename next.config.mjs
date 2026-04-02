@@ -16,6 +16,11 @@ const nextConfig = {
         permanent: true,
       },
       {
+        source: "/contracts/ai-generate",
+        destination: "/create/ai-chat",
+        permanent: true,
+      },
+      {
         source: "/contracts/upload-template",
         destination: "/create/import?method=screenshot&legacy=upload-template",
         permanent: true,

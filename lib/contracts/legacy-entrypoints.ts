@@ -1,6 +1,7 @@
 const LEGACY_CONTRACT_ENTRYPOINTS = {
   create: "/create",
   new: "/create",
+  aiGenerate: "/create/ai-chat",
   uploadTemplate: "/create/import?method=screenshot&legacy=upload-template",
 } as const;
 

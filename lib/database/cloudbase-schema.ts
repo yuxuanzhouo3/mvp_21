@@ -88,6 +88,26 @@ export interface WorkspaceMemberRecord {
   updated_at: string;
 }
 
+export interface WorkspaceInviteRecord {
+  _id?: string;
+  workspace_owner_id: string;
+  member_id?: string;
+  email: string;
+  name?: string;
+  role: "owner" | "admin" | "member";
+  invited_by?: string;
+  token: string;
+  status: "pending" | "accepted" | "revoked" | "expired";
+  expires_at?: string;
+  accepted_at?: string;
+  accepted_by_user_id?: string;
+  revoked_at?: string;
+  access_count?: number;
+  last_accessed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AdminAuditLogRecord {
   _id?: string;
   id?: string;
@@ -263,6 +283,7 @@ export const CLOUDBASE_COLLECTIONS = {
   CONTRACT_TEMPLATES: "contract_templates",
   CONTRACTS: "contracts",
   WORKSPACE_MEMBERS: "workspace_members",
+  WORKSPACE_INVITES: "workspace_invites",
   AI_CONVERSATIONS: "ai_conversations",
   PAYMENTS: "payments",
   TOKENS: "tokens",
@@ -298,6 +319,13 @@ export const CLOUDBASE_INDEXES = {
     { key: { workspace_owner_id: 1, created_at: -1 } },
     { key: { user_id: 1 } },
     { key: { email: 1 } },
+  ],
+  [CLOUDBASE_COLLECTIONS.WORKSPACE_INVITES]: [
+    { key: { workspace_owner_id: 1, created_at: -1 } },
+    { key: { member_id: 1, created_at: -1 } },
+    { key: { email: 1, workspace_owner_id: 1, created_at: -1 } },
+    { key: { token: 1 }, unique: true },
+    { key: { status: 1, expires_at: 1 } },
   ],
   [CLOUDBASE_COLLECTIONS.AI_CONVERSATIONS]: [
     { key: { user_id: 1, created_at: -1 } },

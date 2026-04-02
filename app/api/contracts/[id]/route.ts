@@ -204,7 +204,10 @@ export async function PUT(request: NextRequest, context: RouteContext) {
           role,
           method,
           signerName,
-          source: "mobile",
+          source:
+            typeof signatureInput.source === "string" && signatureInput.source.trim()
+              ? signatureInput.source.trim()
+              : "mobile",
           legalConsent: signatureInput.legalConsent === true,
           typedName:
             typeof signatureInput.typedName === "string"

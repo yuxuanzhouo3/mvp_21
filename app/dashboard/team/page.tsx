@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Mail, MoreVertical, ShieldCheck, UserPlus } from "lucide-react";
+import {
+  Clock3,
+  Copy,
+  ExternalLink,
+  Mail,
+  MoreVertical,
+  ShieldCheck,
+  UserPlus,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { useLanguage } from "@/components/language-provider";
@@ -52,6 +60,23 @@ import {
 } from "@/lib/dashboard/client";
 import type { DashboardTeamMember, DashboardTeamPermissions } from "@/lib/dashboard/types";
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function formatDateTime(value: string | undefined, isEn: boolean, emptyLabel: string) {
+  if (!value) {
+    return emptyLabel;
+  }
+
+  return new Intl.DateTimeFormat(isEn ? "en-US" : "zh-CN", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 export default function TeamPage() {
   const { language } = useLanguage();
   const isEn = language === "en";
@@ -75,16 +100,20 @@ export default function TeamPage() {
   const [memberToRemove, setMemberToRemove] = useState<DashboardTeamMember | null>(null);
 
   const labels = {
-    overview: isEn ? "Overview" : "总览",
+    overview: isEn ? "Overview" : "概览",
     team: isEn ? "Team" : "团队",
   };
 
   const content = {
     title: isEn ? "Team Members" : "团队成员",
-    description: isEn ? "Manage your team members and their permissions." : "管理团队成员与工作区权限。",
+    description: isEn
+      ? "Manage real workspace members, invite links, and role permissions."
+      : "管理真实工作区成员、邀请链接和角色权限。",
     primaryAction: isEn ? "Invite Member" : "邀请成员",
     membersTitle: isEn ? "Members" : "成员列表",
-    membersDescription: isEn ? "People who have access to this workspace" : "当前工作区内可访问的成员",
+    membersDescription: isEn
+      ? "People who can access this workspace"
+      : "当前可以访问这个工作区的成员",
     remove: isEn ? "Remove" : "移除成员",
     owner: isEn ? "Owner" : "所有者",
     admin: isEn ? "Admin" : "管理员",
@@ -156,10 +185,24 @@ export default function TeamPage() {
         name: "",
         role: "member",
       });
-      toast.success(isEn ? "Invitation saved." : "邀请已保存。");
+
+      if (result.latestInvite?.inviteUrl) {
+        try {
+          await navigator.clipboard.writeText(result.latestInvite.inviteUrl);
+          toast.success(
+            isEn ? "Invitation saved and link copied." : "邀请已保存，链接已复制。",
+          );
+        } catch {
+          toast.success(isEn ? "Invitation saved." : "邀请已保存。");
+        }
+      } else {
+        toast.success(isEn ? "Invitation saved." : "邀请已保存。");
+      }
     } catch (inviteError) {
       console.error("[TeamPage] Failed to invite member:", inviteError);
-      toast.error(isEn ? "Failed to invite member." : "邀请成员失败。");
+      toast.error(
+        getErrorMessage(inviteError, isEn ? "Failed to invite member." : "邀请成员失败。"),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -178,7 +221,7 @@ export default function TeamPage() {
       toast.success(isEn ? "Role updated." : "角色已更新。");
     } catch (roleError) {
       console.error("[TeamPage] Failed to update role:", roleError);
-      toast.error(isEn ? "Failed to update role." : "更新角色失败。");
+      toast.error(getErrorMessage(roleError, isEn ? "Failed to update role." : "更新角色失败。"));
     } finally {
       setSubmitting(false);
     }
@@ -197,10 +240,27 @@ export default function TeamPage() {
       const result = await updateDashboardTeamMember(member.id, { status });
       setMembers(result.members || []);
       setPermissions(result.permissions || permissions);
-      toast.success(isEn ? "Member status updated." : "成员状态已更新。");
+
+      if (status === "invited" && result.latestInvite?.inviteUrl) {
+        try {
+          await navigator.clipboard.writeText(result.latestInvite.inviteUrl);
+          toast.success(
+            isEn ? "Invite regenerated and link copied." : "邀请已重发，链接已复制。",
+          );
+        } catch {
+          toast.success(isEn ? "Member status updated." : "成员状态已更新。");
+        }
+      } else {
+        toast.success(isEn ? "Member status updated." : "成员状态已更新。");
+      }
     } catch (statusError) {
       console.error("[TeamPage] Failed to update status:", statusError);
-      toast.error(isEn ? "Failed to update member status." : "更新成员状态失败。");
+      toast.error(
+        getErrorMessage(
+          statusError,
+          isEn ? "Failed to update member status." : "更新成员状态失败。",
+        ),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -220,10 +280,38 @@ export default function TeamPage() {
       setMemberToRemove(null);
     } catch (removeError) {
       console.error("[TeamPage] Failed to remove member:", removeError);
-      toast.error(isEn ? "Failed to remove member." : "移除成员失败。");
+      toast.error(
+        getErrorMessage(removeError, isEn ? "Failed to remove member." : "移除成员失败。"),
+      );
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleCopyInviteLink(member: DashboardTeamMember) {
+    const inviteUrl = member.invite?.inviteUrl;
+    if (!inviteUrl) {
+      toast.error(isEn ? "Invite link is not ready yet." : "邀请链接暂未生成。");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      toast.success(isEn ? "Invite link copied." : "邀请链接已复制。");
+    } catch (copyError) {
+      console.error("[TeamPage] Failed to copy invite link:", copyError);
+      toast.error(isEn ? "Failed to copy invite link." : "复制邀请链接失败。");
+    }
+  }
+
+  function handleOpenInviteLink(member: DashboardTeamMember) {
+    const inviteUrl = member.invite?.inviteUrl;
+    if (!inviteUrl) {
+      toast.error(isEn ? "Invite link is not ready yet." : "邀请链接暂未生成。");
+      return;
+    }
+
+    window.open(inviteUrl, "_blank", "noopener,noreferrer");
   }
 
   const canManageMember = (member: DashboardTeamMember) =>
@@ -240,12 +328,20 @@ export default function TeamPage() {
       return isEn ? "No activity yet" : "暂无活跃记录";
     }
 
-    return new Intl.DateTimeFormat(isEn ? "en-US" : "zh-CN", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(member.lastActiveAt));
+    return formatDateTime(member.lastActiveAt, isEn, isEn ? "No activity yet" : "暂无活跃记录");
+  };
+
+  const formatInviteStatus = (member: DashboardTeamMember) => {
+    switch (member.invite?.status) {
+      case "accepted":
+        return isEn ? "Accepted" : "已接受";
+      case "revoked":
+        return isEn ? "Revoked" : "已撤销";
+      case "expired":
+        return isEn ? "Expired" : "已过期";
+      default:
+        return isEn ? "Pending" : "待接受";
+    }
   };
 
   return (
@@ -291,101 +387,171 @@ export default function TeamPage() {
                   {members.map((member) => (
                     <div
                       key={member.id}
-                      className="flex flex-col gap-3 rounded-lg border border-border/70 bg-muted/15 p-4 sm:p-5 md:flex-row md:items-center md:justify-between"
+                      className="flex flex-col gap-4 rounded-lg border border-border/70 bg-muted/15 p-4 sm:p-5"
                     >
-                      <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                        <Avatar>
-                          <AvatarFallback>{member.initials}</AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{member.name}</p>
-                            {member.role === "owner" ? (
-                              <ShieldCheck className="h-4 w-4 text-primary" />
+                      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+                          <Avatar>
+                            <AvatarFallback>{member.initials}</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{member.name}</p>
+                              {member.role === "owner" ? (
+                                <ShieldCheck className="h-4 w-4 text-primary" />
+                              ) : null}
+                            </div>
+                            <div className="mt-0.5 flex items-center gap-2 text-sm text-muted-foreground">
+                              <Mail className="h-3 w-3" />
+                              <span className="truncate">{member.email}</span>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {isEn ? "Last active" : "最近活跃"}: {formatLastActive(member)}
+                            </p>
+
+                            {member.invite ? (
+                              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                                <span>
+                                  {isEn ? "Invite" : "邀请"}: {formatInviteStatus(member)}
+                                </span>
+                                <span>
+                                  {isEn ? "Expiry" : "有效期"}:{" "}
+                                  {formatDateTime(
+                                    member.invite.expiresAt,
+                                    isEn,
+                                    isEn ? "No limit" : "长期有效",
+                                  )}
+                                </span>
+                                <span>
+                                  {isEn ? "Visits" : "访问次数"}: {member.invite.accessCount ?? 0}
+                                </span>
+                                {member.invite.lastAccessedAt ? (
+                                  <span>
+                                    {isEn ? "Last visit" : "最近访问"}:{" "}
+                                    {formatDateTime(
+                                      member.invite.lastAccessedAt,
+                                      isEn,
+                                      isEn ? "Never" : "暂无",
+                                    )}
+                                  </span>
+                                ) : null}
+                              </div>
                             ) : null}
                           </div>
-                          <div className="mt-0.5 flex items-center gap-2 text-sm text-muted-foreground">
-                            <Mail className="h-3 w-3" />
-                            <span className="truncate">{member.email}</span>
-                          </div>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {isEn ? "Last active" : "最近活跃"}: {formatLastActive(member)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex w-full items-center justify-between gap-3 md:w-auto md:justify-end md:gap-4">
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            variant={member.role === "owner" ? "default" : "secondary"}
-                            className="shrink-0"
-                          >
-                            {roleLabels[member.role]}
-                          </Badge>
-                          <Badge variant="outline">{statusLabels[member.status]}</Badge>
                         </div>
 
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              disabled={!canOpenMemberMenu(member)}
+                        <div className="flex w-full items-start justify-between gap-3 md:w-auto md:justify-end md:gap-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge
+                              variant={member.role === "owner" ? "default" : "secondary"}
+                              className="shrink-0"
                             >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {permissions.canManageRoles ? (
-                              <>
-                                {member.role !== "admin" ? (
-                                  <DropdownMenuItem onClick={() => void handleRoleChange(member, "admin")}>
-                                    {isEn ? "Make admin" : "设为管理员"}
-                                  </DropdownMenuItem>
-                                ) : null}
-                                {member.role !== "member" ? (
-                                  <DropdownMenuItem onClick={() => void handleRoleChange(member, "member")}>
-                                    {isEn ? "Make member" : "设为成员"}
-                                  </DropdownMenuItem>
-                                ) : null}
-                                {(permissions.canChangeStatus || permissions.canRemoveMembers) ? (
-                                  <DropdownMenuSeparator />
-                                ) : null}
-                              </>
-                            ) : null}
+                              {roleLabels[member.role]}
+                            </Badge>
+                            <Badge variant="outline">{statusLabels[member.status]}</Badge>
+                          </div>
 
-                            {permissions.canChangeStatus ? (
-                              <>
-                                {member.status !== "active" ? (
-                                  <DropdownMenuItem onClick={() => void handleStatusChange(member, "active")}>
-                                    {isEn ? "Mark active" : "设为正常"}
-                                  </DropdownMenuItem>
-                                ) : null}
-                                {member.status !== "suspended" ? (
-                                  <DropdownMenuItem onClick={() => void handleStatusChange(member, "suspended")}>
-                                    {isEn ? "Suspend" : "暂停权限"}
-                                  </DropdownMenuItem>
-                                ) : null}
-                                {member.status !== "invited" ? (
-                                  <DropdownMenuItem onClick={() => void handleStatusChange(member, "invited")}>
-                                    {isEn ? "Reset invite" : "重置邀请"}
-                                  </DropdownMenuItem>
-                                ) : null}
-                                {permissions.canRemoveMembers ? <DropdownMenuSeparator /> : null}
-                              </>
-                            ) : null}
-
-                            {permissions.canRemoveMembers ? (
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={() => setMemberToRemove(member)}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                disabled={!canOpenMemberMenu(member)}
                               >
-                                {content.remove}
-                              </DropdownMenuItem>
-                            ) : null}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {member.invite?.inviteUrl ? (
+                                <>
+                                  <DropdownMenuItem onClick={() => void handleCopyInviteLink(member)}>
+                                    <Copy className="mr-2 h-4 w-4" />
+                                    {isEn ? "Copy invite link" : "复制邀请链接"}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleOpenInviteLink(member)}>
+                                    <ExternalLink className="mr-2 h-4 w-4" />
+                                    {isEn ? "Open invite page" : "打开邀请页"}
+                                  </DropdownMenuItem>
+                                  {(permissions.canManageRoles ||
+                                    permissions.canChangeStatus ||
+                                    permissions.canRemoveMembers) ? (
+                                    <DropdownMenuSeparator />
+                                  ) : null}
+                                </>
+                              ) : null}
+
+                              {permissions.canManageRoles ? (
+                                <>
+                                  {member.role !== "admin" ? (
+                                    <DropdownMenuItem onClick={() => void handleRoleChange(member, "admin")}>
+                                      {isEn ? "Make admin" : "设为管理员"}
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                  {member.role !== "member" ? (
+                                    <DropdownMenuItem onClick={() => void handleRoleChange(member, "member")}>
+                                      {isEn ? "Make member" : "设为成员"}
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                  {(permissions.canChangeStatus || permissions.canRemoveMembers) ? (
+                                    <DropdownMenuSeparator />
+                                  ) : null}
+                                </>
+                              ) : null}
+
+                              {permissions.canChangeStatus ? (
+                                <>
+                                  {member.status !== "active" ? (
+                                    <DropdownMenuItem onClick={() => void handleStatusChange(member, "active")}>
+                                      {isEn ? "Mark active" : "设为正常"}
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                  {member.status !== "suspended" ? (
+                                    <DropdownMenuItem onClick={() => void handleStatusChange(member, "suspended")}>
+                                      {isEn ? "Suspend" : "暂停权限"}
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                  {member.status !== "invited" ? (
+                                    <DropdownMenuItem onClick={() => void handleStatusChange(member, "invited")}>
+                                      {isEn ? "Regenerate invite" : "重新生成邀请"}
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                  {permissions.canRemoveMembers ? <DropdownMenuSeparator /> : null}
+                                </>
+                              ) : null}
+
+                              {permissions.canRemoveMembers ? (
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() => setMemberToRemove(member)}
+                                >
+                                  {content.remove}
+                                </DropdownMenuItem>
+                              ) : null}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
+
+                      {member.invite?.inviteUrl ? (
+                        <div className="flex flex-wrap gap-2 border-t border-border/60 pt-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void handleCopyInviteLink(member)}
+                          >
+                            <Copy className="mr-2 h-4 w-4" />
+                            {isEn ? "Copy invite link" : "复制邀请链接"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenInviteLink(member)}
+                          >
+                            <ExternalLink className="mr-2 h-4 w-4" />
+                            {isEn ? "Open invite page" : "打开邀请页"}
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -399,8 +565,8 @@ export default function TeamPage() {
                 <CardTitle>{isEn ? "Workspace Snapshot" : "团队概览"}</CardTitle>
                 <CardDescription>
                   {isEn
-                    ? "Real team records can now be invited, updated, and removed from this page."
-                    : "当前页面已支持对真实团队成员进行邀请、状态调整与移除。"}
+                    ? "This page now manages member records, invite links, and access-state updates together."
+                    : "这个页面现在已经把成员记录、邀请链接和状态更新串成了一套完整管理流程。"}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
@@ -432,10 +598,10 @@ export default function TeamPage() {
                   {permissions.canInvite
                     ? isEn
                       ? "You can send workspace invitations."
-                      : "你可以发起工作区邀请。"
+                      : "你可以发送工作区邀请。"
                     : isEn
                       ? "You can view members but cannot invite."
-                      : "你当前只能查看成员，不能发起邀请。"}
+                      : "你当前可以查看成员，但不能发起邀请。"}
                 </p>
                 <p>
                   {permissions.canManageRoles
@@ -467,8 +633,8 @@ export default function TeamPage() {
             <DialogTitle>{isEn ? "Invite Team Member" : "邀请团队成员"}</DialogTitle>
             <DialogDescription>
               {isEn
-                ? "Add a member into this workspace and assign an initial role."
-                : "将成员加入当前工作区，并为其分配初始角色。"}
+                ? "Create a real workspace invite, assign the initial role, and copy the shareable invite link."
+                : "创建真实工作区邀请，分配初始角色，并复制可分享的邀请链接。"}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -537,7 +703,7 @@ export default function TeamPage() {
               {memberToRemove
                 ? isEn
                   ? `This will remove ${memberToRemove.email} from the workspace.`
-                  : `这将把 ${memberToRemove.email} 从当前工作区移除。`
+                  : `这会把 ${memberToRemove.email} 从当前工作区移除。`
                 : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>

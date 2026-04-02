@@ -30,7 +30,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         body.status === "active" || body.status === "invited" || body.status === "suspended"
           ? body.status
           : undefined,
-    });
+    }, request.nextUrl.origin);
 
     return NextResponse.json({
       success: true,
@@ -64,7 +64,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     }
 
     const { id } = await context.params;
-    const team = await removeDashboardTeamMember(auth.user, id);
+    const team = await removeDashboardTeamMember(auth.user, id, request.nextUrl.origin);
 
     return NextResponse.json({
       success: true,

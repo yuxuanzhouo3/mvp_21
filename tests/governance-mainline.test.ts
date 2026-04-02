@@ -22,6 +22,7 @@ describe("governance mainline coverage", () => {
   test("legacy contract routes collapse into canonical create flow", () => {
     expect(getLegacyContractEntrypointHref("create")).toBe("/create");
     expect(getLegacyContractEntrypointHref("new")).toBe("/create");
+    expect(getLegacyContractEntrypointHref("aiGenerate")).toBe("/create/ai-chat");
     expect(getLegacyContractEntrypointHref("uploadTemplate")).toBe(
       "/create/import?method=screenshot&legacy=upload-template",
     );

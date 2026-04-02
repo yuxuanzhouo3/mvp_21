@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
       return auth.error;
     }
 
-    const team = await listDashboardTeamMembers(auth.user);
+    const team = await listDashboardTeamMembers(auth.user, request.nextUrl.origin);
     return NextResponse.json({
       success: true,
       data: team,
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       email: body.email,
       name: typeof body.name === "string" ? body.name : undefined,
       role: body.role === "admin" || body.role === "member" ? body.role : undefined,
-    });
+    }, request.nextUrl.origin);
 
     return NextResponse.json({
       success: true,
@@ -58,6 +58,8 @@ export async function POST(request: NextRequest) {
         ? "You do not have permission to invite members."
         : error instanceof Error && error.message === "TEAM_EMAIL_REQUIRED"
           ? "Member email is required."
+          : error instanceof Error && error.message === "TEAM_MEMBER_ALREADY_ACTIVE"
+            ? "This email is already an active workspace member."
           : "Failed to invite member.";
 
     return NextResponse.json(
@@ -66,9 +68,12 @@ export async function POST(request: NextRequest) {
         status:
           error instanceof Error &&
           (error.message === "TEAM_INVITE_FORBIDDEN" ||
-            error.message === "TEAM_EMAIL_REQUIRED")
+            error.message === "TEAM_EMAIL_REQUIRED" ||
+            error.message === "TEAM_MEMBER_ALREADY_ACTIVE")
             ? error.message === "TEAM_EMAIL_REQUIRED"
               ? 400
+              : error.message === "TEAM_MEMBER_ALREADY_ACTIVE"
+                ? 409
               : 403
             : 500,
       },

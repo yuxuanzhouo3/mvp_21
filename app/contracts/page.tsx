@@ -314,10 +314,12 @@ export default function ContractsPage() {
             <p className="mt-2 text-gray-600">{content.description}</p>
           </div>
 
-          <Button onClick={() => router.push("/create")}>
-            <Plus className="mr-2 h-5 w-5" />
-            {content.primaryAction}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => router.push("/create")}>
+              <Plus className="mr-2 h-5 w-5" />
+              {content.primaryAction}
+            </Button>
+          </div>
         </div>
 
         <div className="mb-6 space-y-4">
@@ -417,10 +419,12 @@ export default function ContractsPage() {
                   : content.noResultsDescription}
               </p>
               {contracts.length === 0 ? (
-                <Button className="mt-6" onClick={() => router.push("/create")}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  {content.primaryAction}
-                </Button>
+                <div className="mt-6 flex flex-wrap justify-center gap-3">
+                  <Button onClick={() => router.push("/create")}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    {content.primaryAction}
+                  </Button>
+                </div>
               ) : null}
             </CardContent>
           </Card>

@@ -1,8 +1,15 @@
-import { SignatureInterface } from "@/components/contracts/signature-interface"
-import { FileText } from "lucide-react"
-import Link from "next/link"
+import Link from "next/link";
+import { FileText } from "lucide-react";
 
-export default function SignContractPage() {
+import { ContractSignFlow } from "@/components/contracts/contract-sign-flow";
+
+interface SignContractPageProps {
+  params: Promise<{ id: string }>;
+}
+
+export default async function SignContractPage({ params }: SignContractPageProps) {
+  const { id } = await params;
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-background">
@@ -14,8 +21,14 @@ export default function SignContractPage() {
         </nav>
       </header>
       <main className="container px-4 py-8">
-        <SignatureInterface />
+        <ContractSignFlow
+          contractId={id}
+          backHref={`/contracts/${id}?ctx=dashboard`}
+          backLabel="Back to Contract"
+          openContractHref={`/contracts/${id}?ctx=dashboard`}
+          signatureSource="dashboard-web"
+        />
       </main>
     </div>
-  )
+  );
 }
