@@ -4,7 +4,11 @@ import { HowItWorks } from "@/components/how-it-works";
 
 export default function HowItWorksPage() {
   return (
-    <PublicInfoShell>
+    <PublicInfoShell
+      badge="Workflow"
+      title="From conversation records to a signed contract"
+      description="Import source material, confirm AI analysis, route signers, and keep the final document in one managed workflow."
+    >
       <HowItWorks />
       <CTA />
     </PublicInfoShell>

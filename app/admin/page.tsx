@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Activity,
   CreditCard,
@@ -9,12 +9,14 @@ import {
   FileText,
   Loader2,
   MousePointer,
+  RefreshCw,
   TrendingUp,
   Users,
 } from 'lucide-react';
 
 import { adminFetchJson } from '@/lib/admin/client';
 import { useLanguage } from '@/components/language-provider';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface Stats {
@@ -47,29 +49,64 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [recentUsers, setRecentUsers] = useState<RecentUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const copy = {
+    title: isEn ? 'Dashboard' : '后台总览',
+    description: isEn ? "Welcome back. Here's today's platform overview." : '查看今天的核心经营与使用情况。',
+    loadFailed: isEn ? 'Failed to load admin overview.' : '加载后台总览失败。',
+    retry: isEn ? 'Retry' : '重新加载',
+    totalUsers: isEn ? 'Total Users' : '总用户数',
+    activeUsers: isEn ? 'Active Users' : '活跃用户',
+    paidUsers: isEn ? 'Paid Users' : '付费用户',
+    monthlyRevenue: isEn ? 'Monthly Revenue' : '本月收入',
+    adImpressions: isEn ? 'Ad Impressions' : '广告展示',
+    adClicks: isEn ? 'Ad Clicks' : '广告点击',
+    adRevenue: isEn ? 'Ad Revenue' : '广告收入',
+    contractMetrics: isEn ? 'Contract Metrics' : '合同数据',
+    contractMetricsDesc: isEn ? 'Core metrics for contract creation.' : '查看合同生成与使用效率的关键指标。',
+    recentUsers: isEn ? 'Recent Users' : '最近注册用户',
+    recentUsersDesc: isEn ? 'Latest users created on the platform.' : '最近进入平台的新用户。',
+    noRecentUsers: isEn ? 'No recent user data yet.' : '暂时还没有最近注册用户。',
+    allTime: isEn ? 'All time' : '历史累计',
+    todayCreated: isEn ? 'Created today' : '今日新增',
+    contractsPerUser: isEn ? 'Contracts per user' : '人均合同数',
+    avgContracts: isEn ? 'Average contracts generated per user' : '平均每位用户生成的合同数量',
+    unnamedUser: isEn ? 'Unnamed user' : '未命名用户',
+    activeRate: isEn ? 'Active rate' : '活跃率',
+    conversionRate: isEn ? 'Conversion' : '付费转化率',
+    ctr: isEn ? 'CTR' : '点击率',
+    attributedRevenue: isEn ? 'Estimated revenue attributed to clicks' : '基于点击归因的预估收入',
+    monthAccumulated: isEn ? 'Accumulated this month' : '本月累计',
+    revenueTrend: isEn ? 'Revenue trend versus last month' : '相较上月的收入走势',
+  };
+
+  const fetchStats = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError('');
+
+      const result = await adminFetchJson<{
+        success: true;
+        data: {
+          stats: Stats;
+          recentUsers?: RecentUser[];
+        };
+      }>('/api/admin/stats');
+
+      setStats(result.data.stats);
+      setRecentUsers(result.data.recentUsers || []);
+    } catch (fetchError) {
+      console.error('Failed to fetch admin stats:', fetchError);
+      setError(fetchError instanceof Error ? fetchError.message : copy.loadFailed);
+    } finally {
+      setLoading(false);
+    }
+  }, [copy.loadFailed]);
 
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const result = await adminFetchJson<{
-          success: true;
-          data: {
-            stats: Stats;
-            recentUsers?: RecentUser[];
-          };
-        }>('/api/admin/stats');
-
-        setStats(result.data.stats);
-        setRecentUsers(result.data.recentUsers || []);
-      } catch (error) {
-        console.error('Failed to fetch admin stats:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     void fetchStats();
-  }, []);
+  }, [fetchStats]);
 
   const formatCurrency = useMemo(
     () => new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: 0 }),
@@ -80,7 +117,6 @@ export default function AdminDashboard() {
     if (!stats?.totalUsers) {
       return '0.0';
     }
-
     return ((stats.paidUsers / stats.totalUsers) * 100).toFixed(1);
   }, [stats]);
 
@@ -88,7 +124,6 @@ export default function AdminDashboard() {
     if (!stats?.totalUsers) {
       return '0.0';
     }
-
     return ((stats.activeUsers / stats.totalUsers) * 100).toFixed(1);
   }, [stats]);
 
@@ -96,7 +131,6 @@ export default function AdminDashboard() {
     if (!stats?.adImpressions) {
       return '0.00';
     }
-
     return ((stats.adClicks / stats.adImpressions) * 100).toFixed(2);
   }, [stats]);
 
@@ -104,13 +138,12 @@ export default function AdminDashboard() {
     if (!stats?.totalUsers) {
       return '0.0';
     }
-
     return (stats.totalContracts / stats.totalUsers).toFixed(1);
   }, [stats]);
 
   const planLabel = (plan: string) => {
     if (plan === 'free') {
-      return isEn ? 'Free' : '免费';
+      return isEn ? 'Free' : '免费版';
     }
     if (plan === 'pro') {
       return 'Pro';
@@ -126,196 +159,113 @@ export default function AdminDashboard() {
     );
   }
 
-  if (!stats) {
+  if (!stats || error) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-gray-500">
-          {isEn
-            ? 'Failed to load dashboard data. Please refresh and try again.'
-            : '加载后台总览失败，请刷新后重试。'}
-        </p>
-      </div>
+      <Card>
+        <CardContent className="flex min-h-[280px] flex-col items-center justify-center gap-4 py-12 text-center">
+          <p className="max-w-md text-sm text-muted-foreground">{error || copy.loadFailed}</p>
+          <Button onClick={() => void fetchStats()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            {copy.retry}
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">{isEn ? 'Dashboard' : '后台总览'}</h1>
-        <p className="text-gray-500">
-          {isEn ? "Welcome back. Here's today's platform overview." : '欢迎回来，这里是今天的平台概览。'}
-        </p>
+        <h1 className="text-2xl font-bold">{copy.title}</h1>
+        <p className="text-muted-foreground">{copy.description}</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              {isEn ? 'Total Users' : '总用户数'}
-            </CardTitle>
-            <Users className="h-4 w-4 text-gray-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalUsers.toLocaleString(locale)}</div>
-            <p className="flex items-center gap-1 text-xs text-green-600">
-              <TrendingUp className="h-3 w-3" />
-              {isEn ? `+${stats.newUsersToday} today` : `今日新增 ${stats.newUsersToday}`}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              {isEn ? 'Active Users' : '活跃用户'}
-            </CardTitle>
-            <Activity className="h-4 w-4 text-gray-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.activeUsers.toLocaleString(locale)}</div>
-            <p className="text-xs text-gray-500">
-              {isEn ? `Active rate ${activeRate}%` : `活跃率 ${activeRate}%`}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              {isEn ? 'Paid Users' : '付费用户'}
-            </CardTitle>
-            <CreditCard className="h-4 w-4 text-gray-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.paidUsers.toLocaleString(locale)}</div>
-            <p className="text-xs text-gray-500">
-              {isEn ? `Conversion ${paidRate}%` : `付费转化率 ${paidRate}%`}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              {isEn ? 'Monthly Revenue' : '本月收入'}
-            </CardTitle>
-            <DollarSign className="h-4 w-4 text-gray-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency.format(stats.revenue)}</div>
-            <p className="flex items-center gap-1 text-xs text-green-600">
-              <TrendingUp className="h-3 w-3" />
-              {isEn ? 'Revenue trend versus last month' : '对比上月收入趋势'}
-            </p>
-          </CardContent>
-        </Card>
+        <MetricCard
+          title={copy.totalUsers}
+          value={stats.totalUsers.toLocaleString(locale)}
+          hint={`${isEn ? '+' : ''}${stats.newUsersToday} ${isEn ? 'today' : '今日新增'}`}
+          icon={<Users className="h-4 w-4 text-gray-400" />}
+          positive
+        />
+        <MetricCard
+          title={copy.activeUsers}
+          value={stats.activeUsers.toLocaleString(locale)}
+          hint={`${copy.activeRate} ${activeRate}%`}
+          icon={<Activity className="h-4 w-4 text-gray-400" />}
+        />
+        <MetricCard
+          title={copy.paidUsers}
+          value={stats.paidUsers.toLocaleString(locale)}
+          hint={`${copy.conversionRate} ${paidRate}%`}
+          icon={<CreditCard className="h-4 w-4 text-gray-400" />}
+        />
+        <MetricCard
+          title={copy.monthlyRevenue}
+          value={formatCurrency.format(stats.revenue)}
+          hint={copy.revenueTrend}
+          icon={<DollarSign className="h-4 w-4 text-gray-400" />}
+          positive
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              {isEn ? 'Ad Impressions' : '广告展示'}
-            </CardTitle>
-            <Eye className="h-4 w-4 text-gray-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.adImpressions.toLocaleString(locale)}</div>
-            <p className="text-xs text-gray-500">{isEn ? 'Accumulated this month' : '本月累计'}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              {isEn ? 'Ad Clicks' : '广告点击'}
-            </CardTitle>
-            <MousePointer className="h-4 w-4 text-gray-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.adClicks.toLocaleString(locale)}</div>
-            <p className="text-xs text-gray-500">
-              {isEn ? `CTR ${adCtr}%` : `点击率 ${adCtr}%`}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">
-              {isEn ? 'Ad Revenue' : '广告收入'}
-            </CardTitle>
-            <DollarSign className="h-4 w-4 text-gray-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency.format(stats.adRevenue)}</div>
-            <p className="text-xs text-green-600">
-              {isEn ? 'Estimated revenue attributed to clicks' : '基于点击带来的预估收入'}
-            </p>
-          </CardContent>
-        </Card>
+        <MetricCard
+          title={copy.adImpressions}
+          value={stats.adImpressions.toLocaleString(locale)}
+          hint={copy.monthAccumulated}
+          icon={<Eye className="h-4 w-4 text-gray-400" />}
+        />
+        <MetricCard
+          title={copy.adClicks}
+          value={stats.adClicks.toLocaleString(locale)}
+          hint={`${copy.ctr} ${adCtr}%`}
+          icon={<MousePointer className="h-4 w-4 text-gray-400" />}
+        />
+        <MetricCard
+          title={copy.adRevenue}
+          value={formatCurrency.format(stats.adRevenue)}
+          hint={copy.attributedRevenue}
+          icon={<DollarSign className="h-4 w-4 text-gray-400" />}
+          positive
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>{isEn ? 'Contract Metrics' : '合同数据'}</CardTitle>
-            <CardDescription>
-              {isEn ? 'Core metrics for generated contracts.' : '已生成合同的核心业务指标。'}
-            </CardDescription>
+            <CardTitle>{copy.contractMetrics}</CardTitle>
+            <CardDescription>{copy.contractMetricsDesc}</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
-                    <FileText className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{isEn ? 'Total Contracts' : '累计合同数'}</p>
-                    <p className="text-sm text-gray-500">{isEn ? 'All time' : '历史累计'}</p>
-                  </div>
-                </div>
-                <span className="text-xl font-bold">{stats.totalContracts.toLocaleString(locale)}</span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100">
-                    <TrendingUp className="h-5 w-5 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{isEn ? 'Created Today' : '今日新增合同'}</p>
-                    <p className="text-sm text-gray-500">{isEn ? 'Real-time metric' : '实时统计'}</p>
-                  </div>
-                </div>
-                <span className="text-xl font-bold">{stats.contractsToday.toLocaleString(locale)}</span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100">
-                    <Users className="h-5 w-5 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{isEn ? 'Contracts per User' : '人均合同数'}</p>
-                    <p className="text-sm text-gray-500">
-                      {isEn ? 'Average generated contracts per user' : '平均每位用户生成的合同数量'}
-                    </p>
-                  </div>
-                </div>
-                <span className="text-xl font-bold">{contractsPerUser}</span>
-              </div>
-            </div>
+          <CardContent className="space-y-4">
+            <SummaryRow
+              label={isEn ? 'Total Contracts' : '累计合同数'}
+              hint={copy.allTime}
+              value={stats.totalContracts.toLocaleString(locale)}
+              icon={<FileText className="h-5 w-5 text-blue-600" />}
+              tone="blue"
+            />
+            <SummaryRow
+              label={copy.todayCreated}
+              hint={isEn ? 'Real-time metric' : '实时统计'}
+              value={stats.contractsToday.toLocaleString(locale)}
+              icon={<TrendingUp className="h-5 w-5 text-green-600" />}
+              tone="green"
+            />
+            <SummaryRow
+              label={copy.contractsPerUser}
+              hint={copy.avgContracts}
+              value={contractsPerUser}
+              icon={<Users className="h-5 w-5 text-purple-600" />}
+              tone="purple"
+            />
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>{isEn ? 'Recent Users' : '最近注册用户'}</CardTitle>
-            <CardDescription>
-              {isEn ? 'Newest users who joined the platform.' : '最近加入平台的新用户。'}
-            </CardDescription>
+            <CardTitle>{copy.recentUsers}</CardTitle>
+            <CardDescription>{copy.recentUsersDesc}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -333,22 +283,14 @@ export default function AdminDashboard() {
                       </div>
                       <div>
                         <p className="text-sm font-medium">
-                          {user.nickname || (isEn ? 'Unnamed user' : '未命名用户')}
+                          {user.nickname || copy.unnamedUser}
                         </p>
                         <p className="text-xs text-gray-500">{user.email}</p>
                       </div>
                     </div>
 
                     <div className="text-right">
-                      <span
-                        className={`inline-block rounded-full px-2 py-0.5 text-xs ${
-                          user.subscription_type === 'free'
-                            ? 'bg-gray-100 text-gray-600'
-                            : user.subscription_type === 'pro'
-                              ? 'bg-blue-100 text-blue-600'
-                              : 'bg-purple-100 text-purple-600'
-                        }`}
-                      >
+                      <span className="inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
                         {planLabel(user.subscription_type)}
                       </span>
                       <p className="mt-1 text-xs text-gray-400">
@@ -358,14 +300,76 @@ export default function AdminDashboard() {
                   </div>
                 ))
               ) : (
-                <p className="py-4 text-center text-gray-400">
-                  {isEn ? 'No recent user data yet.' : '暂时还没有最近注册用户。'}
-                </p>
+                <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                  {copy.noRecentUsers}
+                </div>
               )}
             </div>
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function MetricCard({
+  title,
+  value,
+  hint,
+  icon,
+  positive = false,
+}: {
+  title: string;
+  value: string;
+  hint: string;
+  icon: ReactNode;
+  positive?: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-sm font-medium text-gray-500">{title}</CardTitle>
+        {icon}
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">{value}</div>
+        <p className={`text-xs ${positive ? 'text-green-600' : 'text-gray-500'}`}>{hint}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SummaryRow({
+  label,
+  hint,
+  value,
+  icon,
+  tone,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  icon: ReactNode;
+  tone: 'blue' | 'green' | 'purple';
+}) {
+  const tones = {
+    blue: 'bg-blue-100',
+    green: 'bg-green-100',
+    purple: 'bg-purple-100',
+  };
+
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${tones[tone]}`}>
+          {icon}
+        </div>
+        <div>
+          <p className="font-medium">{label}</p>
+          <p className="text-sm text-gray-500">{hint}</p>
+        </div>
+      </div>
+      <span className="text-xl font-bold">{value}</span>
     </div>
   );
 }

@@ -1,32 +1,37 @@
-"use client"
+"use client";
 
-import { FileEdit, UserCheck, Shield, CheckCircle } from "lucide-react"
-import { useLanguage } from "@/components/language-provider"
+import { CheckCircle, FileEdit, Shield, UserCheck } from "lucide-react";
+
+import { useLanguage } from "@/components/language-provider";
 
 const stepsData = {
   en: [
     {
       icon: FileEdit,
       title: "Create Contract",
-      description: "Choose from templates or create custom contracts with our intuitive editor",
+      description:
+        "Choose a template or start from imported conversation material inside the guided editor.",
       step: "01",
     },
     {
       icon: UserCheck,
-      title: "Add Signers",
-      description: "Invite parties from China or USA to review and sign the contract",
+      title: "Confirm Parties",
+      description:
+        "Review key fields, assign counterparties, and prepare the contract for approval or signature.",
       step: "02",
     },
     {
       icon: Shield,
-      title: "E-Sign Securely",
-      description: "All parties sign with legally compliant e-signatures",
+      title: "Route for Signature",
+      description:
+        "Send the document through a managed signing flow and keep the latest status visible to the team.",
       step: "03",
     },
     {
       icon: CheckCircle,
-      title: "Store & Manage",
-      description: "Contracts are encrypted, verified, and stored securely in the cloud",
+      title: "Retain and Track",
+      description:
+        "Store the final file, signature evidence, and related billing or archive information in one place.",
       step: "04",
     },
   ],
@@ -34,79 +39,81 @@ const stepsData = {
     {
       icon: FileEdit,
       title: "创建合同",
-      description: "从模板中选择或使用我们直观的编辑器创建自定义合同",
+      description: "选择模板，或从导入的聊天内容开始，在引导式编辑器中整理成正式草稿。",
       step: "01",
     },
     {
       icon: UserCheck,
-      title: "添加签署方",
-      description: "邀请来自中国或美国的各方审阅并签署合同",
+      title: "确认参与方",
+      description: "复核关键信息、补齐合同字段，并为审批或签署流程做好准备。",
       step: "02",
     },
     {
       icon: Shield,
-      title: "安全电子签名",
-      description: "所有各方使用合法合规的电子签名进行签署",
+      title: "发起签署流程",
+      description: "将合同送入可跟踪的签署链路，让团队持续看到当前处理状态。",
       step: "03",
     },
     {
       icon: CheckCircle,
-      title: "存储与管理",
-      description: "合同经过加密、验证，并安全存储在云端",
+      title: "留存与追踪",
+      description: "把最终文件、签署记录和相关计费或归档信息统一保存在同一工作台中。",
       step: "04",
     },
   ],
-}
+} as const;
 
 const textData = {
   en: {
     title: "How it works",
-    subtitle: "Get your contracts signed in four simple steps",
+    subtitle: "Complete the contract lifecycle in four connected steps.",
   },
   zh: {
-    title: "工作原理",
-    subtitle: "通过四个简单步骤完成合同签署",
+    title: "工作流程",
+    subtitle: "用四个连续步骤完成从草稿到签署留存的合同流程。",
   },
-}
+} as const;
 
 export function HowItWorks() {
-  const { language } = useLanguage()
-  const locale = language as "en" | "zh"
-  const steps = stepsData[locale]
-  const text = textData[locale]
+  const { language } = useLanguage();
+  const locale = language === "en" ? "en" : "zh";
+  const steps = stepsData[locale];
+  const text = textData[locale];
 
   return (
     <section id="how-it-works" className="py-20 md:py-24">
       <div className="mx-auto w-full max-w-7xl px-4 md:px-6">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4 text-balance">{text.title}</h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto text-pretty">
+        <div className="mb-16 text-center">
+          <h2 className="mb-4 text-3xl font-bold text-balance md:text-4xl">
+            {text.title}
+          </h2>
+          <p className="mx-auto max-w-2xl text-lg text-muted-foreground text-pretty">
             {text.subtitle}
           </p>
         </div>
 
         <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
           {steps.map((step, index) => (
-            <div key={index} className="relative">
+            <div key={step.step} className="relative">
               <div className="flex flex-col items-center text-center">
                 <div className="relative mb-4">
-                  <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
                     <step.icon className="h-8 w-8 text-primary" />
                   </div>
-                  <div className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
+                  <div className="absolute -right-2 -top-2 flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
                     {step.step}
                   </div>
                 </div>
-                <h3 className="text-xl font-semibold mb-2">{step.title}</h3>
+                <h3 className="mb-2 text-xl font-semibold">{step.title}</h3>
                 <p className="text-muted-foreground text-pretty">{step.description}</p>
               </div>
-              {index < steps.length - 1 && (
-                <div className="hidden lg:block absolute top-8 left-[60%] w-[80%] h-px bg-border" />
-              )}
+              {index < steps.length - 1 ? (
+                <div className="absolute left-[60%] top-8 hidden h-px w-[80%] bg-border lg:block" />
+              ) : null}
             </div>
           ))}
         </div>
       </div>
     </section>
-  )
+  );
 }

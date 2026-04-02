@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { saveAuthState } from "@/lib/auth/auth-state-manager";
 import {
@@ -39,13 +39,13 @@ function AuthCallbackContent() {
       ? normalizedRedirect
       : "/dashboard";
 
-  const buildUrl = (path: string) => {
+  const buildUrl = useCallback((path: string) => {
     const debug = searchParams.get("debug");
     if (debug) {
       return `${path}?debug=${debug}`;
     }
     return path;
-  };
+  }, [searchParams]);
 
   useEffect(() => {
     const handleWechatCallback = async (response: any) => {
@@ -156,7 +156,7 @@ function AuthCallbackContent() {
     };
 
     handleAuthCallback();
-  }, [postAuthPath, router, searchParams, text]);
+  }, [buildUrl, postAuthPath, router, searchParams, text]);
 
   if (loading) {
     return (

@@ -7,19 +7,21 @@ import { useLanguage } from "@/components/language-provider";
 import { PublicInfoShell } from "@/components/layout/public-info-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getAppDisplayName } from "@/lib/config/deployment.config";
 
 const termsContent = {
   en: {
     badge: "Legal",
     title: "Terms of Service",
-    description: "These terms apply to registration, usage, and subscriptions on ContractHub.",
+    description:
+      "These terms apply to registration, usage, and subscriptions on {appName}.",
     back: "Back to Sign In",
     updatedPrefix: "Last updated:",
     sections: [
       {
         title: "1. Service Scope",
         content:
-          "ContractHub provides contract drafting, editing, signing workflow, and archival tools. You must ensure submitted content is lawful and authorized.",
+          "{appName} provides contract drafting, editing, signing workflow, and archival tools. You must ensure submitted content is lawful and authorized.",
       },
       {
         title: "2. User Responsibilities",
@@ -46,14 +48,14 @@ const termsContent = {
   zh: {
     badge: "法律",
     title: "服务条款",
-    description: "以下条款适用于 ContractHub 的注册、使用与订阅行为。",
+    description: "以下条款适用于 {appName} 的注册、使用与订阅行为。",
     back: "返回登录",
     updatedPrefix: "最近更新：",
     sections: [
       {
         title: "1. 服务范围",
         content:
-          "ContractHub 提供合同生成、编辑、签署流程管理与归档工具。您需保证上传内容合法、真实且有权处理。",
+          "{appName} 提供合同起草、编辑、签署流程管理与归档工具。您需保证上传内容合法、真实且有权处理。",
       },
       {
         title: "2. 用户责任",
@@ -68,7 +70,7 @@ const termsContent = {
       {
         title: "4. 责任限制",
         content:
-          "在法律允许范围内，平台不对因用户未复核内容或超出服务边界的使用造成的间接损失承担责任。",
+          "在法律允许范围内，平台不对因用户未复核内容或超出服务边界使用造成的间接损失承担责任。",
       },
       {
         title: "5. 条款更新",
@@ -79,14 +81,23 @@ const termsContent = {
   },
 } as const;
 
+function formatText(template: string, appName: string) {
+  return template.replaceAll("{appName}", appName);
+}
+
 export default function TermsPage() {
   const { language } = useLanguage();
   const locale = language === "en" ? "en" : "zh";
   const content = termsContent[locale];
   const updatedAt = "February 14, 2026";
+  const appName = getAppDisplayName();
 
   return (
-    <PublicInfoShell badge={content.badge} title={content.title} description={content.description}>
+    <PublicInfoShell
+      badge={content.badge}
+      title={content.title}
+      description={formatText(content.description, appName)}
+    >
       <section className="container mx-auto max-w-3xl px-4">
         <Button variant="ghost" asChild className="mb-4">
           <Link href="/auth">
@@ -109,7 +120,9 @@ export default function TermsPage() {
             {content.sections.map((section) => (
               <section key={section.title} className="space-y-2">
                 <h2 className="text-base font-semibold">{section.title}</h2>
-                <p className="text-sm leading-6 text-muted-foreground">{section.content}</p>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {formatText(section.content, appName)}
+                </p>
               </section>
             ))}
           </CardContent>

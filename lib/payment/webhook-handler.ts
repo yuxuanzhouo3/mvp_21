@@ -14,6 +14,7 @@ import {
   logSecurityEvent,
   logBusinessEvent,
 } from "../utils/logger";
+import { queuePaymentFailureNotification } from "../data/payment-failure-notifications-store";
 
 export interface WebhookEvent {
   id: string;
@@ -1887,11 +1888,18 @@ export class WebhookHandler {
         currency: invoice.currency,
         nextPaymentAttempt: invoice.next_payment_attempt,
       });
-
-      // TODO: 实现支付失败通知逻辑
-      // - 发送邮件通知用户
-      // - 记录失败事件到通知队列
-      // - 考虑自动重试逻辑
+      await queuePaymentFailureNotification({
+        userId: user.userId,
+        provider: "stripe",
+        paymentReference: invoice.id || subscriptionId,
+        subscriptionReference: subscriptionId,
+        amount: (invoice.amount_due || 0) / 100,
+        currency: invoice.currency?.toUpperCase() || "USD",
+        reason: invoice.last_finalization_error?.message || "invoice.payment_failed",
+        nextPaymentAttempt: invoice.next_payment_attempt
+          ? new Date(invoice.next_payment_attempt * 1000).toISOString()
+          : undefined,
+      });
 
       return true;
     } catch (error) {
@@ -1972,6 +1980,19 @@ export class WebhookHandler {
           paymentMethod: "stripe",
         });
       }
+
+      await queuePaymentFailureNotification({
+        userId: user.userId,
+        provider: "stripe",
+        paymentReference: invoice.id || subscriptionId,
+        subscriptionReference: subscriptionId,
+        amount: (invoice.amount_due || 0) / 100,
+        currency: invoice.currency?.toUpperCase() || "USD",
+        reason: invoice.last_finalization_error?.message || "invoice.payment_failed",
+        nextPaymentAttempt: invoice.next_payment_attempt
+          ? new Date(invoice.next_payment_attempt * 1000).toISOString()
+          : undefined,
+      });
 
       return true;
     } catch (error) {

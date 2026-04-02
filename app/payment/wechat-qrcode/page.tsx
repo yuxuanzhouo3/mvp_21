@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React, { useEffect, useState } from "react";
 import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -181,12 +182,15 @@ function WechatQRCodeContent() {
             <div className="space-y-4">
               <div className="flex justify-center">
                 <div className="bg-white p-4 rounded-lg border-2 border-gray-200">
-                  <img
+                  <Image
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
                       codeUrl
                     )}`}
                     alt={content.qrAlt}
-                    className="w-64 h-64"
+                    width={256}
+                    height={256}
+                    className="h-64 w-64"
+                    unoptimized
                   />
                 </div>
               </div>

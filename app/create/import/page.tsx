@@ -47,6 +47,7 @@ function ImportContent() {
   const isEn = language === "en";
   const method = (searchParams.get("method") || "text") as SupportedImportMethod;
   const flowContext = searchParams.get("ctx") === "dashboard" ? "dashboard" : "standalone";
+  const templateId = searchParams.get("templateId") || "";
   const [content, setContent] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [ocrImageName, setOcrImageName] = useState("");
@@ -64,8 +65,8 @@ function ImportContent() {
   const backHref = flowContext === "dashboard" ? "/dashboard/contracts/new" : "/create";
   const importHref =
     flowContext === "dashboard"
-      ? `/create/import?method=${method}&ctx=dashboard`
-      : `/create/import?method=${method}`;
+      ? `/create/import?method=${method}&ctx=dashboard${templateId ? `&templateId=${encodeURIComponent(templateId)}` : ""}`
+      : `/create/import?method=${method}${templateId ? `&templateId=${encodeURIComponent(templateId)}` : ""}`;
 
   const inputQualityHint = useMemo(() => {
     if (!trimmedLength) {
@@ -112,13 +113,14 @@ function ImportContent() {
       sourceContent: nextContent,
       analysisResult: enrichedAnalysis,
       parties: buildContractParties(enrichedAnalysis),
-      metadata: {
-        flowVersion: "create-v2",
-        draftStage: "analysis",
-        flowContext,
-        sourceMethod: method,
-        activeCompanyProfile: activeCompanyProfile || undefined,
-        partyAProfileSource: activeCompanyProfile ? "active-company-profile" : undefined,
+        metadata: {
+          flowVersion: "create-v2",
+          draftStage: "analysis",
+          flowContext,
+          sourceMethod: method,
+          templateId: templateId || undefined,
+          activeCompanyProfile: activeCompanyProfile || undefined,
+          partyAProfileSource: activeCompanyProfile ? "active-company-profile" : undefined,
         importMeta: supportsOcr
           ? {
               provider: ocrProvider || undefined,
@@ -141,8 +143,8 @@ function ImportContent() {
 
     router.push(
       flowContext === "dashboard"
-        ? `/create/analyze?id=${draft.id}&ctx=dashboard`
-        : `/create/analyze?id=${draft.id}`,
+        ? `/create/analyze?id=${draft.id}&ctx=dashboard${templateId ? `&templateId=${encodeURIComponent(templateId)}` : ""}`
+        : `/create/analyze?id=${draft.id}${templateId ? `&templateId=${encodeURIComponent(templateId)}` : ""}`,
     );
   }
 

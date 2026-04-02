@@ -195,7 +195,7 @@ export const translationOverrides = {
       openConsole: "进入控制台",
     },
     footer: {
-      description: "ContractHub 为团队提供统一控制台，覆盖合同起草、签署、归档与计费全流程。",
+      description: "MornContract 为团队提供统一控制台，覆盖合同起草、签署、归档与计费全流程。",
       columns: {
         console: {
           title: "控制台",
@@ -446,7 +446,7 @@ export const translationOverrides = {
       amount: "支付金额",
       errorTitle: "支付确认失败",
       errorDescription: "请联系客服或稍后重试。",
-      successAction: "开始使用 ContractHub",
+      successAction: "进入 MornContract",
       backHome: "返回首页",
     },
     legacyWechatPaymentPage: {
@@ -628,7 +628,7 @@ export const translationOverrides = {
     },
     footer: {
       description:
-        "ContractHub gives teams one console for drafting, signing, archiving, and billing workflows.",
+        "MornContract gives teams one console for drafting, signing, archiving, and billing workflows.",
       columns: {
         console: {
           title: "Console",
@@ -812,7 +812,7 @@ export const translationOverrides = {
       amount: "Amount",
       errorTitle: "Payment confirmation failed",
       errorDescription: "Please contact support or try again later.",
-      successAction: "Start using ContractHub",
+      successAction: "Open MornContract",
       backHome: "Back to Home",
     },
     wechatPaymentPage: {

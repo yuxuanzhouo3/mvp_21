@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { CONTRACT_TYPE_NAMES } from "@/lib/ai/prompts/generate";
 import { AIAnalysisResult } from "@/lib/ai/types";
+import { tokenManager } from "@/lib/auth/frontend-token-manager";
 import { type ContractDetail, getContractForCurrentUser, updateContractForCurrentUser } from "@/lib/contracts/client";
 import type { ActiveCompanyProfileSnapshot } from "@/lib/contracts/draft-context";
 import {
@@ -81,10 +82,20 @@ function AnalyzePageContent() {
   const [editingTerm, setEditingTerm] = useState<string | null>(null);
 
   const fallbackHref = flowContext === "dashboard" ? "/dashboard/contracts/new" : "/create";
+  const importSourceMethod = contractRecord?.metadata?.sourceMethod;
+  const importTemplateId = contractRecord?.metadata?.templateId;
+  const importMethod =
+    typeof importSourceMethod === "string" && importSourceMethod !== "ai-chat"
+      ? importSourceMethod
+      : "text";
   const importHref =
     flowContext === "dashboard"
-      ? "/create/import?method=text&ctx=dashboard"
-      : "/create/import?method=text";
+      ? `/create/import?method=${importMethod}&ctx=dashboard${
+          typeof importTemplateId === "string" ? `&templateId=${encodeURIComponent(importTemplateId)}` : ""
+        }`
+      : `/create/import?method=${importMethod}${
+          typeof importTemplateId === "string" ? `&templateId=${encodeURIComponent(importTemplateId)}` : ""
+        }`;
 
   useEffect(() => {
     let cancelled = false;
@@ -153,10 +164,21 @@ function AnalyzePageContent() {
     setIsGenerating(true);
 
     try {
+      const headers = (await tokenManager.getAuthHeaderAsync()) || {};
+      const templateId =
+        typeof contractRecord.metadata?.templateId === "string"
+          ? contractRecord.metadata.templateId
+          : undefined;
       const response = await fetch("/api/contracts/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ analysisResult: analysis }),
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          analysisResult: analysis,
+          templateId,
+        }),
       });
       const result = await response.json();
 
@@ -189,6 +211,10 @@ function AnalyzePageContent() {
           ),
           draftStage: "generated",
           flowVersion: "create-v2",
+          templateId:
+            typeof contractRecord.metadata?.templateId === "string"
+              ? contractRecord.metadata.templateId
+              : undefined,
         },
       });
 

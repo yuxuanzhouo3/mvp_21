@@ -143,6 +143,9 @@ export interface ContractContent {
 export interface GenerateContractRequest {
   analysisResult: AIAnalysisResult;
   templateId?: string;
+  templateName?: string;
+  templateContent?: string;
+  templateVersion?: number;
   customFields?: Record<string, string>;
   language?: 'zh' | 'en';
 }

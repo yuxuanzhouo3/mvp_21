@@ -732,40 +732,6 @@ class CloudBaseAuthClient implements AuthClient {
       }
     }
 
-    if (typeof window !== "undefined") {
-      const isLoggedIn = localStorage.getItem("auth-logged-in");
-      if (isLoggedIn === "true") {
-        const cachedUser = localStorage.getItem("auth-user");
-        if (cachedUser) {
-          try {
-            const userData = JSON.parse(cachedUser);
-            return {
-              data: {
-                session: {
-                  access_token: "cached-session",
-                  user: {
-                    id: userData.id,
-                    email: userData.email,
-                    user_metadata: {
-                      full_name:
-                        userData.name ||
-                        userData.email?.split("@")[0] ||
-                        "用户",
-                      avatar_url: userData.avatar,
-                      role: resolveUserRole(userData),
-                    },
-                  },
-                },
-              },
-              error: null,
-            };
-          } catch (parseError) {
-            console.error("[CloudBase Auth] Failed to parse cached user:", parseError);
-          }
-        }
-      }
-    }
-
     const userResult = await this.getUser();
     if (userResult.data.user) {
       let token: string | null = null;
@@ -782,10 +748,6 @@ class CloudBaseAuthClient implements AuthClient {
         }
       }
 
-      if (!token && typeof window !== "undefined") {
-        token = localStorage.getItem("auth-token");
-      }
-
       return {
         data: {
           session: {
@@ -795,37 +757,6 @@ class CloudBaseAuthClient implements AuthClient {
         },
         error: null,
       };
-    }
-
-    if (typeof window !== "undefined") {
-      const cachedUser = localStorage.getItem("auth-user");
-      if (cachedUser) {
-        try {
-          const userData = JSON.parse(cachedUser);
-          return {
-            data: {
-              session: {
-                access_token: "cached-session",
-                user: {
-                  id: userData.id,
-                  email: userData.email,
-                  user_metadata: {
-                    full_name:
-                      userData.name ||
-                      userData.email?.split("@")[0] ||
-                      "用户",
-                    avatar_url: userData.avatar,
-                    role: resolveUserRole(userData),
-                  },
-                },
-              },
-            },
-            error: null,
-          };
-        } catch (parseError) {
-          console.error("[CloudBase Auth] Failed to parse fallback user:", parseError);
-        }
-      }
     }
 
     return { data: { session: null }, error: null };

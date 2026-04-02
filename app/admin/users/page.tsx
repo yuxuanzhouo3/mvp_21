@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Ban,
   CheckCircle2,
@@ -9,13 +9,13 @@ import {
   Filter,
   Loader2,
   MoreVertical,
+  RefreshCw,
   Search,
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useLanguage } from '@/components/language-provider';
-import { adminFetchJson } from '@/lib/admin/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -32,21 +32,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { adminFetchJson } from '@/lib/admin/client';
 
 interface User {
   id: string;
@@ -84,16 +72,61 @@ export default function UsersPage() {
   const { language } = useLanguage();
   const isEn = language === 'en';
   const locale = isEn ? 'en-US' : 'zh-CN';
+
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [planFilter, setPlanFilter] = useState('all');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedUserDetails, setSelectedUserDetails] = useState<UserDetails | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+
+  const copy = {
+    title: isEn ? 'User Management' : '用户管理',
+    description: isEn ? 'Manage registered users and account status.' : '查看注册用户、订阅方案和账户状态。',
+    export: isEn ? 'Export Data' : '导出数据',
+    retry: isEn ? 'Retry' : '重新加载',
+    clearFilters: isEn ? 'Clear Filters' : '清空筛选',
+    searchPlaceholder: isEn ? 'Search by name, email or phone...' : '按昵称、邮箱或手机号搜索...',
+    planPlaceholder: isEn ? 'Plan' : '订阅方案',
+    allPlans: isEn ? 'All Plans' : '全部方案',
+    users: isEn ? 'Users' : '用户列表',
+    noUsers: isEn ? 'No users found.' : '暂无匹配的用户数据。',
+    noUsersHint: isEn ? 'Try adjusting search terms or plan filters.' : '可以尝试调整搜索词或订阅方案筛选。',
+    loadFailed: isEn ? 'Failed to load user list.' : '加载用户列表失败。',
+    detailsFailed: isEn ? 'Failed to load user details.' : '加载用户详情失败。',
+    operationFailed: isEn ? 'Operation failed. Please retry.' : '操作失败，请稍后重试。',
+    banned: isEn ? 'Banned' : '已封禁',
+    active: isEn ? 'Active' : '正常',
+    user: isEn ? 'User' : '用户',
+    plan: isEn ? 'Plan' : '方案',
+    role: isEn ? 'Role' : '角色',
+    registeredAt: isEn ? 'Registered At' : '注册时间',
+    status: isEn ? 'Status' : '状态',
+    actions: isEn ? 'Actions' : '操作',
+    viewDetails: isEn ? 'View Details' : '查看详情',
+    banAccount: isEn ? 'Ban Account' : '封禁账号',
+    unbanAccount: isEn ? 'Unban Account' : '解除封禁',
+    detailsTitle: isEn ? 'User Details' : '用户详情',
+    detailsDesc: isEn ? 'Review user profile and recent activity.' : '查看用户资料、订单和最近活动。',
+    unnamedUser: isEn ? 'Unnamed user' : '未命名用户',
+    admin: isEn ? 'Admin' : '管理员',
+    normalUser: isEn ? 'User' : '普通用户',
+    currentPlan: isEn ? 'Current Plan' : '当前方案',
+    accountStatus: isEn ? 'Account Status' : '账户状态',
+    userRole: isEn ? 'User Role' : '用户角色',
+    usageOverview: isEn ? 'Usage Overview' : '使用概览',
+    totalContracts: isEn ? 'Total Contracts' : '累计合同数',
+    recentOrders: isEn ? 'Recent Orders' : '最近订单',
+    recentActivity: isEn ? 'Recent Activity' : '最近活动',
+    noOrders: isEn ? 'No order records yet.' : '暂无订单记录。',
+    noLogs: isEn ? 'No recent activity yet.' : '暂无最近活动。',
+  };
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -108,13 +141,10 @@ export default function UsersPage() {
     setPage(1);
   }, [planFilter]);
 
-  useEffect(() => {
-    void fetchUsers();
-  }, [page, searchQuery, planFilter]);
-
-  const fetchUsers = async () => {
-    setLoading(true);
+  const fetchUsers = useCallback(async () => {
     try {
+      setLoading(true);
+      setError('');
       const params = new URLSearchParams({
         page: String(page),
         limit: '20',
@@ -129,36 +159,39 @@ export default function UsersPage() {
 
       const result = await adminFetchJson<{
         success: true;
-        data: {
-          users?: User[];
-          total?: number;
-          totalPages?: number;
-        };
+        data: { users?: User[]; total?: number; totalPages?: number };
       }>(`/api/admin/users?${params.toString()}`);
 
       setUsers(result.data.users || []);
       setTotal(result.data.total || 0);
       setTotalPages(result.data.totalPages || 1);
-    } catch (error) {
-      console.error('Failed to fetch users:', error);
-      toast.error(isEn ? 'Failed to load user list.' : '加载用户列表失败。');
+    } catch (fetchError) {
+      console.error('Failed to fetch users:', fetchError);
+      const message = fetchError instanceof Error ? fetchError.message : copy.loadFailed;
+      setError(message);
+      toast.error(copy.loadFailed);
     } finally {
       setLoading(false);
     }
-  };
+  }, [copy.loadFailed, page, planFilter, searchQuery]);
+
+  useEffect(() => {
+    void fetchUsers();
+  }, [fetchUsers]);
 
   const fetchUserDetails = async (userId: string) => {
     try {
+      setDetailsLoading(true);
       setSelectedUserDetails(null);
-      const result = await adminFetchJson<{
-        success: true;
-        data: UserDetails;
-      }>(`/api/admin/users/${userId}`);
-
-      setSelectedUserDetails(result.data as UserDetails);
-    } catch (error) {
-      console.error('Failed to fetch user details:', error);
-      toast.error(isEn ? 'Failed to load user details.' : '加载用户详情失败。');
+      const result = await adminFetchJson<{ success: true; data: UserDetails }>(
+        `/api/admin/users/${userId}`,
+      );
+      setSelectedUserDetails(result.data);
+    } catch (fetchError) {
+      console.error('Failed to fetch user details:', fetchError);
+      toast.error(copy.detailsFailed);
+    } finally {
+      setDetailsLoading(false);
     }
   };
 
@@ -166,9 +199,7 @@ export default function UsersPage() {
     try {
       await adminFetchJson(`/api/admin/users/${userId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_banned: ban }),
       });
 
@@ -181,14 +212,14 @@ export default function UsersPage() {
         ban
           ? isEn
             ? 'User has been flagged as banned.'
-            : '已将该用户标记为封禁。'
+            : '该用户已被标记为封禁。'
           : isEn
             ? 'User has been restored.'
-            : '已恢复该用户状态。',
+            : '该用户已恢复正常状态。',
       );
-    } catch (error) {
-      console.error('Operation failed:', error);
-      toast.error(isEn ? 'Operation failed. Please retry.' : '操作失败，请稍后重试。');
+    } catch (operationError) {
+      console.error('Operation failed:', operationError);
+      toast.error(copy.operationFailed);
     }
   };
 
@@ -229,7 +260,7 @@ export default function UsersPage() {
       return (
         <span className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-1 text-xs text-red-600">
           <XCircle className="h-3 w-3" />
-          {isEn ? 'Banned' : '已封禁'}
+          {copy.banned}
         </span>
       );
     }
@@ -237,22 +268,19 @@ export default function UsersPage() {
     return (
       <span className="flex items-center gap-1 rounded-full bg-green-100 px-2 py-1 text-xs text-green-600">
         <CheckCircle2 className="h-3 w-3" />
-        {isEn ? 'Active' : '正常'}
+        {copy.active}
       </span>
     );
   };
 
   const summaryText = useMemo(() => {
-    return isEn
-      ? `Total ${total} users, page ${page} of ${totalPages}`
-      : `共 ${total} 位用户，第 ${page} / ${totalPages} 页`;
+    return isEn ? `Total ${total} users, page ${page} of ${totalPages}` : `共 ${total} 位用户，第 ${page} / ${totalPages} 页`;
   }, [isEn, page, total, totalPages]);
 
   const formatCurrency = (amount?: number, currency = 'CNY') => {
     if (typeof amount !== 'number') {
       return '-';
     }
-
     try {
       return new Intl.NumberFormat(locale, {
         style: 'currency',
@@ -264,19 +292,30 @@ export default function UsersPage() {
     }
   };
 
+  const clearFilters = () => {
+    setSearchInput('');
+    setSearchQuery('');
+    setPlanFilter('all');
+    setPage(1);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{isEn ? 'User Management' : '用户管理'}</h1>
-          <p className="text-gray-500">
-            {isEn ? 'Manage registered users and account status.' : '查看注册用户、订阅方案和账户状态。'}
-          </p>
+          <h1 className="text-2xl font-bold">{copy.title}</h1>
+          <p className="text-muted-foreground">{copy.description}</p>
         </div>
-        <Button variant="outline" onClick={exportUsers}>
-          <Download className="mr-2 h-4 w-4" />
-          {isEn ? 'Export Data' : '导出数据'}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => void fetchUsers()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            {copy.retry}
+          </Button>
+          <Button variant="outline" onClick={exportUsers}>
+            <Download className="mr-2 h-4 w-4" />
+            {copy.export}
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -286,7 +325,7 @@ export default function UsersPage() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <Input
                 className="pl-9"
-                placeholder={isEn ? 'Search by name, email or phone...' : '按昵称、邮箱或手机号搜索...'}
+                placeholder={copy.searchPlaceholder}
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
               />
@@ -294,10 +333,10 @@ export default function UsersPage() {
             <Select value={planFilter} onValueChange={setPlanFilter}>
               <SelectTrigger className="w-full sm:w-44">
                 <Filter className="mr-2 h-4 w-4" />
-                <SelectValue placeholder={isEn ? 'Plan' : '订阅方案'} />
+                <SelectValue placeholder={copy.planPlaceholder} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{isEn ? 'All Plans' : '全部方案'}</SelectItem>
+                <SelectItem value="all">{copy.allPlans}</SelectItem>
                 <SelectItem value="free">{isEn ? 'Free' : '免费版'}</SelectItem>
                 <SelectItem value="pro">Pro</SelectItem>
                 <SelectItem value="enterprise">{isEn ? 'Enterprise' : '企业版'}</SelectItem>
@@ -309,28 +348,36 @@ export default function UsersPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{isEn ? `Users (${total})` : `用户列表（${total}）`}</CardTitle>
+          <CardTitle>{`${copy.users} (${total})`}</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
+          ) : error ? (
+            <div className="rounded-lg border border-dashed p-8 text-center">
+              <p className="text-sm text-muted-foreground">{error}</p>
+            </div>
           ) : users.length === 0 ? (
-            <div className="py-12 text-center text-gray-500">
-              {isEn ? 'No users found.' : '暂无用户数据。'}
+            <div className="rounded-lg border border-dashed p-12 text-center">
+              <p className="font-medium">{copy.noUsers}</p>
+              <p className="mt-2 text-sm text-muted-foreground">{copy.noUsersHint}</p>
+              <Button variant="outline" className="mt-4" onClick={clearFilters}>
+                {copy.clearFilters}
+              </Button>
             </div>
           ) : (
             <>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{isEn ? 'User' : '用户'}</TableHead>
-                    <TableHead>{isEn ? 'Plan' : '方案'}</TableHead>
-                    <TableHead>{isEn ? 'Role' : '角色'}</TableHead>
-                    <TableHead>{isEn ? 'Registered At' : '注册时间'}</TableHead>
-                    <TableHead>{isEn ? 'Status' : '状态'}</TableHead>
-                    <TableHead className="text-right">{isEn ? 'Actions' : '操作'}</TableHead>
+                    <TableHead>{copy.user}</TableHead>
+                    <TableHead>{copy.plan}</TableHead>
+                    <TableHead>{copy.role}</TableHead>
+                    <TableHead>{copy.registeredAt}</TableHead>
+                    <TableHead>{copy.status}</TableHead>
+                    <TableHead className="text-right">{copy.actions}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -344,7 +391,7 @@ export default function UsersPage() {
                             </span>
                           </div>
                           <div>
-                            <p className="font-medium">{user.nickname || (isEn ? 'Unnamed' : '未命名用户')}</p>
+                            <p className="font-medium">{user.nickname || copy.unnamedUser}</p>
                             <p className="text-sm text-gray-500">{user.email}</p>
                           </div>
                         </div>
@@ -353,18 +400,10 @@ export default function UsersPage() {
                       <TableCell>
                         <span
                           className={`rounded-full px-2 py-1 text-xs ${
-                            user.role === 'admin'
-                              ? 'bg-orange-100 text-orange-600'
-                              : 'bg-gray-100 text-gray-600'
+                            user.role === 'admin' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'
                           }`}
                         >
-                          {user.role === 'admin'
-                            ? isEn
-                              ? 'Admin'
-                              : '管理员'
-                            : isEn
-                              ? 'User'
-                              : '普通用户'}
+                          {user.role === 'admin' ? copy.admin : copy.normalUser}
                         </span>
                       </TableCell>
                       <TableCell className="text-gray-500">
@@ -386,20 +425,14 @@ export default function UsersPage() {
                               }}
                             >
                               <Eye className="mr-2 h-4 w-4" />
-                              {isEn ? 'View Details' : '查看详情'}
+                              {copy.viewDetails}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-red-600"
                               onClick={() => void handleBanUser(user.id, !user.is_banned)}
                             >
                               <Ban className="mr-2 h-4 w-4" />
-                              {user.is_banned
-                                ? isEn
-                                  ? 'Unban Account'
-                                  : '解除封禁'
-                                : isEn
-                                  ? 'Ban Account'
-                                  : '封禁账号'}
+                              {user.is_banned ? copy.unbanAccount : copy.banAccount}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -412,12 +445,7 @@ export default function UsersPage() {
               <div className="mt-4 flex items-center justify-between">
                 <p className="text-sm text-gray-500">{summaryText}</p>
                 <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page === 1}
-                    onClick={() => setPage((current) => current - 1)}
-                  >
+                  <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>
                     {isEn ? 'Previous' : '上一页'}
                   </Button>
                   <Button
@@ -440,14 +468,13 @@ export default function UsersPage() {
         onOpenChange={() => {
           setSelectedUser(null);
           setSelectedUserDetails(null);
+          setDetailsLoading(false);
         }}
       >
         <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{isEn ? 'User Details' : '用户详情'}</DialogTitle>
-            <DialogDescription>
-              {isEn ? 'Review user profile and recent activity.' : '查看用户资料、订单和最近活动。'}
-            </DialogDescription>
+            <DialogTitle>{copy.detailsTitle}</DialogTitle>
+            <DialogDescription>{copy.detailsDesc}</DialogDescription>
           </DialogHeader>
 
           {selectedUser ? (
@@ -459,137 +486,111 @@ export default function UsersPage() {
                   </span>
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold">
-                    {selectedUser.nickname || (isEn ? 'Unnamed' : '未命名用户')}
-                  </h3>
+                  <h3 className="text-lg font-semibold">{selectedUser.nickname || copy.unnamedUser}</h3>
                   <p className="text-gray-500">{selectedUser.email}</p>
-                  {selectedUser.phone ? (
-                    <p className="text-sm text-gray-400">{selectedUser.phone}</p>
-                  ) : null}
+                  {selectedUser.phone ? <p className="text-sm text-gray-400">{selectedUser.phone}</p> : null}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-lg bg-gray-50 p-4">
-                  <p className="text-sm text-gray-500">{isEn ? 'Current Plan' : '当前方案'}</p>
-                  <div className="mt-1">{getPlanBadge(selectedUser.subscription_type)}</div>
-                </div>
-                <div className="rounded-lg bg-gray-50 p-4">
-                  <p className="text-sm text-gray-500">{isEn ? 'Account Status' : '账户状态'}</p>
-                  <div className="mt-1">{getStatusBadge(selectedUser)}</div>
-                </div>
-                <div className="rounded-lg bg-gray-50 p-4">
-                  <p className="text-sm text-gray-500">{isEn ? 'User Role' : '用户角色'}</p>
-                  <p className="font-medium">
-                    {selectedUser.role === 'admin'
-                      ? isEn
-                        ? 'Admin'
-                        : '管理员'
-                      : isEn
-                        ? 'User'
-                        : '普通用户'}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-gray-50 p-4">
-                  <p className="text-sm text-gray-500">{isEn ? 'Registered At' : '注册时间'}</p>
-                  <p className="font-medium">
-                    {new Date(selectedUser.created_at).toLocaleString(locale)}
-                  </p>
-                </div>
+                <StatCard label={copy.currentPlan} valueNode={getPlanBadge(selectedUser.subscription_type)} />
+                <StatCard label={copy.accountStatus} valueNode={getStatusBadge(selectedUser)} />
+                <StatCard
+                  label={copy.userRole}
+                  valueText={selectedUser.role === 'admin' ? copy.admin : copy.normalUser}
+                />
+                <StatCard
+                  label={copy.registeredAt}
+                  valueText={new Date(selectedUser.created_at).toLocaleString(locale)}
+                />
               </div>
 
-              {selectedUserDetails ? (
-                <>
-                  <div className="rounded-lg border p-4">
-                    <h4 className="mb-2 font-semibold">{isEn ? 'Usage Overview' : '使用概览'}</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-sm text-gray-500">{isEn ? 'Total Contracts' : '累计合同数'}</p>
-                        <p className="text-2xl font-bold">{selectedUserDetails.contractCount}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-500">{isEn ? 'Recent Orders' : '最近订单数'}</p>
-                        <p className="text-2xl font-bold">{selectedUserDetails.orders.length}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {selectedUserDetails.orders.length > 0 ? (
-                    <div className="rounded-lg border p-4">
-                      <h4 className="mb-2 font-semibold">{isEn ? 'Recent Orders' : '最近订单'}</h4>
-                      <div className="space-y-2">
-                        {selectedUserDetails.orders.slice(0, 3).map((order) => (
-                          <div
-                            key={order.id}
-                            className="flex items-center justify-between rounded bg-gray-50 p-2 text-sm"
-                          >
-                            <span>{order.plan_type || '-'}</span>
-                            <span className="font-medium">
-                              {formatCurrency(order.amount, order.currency || 'CNY')}
-                            </span>
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-xs ${
-                                order.status === 'paid' || order.status === 'completed'
-                                  ? 'bg-green-100 text-green-600'
-                                  : 'bg-gray-100 text-gray-600'
-                              }`}
-                            >
-                              {order.status === 'paid' || order.status === 'completed'
-                                ? isEn
-                                  ? 'Paid'
-                                  : '已支付'
-                                : order.status || '-'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {selectedUserDetails.recentLogs.length > 0 ? (
-                    <div className="rounded-lg border p-4">
-                      <h4 className="mb-2 font-semibold">{isEn ? 'Recent Activity' : '最近活动'}</h4>
-                      <div className="space-y-2">
-                        {selectedUserDetails.recentLogs.slice(0, 5).map((log, index) => (
-                          <div
-                            key={log.id || `${log.action}-${index}`}
-                            className="flex items-center justify-between rounded bg-gray-50 p-2 text-sm"
-                          >
-                            <span>{log.action || '-'}</span>
-                            <span className="text-gray-500">
-                              {log.created_at ? new Date(log.created_at).toLocaleString(locale) : '-'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </>
-              ) : (
+              {detailsLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-primary" />
                 </div>
-              )}
+              ) : selectedUserDetails ? (
+                <>
+                  <div className="rounded-lg border p-4">
+                    <h4 className="mb-2 font-semibold">{copy.usageOverview}</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <StatCard label={copy.totalContracts} valueText={String(selectedUserDetails.contractCount)} />
+                      <StatCard label={copy.recentOrders} valueText={String(selectedUserDetails.orders.length)} />
+                    </div>
+                  </div>
 
-              <div className="flex justify-end gap-2 border-t pt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => void handleBanUser(selectedUser.id, !selectedUser.is_banned)}
-                >
-                  <Ban className="mr-2 h-4 w-4" />
-                  {selectedUser.is_banned
-                    ? isEn
-                      ? 'Unban Account'
-                      : '解除封禁'
-                    : isEn
-                      ? 'Ban Account'
-                      : '封禁账号'}
-                </Button>
-              </div>
+                  <div className="rounded-lg border p-4">
+                    <h4 className="mb-3 font-semibold">{copy.recentOrders}</h4>
+                    {selectedUserDetails.orders.length > 0 ? (
+                      <div className="space-y-3">
+                        {selectedUserDetails.orders.map((order) => (
+                          <div key={order.id} className="rounded-lg bg-muted/40 p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="font-medium">{order.plan_type || '-'}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {order.payment_method || '-'} · {order.status || '-'}
+                                </p>
+                              </div>
+                              <div className="text-right text-sm">
+                                <p>{formatCurrency(order.amount, order.currency || 'CNY')}</p>
+                                <p className="text-muted-foreground">
+                                  {order.created_at ? new Date(order.created_at).toLocaleString(locale) : '-'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        {copy.noOrders}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border p-4">
+                    <h4 className="mb-3 font-semibold">{copy.recentActivity}</h4>
+                    {selectedUserDetails.recentLogs.length > 0 ? (
+                      <div className="space-y-3">
+                        {selectedUserDetails.recentLogs.map((log, index) => (
+                          <div key={log.id || `${log.action}-${index}`} className="rounded-lg bg-muted/40 p-3">
+                            <p className="font-medium">{log.action || '-'}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {log.created_at ? new Date(log.created_at).toLocaleString(locale) : '-'}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        {copy.noLogs}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : null}
             </div>
           ) : null}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  valueText,
+  valueNode,
+}: {
+  label: string;
+  valueText?: string;
+  valueNode?: ReactNode;
+}) {
+  return (
+    <div className="rounded-lg bg-gray-50 p-4">
+      <p className="text-sm text-gray-500">{label}</p>
+      <div className="mt-1 font-medium">{valueNode || valueText}</div>
     </div>
   );
 }

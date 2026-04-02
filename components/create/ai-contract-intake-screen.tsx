@@ -50,8 +50,11 @@ export function AIContractIntakeScreen() {
   const { language } = useLanguage();
   const isEn = language === "en";
   const flowContext = searchParams.get("ctx") === "dashboard" ? "dashboard" : "standalone";
+  const templateId = searchParams.get("templateId") || "";
   const canonicalPath =
-    flowContext === "dashboard" ? "/create/ai-chat?ctx=dashboard" : "/create/ai-chat";
+    flowContext === "dashboard"
+      ? `/create/ai-chat?ctx=dashboard${templateId ? `&templateId=${encodeURIComponent(templateId)}` : ""}`
+      : `/create/ai-chat${templateId ? `?templateId=${encodeURIComponent(templateId)}` : ""}`;
   const backToCreateHref =
     flowContext === "dashboard" ? "/dashboard/contracts/new" : "/create";
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -199,6 +202,7 @@ export function AIContractIntakeScreen() {
           draftStage: "analysis",
           flowContext,
           sourceMethod: "ai-chat",
+          templateId: templateId || undefined,
           activeCompanyProfile: activeCompanyProfile || undefined,
           partyAProfileSource: activeCompanyProfile ? "active-company-profile" : undefined,
           aiIntake: {
@@ -221,8 +225,8 @@ export function AIContractIntakeScreen() {
 
       router.push(
         flowContext === "dashboard"
-          ? `/create/analyze?id=${draft.id}&ctx=dashboard`
-          : `/create/analyze?id=${draft.id}`,
+          ? `/create/analyze?id=${draft.id}&ctx=dashboard${templateId ? `&templateId=${encodeURIComponent(templateId)}` : ""}`
+          : `/create/analyze?id=${draft.id}${templateId ? `&templateId=${encodeURIComponent(templateId)}` : ""}`,
       );
     } catch (error) {
       console.error("[AIContractIntakeScreen] Failed to create draft:", error);

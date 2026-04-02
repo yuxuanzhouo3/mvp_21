@@ -1,41 +1,48 @@
-"use client"
+"use client";
 
-import { Button } from "@/components/ui/button"
-import { ArrowRight } from "lucide-react"
-import Link from "next/link"
-import { useLanguage } from "@/components/language-provider"
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+
+import { useLanguage } from "@/components/language-provider";
+import { Button } from "@/components/ui/button";
+import { getAppDisplayName } from "@/lib/config/deployment.config";
 
 const textData = {
   en: {
-    title: "Ready to modernize your contracts?",
-    subtitle: "Join thousands of businesses using ContractHub for secure, compliant digital contracts across China and the USA.",
-    cta: "Start Free Trial",
+    title: "Ready to put contracts into one workspace?",
+    subtitle:
+      "helps teams draft, review, sign, and retain contracts in one operating flow.",
+    cta: "Create Your First Contract",
     contact: "Contact Sales",
-    disclaimer: "No credit card required • 14-day free trial • Cancel anytime",
+    disclaimer:
+      "Start with the current workflow and expand to paid plans when your team is ready.",
   },
   zh: {
-    title: "准备好升级您的合同管理了吗？",
-    subtitle: "加入数千家使用 ContractHub 进行安全、合规的中美跨境数字合同的企业。",
-    cta: "开始免费试用",
+    title: "准备把合同流程统一到一个工作台了吗？",
+    subtitle: "帮助团队把起草、审批、签署与留存整合进同一套工作流。",
+    cta: "开始创建第一份合同",
     contact: "联系销售",
-    disclaimer: "无需信用卡 • 14天免费试用 • 随时取消",
+    disclaimer: "可先按当前流程接入，团队需要更多能力时再升级到付费方案。",
   },
-}
+} as const;
 
 export function CTA() {
-  const { language } = useLanguage()
-  const locale = language as "en" | "zh"
-  const text = textData[locale]
+  const { language } = useLanguage();
+  const locale = language === "en" ? "en" : "zh";
+  const text = textData[locale];
+  const appName = getAppDisplayName();
 
   return (
     <section className="py-20 md:py-24">
       <div className="mx-auto w-full max-w-7xl px-4 md:px-6">
-        <div className="rounded-2xl border border-border bg-card p-8 md:p-12 text-center shadow-lg">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4 text-balance">{text.title}</h2>
-          <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto text-pretty">
-            {text.subtitle}
+        <div className="rounded-2xl border border-border bg-card p-8 text-center shadow-lg md:p-12">
+          <h2 className="mb-4 text-3xl font-bold text-balance md:text-4xl">
+            {text.title}
+          </h2>
+          <p className="mx-auto mb-8 max-w-2xl text-lg text-muted-foreground text-pretty">
+            {appName} {text.subtitle}
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Button size="lg" asChild>
               <Link href="/create">
                 {text.cta}
@@ -46,11 +53,9 @@ export function CTA() {
               <Link href="/contact">{text.contact}</Link>
             </Button>
           </div>
-          <p className="mt-6 text-sm text-muted-foreground">
-            {text.disclaimer}
-          </p>
+          <p className="mt-6 text-sm text-muted-foreground">{text.disclaimer}</p>
         </div>
       </div>
     </section>
-  )
+  );
 }

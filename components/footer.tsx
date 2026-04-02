@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FileText } from "lucide-react";
 
 import { useLanguage } from "@/components/language-provider";
+import { getAppDisplayName } from "@/lib/config/deployment.config";
 import { useTranslations } from "@/lib/i18n";
 
 export function Footer() {
@@ -11,6 +12,7 @@ export function Footer() {
   const t = useTranslations(language);
   const data = t.footer;
   const currentYear = new Date().getFullYear();
+  const appName = getAppDisplayName();
 
   return (
     <footer className="border-t border-border bg-muted/30">
@@ -19,7 +21,7 @@ export function Footer() {
           <div className="col-span-2 md:col-span-1">
             <div className="mb-4 flex items-center gap-2">
               <FileText className="h-6 w-6 text-primary" />
-              <span className="text-xl font-semibold">ContractHub</span>
+              <span className="text-xl font-semibold">{appName}</span>
             </div>
             <p className="text-pretty text-sm text-muted-foreground">
               {data.description}
@@ -68,7 +70,7 @@ export function Footer() {
 
         <div className="flex flex-col items-center justify-between gap-4 border-t border-border pt-8 text-sm text-muted-foreground md:flex-row">
           <p>
-            Copyright {currentYear} ContractHub. {data.legal.rights}
+            Copyright {currentYear} {appName}. {data.legal.rights}
           </p>
           <div className="flex flex-wrap items-center gap-6">
             <Link href="/privacy" className="transition-colors hover:text-foreground">

@@ -3,29 +3,34 @@ import { Mail, MessageSquare, Phone } from "lucide-react";
 
 import { PublicInfoShell } from "@/components/layout/public-info-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { loadAdminSettings } from "@/lib/data/admin-settings-store";
 
-const channels = [
-  {
-    title: "Sales Inquiry",
-    description: "For pricing, enterprise plan, and procurement requirements.",
-    value: "sales@contracthub.example",
-    icon: Mail,
-  },
-  {
-    title: "Product Consultation",
-    description: "For workflow setup, migration, and feature guidance.",
-    value: "support@contracthub.example",
-    icon: MessageSquare,
-  },
-  {
-    title: "Priority Hotline",
-    description: "For urgent onboarding and production launch support.",
-    value: "+1 (555) 010-2026",
-    icon: Phone,
-  },
-] as const;
+export default async function ContactPage() {
+  const settings = await loadAdminSettings();
+  const channels = [
+    {
+      title: "Sales Inquiry",
+      description: "For pricing, enterprise plan, and procurement requirements.",
+      value: settings.general.salesEmail,
+      href: `mailto:${settings.general.salesEmail}`,
+      icon: Mail,
+    },
+    {
+      title: "Product Consultation",
+      description: "For workflow setup, migration, and feature guidance.",
+      value: settings.general.supportEmail,
+      href: `mailto:${settings.general.supportEmail}`,
+      icon: MessageSquare,
+    },
+    {
+      title: "Priority Hotline",
+      description: "For urgent onboarding and production launch support.",
+      value: settings.general.hotline,
+      href: `tel:${settings.general.hotline.replace(/\s+/g, "")}`,
+      icon: Phone,
+    },
+  ] as const;
 
-export default function ContactPage() {
   return (
     <PublicInfoShell>
       <section className="mx-auto w-full max-w-7xl px-4 pt-10 md:pt-12">
@@ -40,7 +45,12 @@ export default function ContactPage() {
               </CardHeader>
               <CardContent className="space-y-2">
                 <p className="text-sm text-muted-foreground">{channel.description}</p>
-                <p className="text-sm font-medium text-foreground">{channel.value}</p>
+                <a
+                  href={channel.href}
+                  className="text-sm font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
+                >
+                  {channel.value}
+                </a>
               </CardContent>
             </Card>
           ))}

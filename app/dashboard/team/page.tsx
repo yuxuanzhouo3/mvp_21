@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Clock3,
   Copy,
@@ -149,24 +149,24 @@ export default function TeamPage() {
     [members],
   );
 
-  useEffect(() => {
-    void loadMembers();
-  }, []);
-
-  async function loadMembers() {
+  const loadMembers = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
       const result = await getDashboardTeamMembers();
       setMembers(result.members || []);
-      setPermissions(result.permissions || permissions);
+      setPermissions((current) => result.permissions || current);
     } catch (loadError) {
       console.error("[TeamPage] Failed to load members:", loadError);
       setError(content.loadFailed);
     } finally {
       setLoading(false);
     }
-  }
+  }, [content.loadFailed]);
+
+  useEffect(() => {
+    void loadMembers();
+  }, [loadMembers]);
 
   async function handleInviteMember() {
     if (!inviteForm.email.trim()) {

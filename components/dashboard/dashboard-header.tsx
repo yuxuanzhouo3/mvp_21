@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { FileText, Bell, User, Menu, Plus, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { getAppDisplayName } from "@/lib/config/deployment.config"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +17,7 @@ import {
 
 export function DashboardHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const appName = getAppDisplayName()
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background">
@@ -23,7 +25,7 @@ export function DashboardHeader() {
         <div className="flex items-center gap-6">
           <Link href="/dashboard" className="flex items-center gap-2">
             <FileText className="h-6 w-6 text-primary" />
-            <span className="text-xl font-semibold">ContractHub</span>
+            <span className="text-xl font-semibold">{appName}</span>
           </Link>
 
           <div className="hidden md:flex items-center gap-4">

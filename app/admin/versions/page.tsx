@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ChangeEvent, type ReactNode } from 'react';
 import {
   AlertCircle,
   CheckCircle,
   Download,
   Loader2,
   Monitor,
+  RefreshCw,
   Smartphone,
   Trash2,
   Upload,
@@ -14,20 +15,14 @@ import {
 import { toast } from 'sonner';
 
 import { useLanguage } from '@/components/language-provider';
-import { adminFetchJson } from '@/lib/admin/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { adminFetchJson } from '@/lib/admin/client';
 
 type Platform = 'android' | 'ios' | 'mac' | 'windows' | 'harmonyos';
 
@@ -56,9 +51,11 @@ export default function VersionsPage() {
   const { language } = useLanguage();
   const isEn = language === 'en';
   const locale = isEn ? 'en-US' : 'zh-CN';
+
   const [versions, setVersions] = useState<Version[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
   const [form, setForm] = useState({
     platform: '' as Platform | '',
     version: '',
@@ -68,6 +65,48 @@ export default function VersionsPage() {
     forceUpdate: false,
   });
 
+  const copy = {
+    title: isEn ? 'Version Management' : '版本管理',
+    description: isEn
+      ? 'Upload release packages and manage active versions across platforms.'
+      : '上传安装包并统一管理各平台的生效版本。',
+    uploadTitle: isEn ? 'Upload New Version' : '上传新版本',
+    uploadDesc: isEn
+      ? 'Create a release record after the package upload succeeds.'
+      : '安装包上传成功后，立即生成统一的版本记录。',
+    listTitle: isEn ? 'Version List' : '版本列表',
+    listDesc: isEn
+      ? 'Keep at most one active version per platform.'
+      : '建议每个平台始终只保留一个启用版本。',
+    loadFailed: isEn ? 'Failed to load versions.' : '加载版本列表失败。',
+    retry: isEn ? 'Retry' : '重新加载',
+    noVersions: isEn ? 'No versions yet.' : '暂无版本记录。',
+    noVersionsHint: isEn ? 'Upload the first package to initialize release management.' : '上传第一个安装包后即可开始版本管理。',
+    required: isEn ? 'Please complete all required fields.' : '请先填写必填项并选择安装包。',
+    uploadSuccess: isEn ? 'Version uploaded successfully.' : '版本上传成功。',
+    uploadFailed: isEn ? 'Upload failed. Please try again.' : '上传失败，请稍后重试。',
+    updateSuccess: isEn ? 'Version status updated.' : '版本状态已更新。',
+    updateFailed: isEn ? 'Failed to update version.' : '更新版本状态失败。',
+    deleteSuccess: isEn ? 'Version deleted.' : '版本已删除。',
+    deleteFailed: isEn ? 'Failed to delete version.' : '删除版本失败。',
+    deleteConfirm: isEn ? 'Delete this version?' : '确定删除该版本吗？',
+    platform: isEn ? 'Platform *' : '平台 *',
+    version: isEn ? 'Version *' : '版本号 *',
+    buildNumber: isEn ? 'Build Number' : '构建号',
+    file: isEn ? 'Install Package *' : '安装包 *',
+    releaseNotes: isEn ? 'Release Notes' : '更新说明',
+    forceUpdate: isEn ? 'Force update for all users' : '设为强制更新，用户需升级后继续使用',
+    uploading: isEn ? 'Uploading...' : '上传中...',
+    uploadButton: isEn ? 'Upload Version' : '上传版本',
+    selected: isEn ? 'Selected' : '已选择',
+    download: isEn ? 'Download' : '下载',
+    disable: isEn ? 'Disable' : '停用',
+    enable: isEn ? 'Enable' : '启用',
+    active: isEn ? 'Active' : '已启用',
+    inactive: isEn ? 'Inactive' : '未启用',
+    forceBadge: isEn ? 'Force Update' : '强制更新',
+  };
+
   const platformNames: Record<Platform, string> = {
     android: 'Android',
     ios: 'iOS',
@@ -76,25 +115,24 @@ export default function VersionsPage() {
     harmonyos: 'HarmonyOS',
   };
 
-  useEffect(() => {
-    void fetchVersions();
-  }, []);
-
-  const fetchVersions = async () => {
-    setLoading(true);
+  const fetchVersions = useCallback(async () => {
     try {
-      const result = await adminFetchJson<{
-        success: true;
-        data: Version[];
-      }>('/api/admin/versions');
+      setLoading(true);
+      setError('');
+      const result = await adminFetchJson<{ success: true; data: Version[] }>('/api/admin/versions');
       setVersions(result.data || []);
-    } catch (error) {
-      console.error('Failed to fetch versions:', error);
-      toast.error(isEn ? 'Failed to load versions.' : '加载版本列表失败。');
+    } catch (fetchError) {
+      console.error('Failed to fetch versions:', fetchError);
+      setError(fetchError instanceof Error ? fetchError.message : copy.loadFailed);
+      toast.error(copy.loadFailed);
     } finally {
       setLoading(false);
     }
-  };
+  }, [copy.loadFailed]);
+
+  useEffect(() => {
+    void fetchVersions();
+  }, [fetchVersions]);
 
   const handleFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] || null;
@@ -124,12 +162,12 @@ export default function VersionsPage() {
 
   const handleSubmit = async () => {
     if (!form.platform || !form.version || !form.file) {
-      toast.error(isEn ? 'Please complete all required fields.' : '请先填写必填项并选择安装包。');
+      toast.error(copy.required);
       return;
     }
 
-    setSubmitting(true);
     try {
+      setSubmitting(true);
       const uploadFormData = new FormData();
       uploadFormData.append('file', form.file);
       uploadFormData.append('folder', 'app-releases');
@@ -144,9 +182,7 @@ export default function VersionsPage() {
 
       await adminFetchJson('/api/admin/versions', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           platform: form.platform,
           version: form.version,
@@ -158,12 +194,12 @@ export default function VersionsPage() {
         }),
       });
 
-      toast.success(isEn ? 'Version uploaded successfully.' : '版本上传成功。');
+      toast.success(copy.uploadSuccess);
       resetForm();
       await fetchVersions();
-    } catch (error) {
-      console.error('Failed to upload version:', error);
-      toast.error(isEn ? 'Upload failed. Please try again.' : '上传失败，请稍后重试。');
+    } catch (submitError) {
+      console.error('Failed to upload version:', submitError);
+      toast.error(copy.uploadFailed);
     } finally {
       setSubmitting(false);
     }
@@ -173,26 +209,24 @@ export default function VersionsPage() {
     try {
       await adminFetchJson(`/api/admin/versions/${version.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           isActive: !version.isActive,
           forceUpdate: version.forceUpdate,
         }),
       });
 
-      toast.success(isEn ? 'Version status updated.' : '版本状态已更新。');
+      toast.success(copy.updateSuccess);
       await fetchVersions();
-    } catch (error) {
-      console.error('Failed to update version:', error);
-      toast.error(isEn ? 'Failed to update version.' : '更新版本状态失败。');
+    } catch (toggleError) {
+      console.error('Failed to update version:', toggleError);
+      toast.error(copy.updateFailed);
     }
   };
 
   const handleDelete = async (version: Version) => {
     const confirmed = window.confirm(
-      isEn ? `Delete version ${version.version}?` : `确定删除版本 ${version.version} 吗？`,
+      isEn ? `${copy.deleteConfirm} (${version.version})` : `${copy.deleteConfirm}（${version.version}）`,
     );
     if (!confirmed) {
       return;
@@ -202,44 +236,33 @@ export default function VersionsPage() {
       await adminFetchJson(`/api/admin/versions/${version.id}`, {
         method: 'DELETE',
       });
-
-      toast.success(isEn ? 'Version deleted.' : '版本已删除。');
+      toast.success(copy.deleteSuccess);
       await fetchVersions();
-    } catch (error) {
-      console.error('Failed to delete version:', error);
-      toast.error(isEn ? 'Failed to delete version.' : '删除版本失败。');
+    } catch (deleteError) {
+      console.error('Failed to delete version:', deleteError);
+      toast.error(copy.deleteFailed);
     }
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">{isEn ? 'Version Management' : '版本管理'}</h1>
-        <p className="text-gray-500">
-          {isEn
-            ? 'Upload release packages and manage active versions across platforms.'
-            : '上传安装包并统一管理各平台的生效版本。'}
-        </p>
+        <h1 className="text-2xl font-bold">{copy.title}</h1>
+        <p className="text-muted-foreground">{copy.description}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>{isEn ? 'Upload New Version' : '上传新版本'}</CardTitle>
-          <CardDescription>
-            {isEn
-              ? 'Create a release record after the package upload succeeds.'
-              : '安装包上传完成后，立即生成统一的版本记录。'}
-          </CardDescription>
+          <CardTitle>{copy.uploadTitle}</CardTitle>
+          <CardDescription>{copy.uploadDesc}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="platform">{isEn ? 'Platform *' : '平台 *'}</Label>
+              <Label htmlFor="platform">{copy.platform}</Label>
               <Select
                 value={form.platform}
-                onValueChange={(value) =>
-                  setForm((current) => ({ ...current, platform: value as Platform }))
-                }
+                onValueChange={(value) => setForm((current) => ({ ...current, platform: value as Platform }))}
               >
                 <SelectTrigger id="platform">
                   <SelectValue placeholder={isEn ? 'Select platform' : '请选择平台'} />
@@ -255,32 +278,28 @@ export default function VersionsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="version">{isEn ? 'Version *' : '版本号 *'}</Label>
+              <Label htmlFor="version">{copy.version}</Label>
               <Input
                 id="version"
                 placeholder={isEn ? 'e.g. 1.0.0' : '例如 1.0.0'}
                 value={form.version}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, version: event.target.value }))
-                }
+                onChange={(event) => setForm((current) => ({ ...current, version: event.target.value }))}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="buildNumber">{isEn ? 'Build Number' : '构建号'}</Label>
+              <Label htmlFor="buildNumber">{copy.buildNumber}</Label>
               <Input
                 id="buildNumber"
                 type="number"
                 min={1}
                 value={form.buildNumber}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, buildNumber: event.target.value }))
-                }
+                onChange={(event) => setForm((current) => ({ ...current, buildNumber: event.target.value }))}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="file">{isEn ? 'Install Package *' : '安装包 *'}</Label>
+              <Label htmlFor="file">{copy.file}</Label>
               <Input
                 id="file"
                 type="file"
@@ -288,23 +307,21 @@ export default function VersionsPage() {
                 onChange={handleFileSelect}
               />
               {form.file ? (
-                <p className="text-sm text-gray-500">
-                  {(isEn ? 'Selected' : '已选择')} {form.file.name} ({formatFileSize(form.file.size)})
+                <p className="text-sm text-muted-foreground">
+                  {copy.selected} {form.file.name} ({formatFileSize(form.file.size)})
                 </p>
               ) : null}
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="changelog">{isEn ? 'Release Notes' : '更新说明'}</Label>
+            <Label htmlFor="changelog">{copy.releaseNotes}</Label>
             <Textarea
               id="changelog"
               rows={4}
               placeholder={isEn ? 'Describe this release...' : '简要说明本次更新内容...'}
               value={form.changelog}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, changelog: event.target.value }))
-              }
+              onChange={(event) => setForm((current) => ({ ...current, changelog: event.target.value }))}
             />
           </div>
 
@@ -312,12 +329,10 @@ export default function VersionsPage() {
             <Switch
               id="forceUpdate"
               checked={form.forceUpdate}
-              onCheckedChange={(checked) =>
-                setForm((current) => ({ ...current, forceUpdate: checked }))
-              }
+              onCheckedChange={(checked) => setForm((current) => ({ ...current, forceUpdate: checked }))}
             />
             <Label htmlFor="forceUpdate" className="cursor-pointer">
-              {isEn ? 'Force update for all users' : '设为强制更新，用户需升级后继续使用'}
+              {copy.forceUpdate}
             </Label>
           </div>
 
@@ -325,12 +340,12 @@ export default function VersionsPage() {
             {submitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {isEn ? 'Uploading...' : '上传中...'}
+                {copy.uploading}
               </>
             ) : (
               <>
                 <Upload className="mr-2 h-4 w-4" />
-                {isEn ? 'Upload Version' : '上传版本'}
+                {copy.uploadButton}
               </>
             )}
           </Button>
@@ -338,23 +353,30 @@ export default function VersionsPage() {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>{isEn ? 'Version List' : '版本列表'}</CardTitle>
-          <CardDescription>
-            {isEn
-              ? 'Keep at most one active version per platform.'
-              : '建议每个平台始终只保留一个启用版本。'}
-          </CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>{copy.listTitle}</CardTitle>
+            <CardDescription>{copy.listDesc}</CardDescription>
+          </div>
+          <Button variant="outline" onClick={() => void fetchVersions()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            {copy.retry}
+          </Button>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
+          ) : error ? (
+            <div className="rounded-lg border border-dashed p-8 text-center">
+              <p className="text-sm text-muted-foreground">{error}</p>
+            </div>
           ) : versions.length === 0 ? (
-            <div className="py-12 text-center text-gray-500">
+            <div className="rounded-lg border border-dashed p-12 text-center">
               <Upload className="mx-auto mb-4 h-12 w-12 opacity-50" />
-              <p>{isEn ? 'No versions yet.' : '暂无版本记录。'}</p>
+              <p className="font-medium">{copy.noVersions}</p>
+              <p className="mt-2 text-sm text-muted-foreground">{copy.noVersionsHint}</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -373,25 +395,23 @@ export default function VersionsPage() {
                         <span className="text-sm text-gray-500">v{version.version}</span>
                         {version.forceUpdate ? (
                           <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-600">
-                            {isEn ? 'Force Update' : '强制更新'}
+                            {copy.forceBadge}
                           </span>
                         ) : null}
                         {version.isActive ? (
                           <span className="flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-600">
                             <CheckCircle className="h-3 w-3" />
-                            {isEn ? 'Active' : '已启用'}
+                            {copy.active}
                           </span>
                         ) : (
                           <span className="flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
                             <AlertCircle className="h-3 w-3" />
-                            {isEn ? 'Inactive' : '未启用'}
+                            {copy.inactive}
                           </span>
                         )}
                       </div>
                       <div className="text-sm text-gray-500">
-                        {`Build ${version.buildNumber} · ${formatFileSize(version.fileSize)} · ${new Date(
-                          version.createdAt,
-                        ).toLocaleDateString(locale)}`}
+                        {`Build ${version.buildNumber} · ${formatFileSize(version.fileSize)} · ${new Date(version.createdAt).toLocaleDateString(locale)}`}
                       </div>
                       {version.changelog ? (
                         <div className="mt-2 whitespace-pre-line text-sm text-gray-600">
@@ -408,18 +428,12 @@ export default function VersionsPage() {
                       onClick={() => window.open(version.fileUrl, '_blank', 'noopener,noreferrer')}
                     >
                       <Download className="mr-1 h-4 w-4" />
-                      {isEn ? 'Download' : '下载'}
+                      {copy.download}
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleToggle(version)}>
-                      {version.isActive
-                        ? isEn
-                          ? 'Disable'
-                          : '停用'
-                        : isEn
-                          ? 'Enable'
-                          : '启用'}
+                    <Button variant="outline" size="sm" onClick={() => void handleToggle(version)}>
+                      {version.isActive ? copy.disable : copy.enable}
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleDelete(version)}>
+                    <Button variant="outline" size="sm" onClick={() => void handleDelete(version)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>

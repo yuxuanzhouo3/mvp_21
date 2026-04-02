@@ -229,11 +229,16 @@ export async function generateContract(
   console.log(`📝 ${expert.name} 正在生成 ${contractTypeName}...`);
 
   // 使用专家生成合同
-  const userPrompt = generateContractPrompt(
+  const basePrompt = generateContractPrompt(
     expert,
     JSON.stringify(request.analysisResult, null, 2),
     contractType
   );
+  const templatePrompt =
+    request.templateContent && request.templateContent.trim()
+      ? `\n\n## 模板库参考\n当前用户选择了模板库中的模板，请在生成结果时优先吸收它的结构、条款和表述方式，并与分析结果保持一致。\n模板名称：${request.templateName || contractTypeName}\n模板版本：${request.templateVersion || 1}\n模板正文：\n${request.templateContent}\n\n如果模板内容与分析结果冲突，以分析结果中的真实交易事实为准。`
+      : "";
+  const userPrompt = `${basePrompt}${templatePrompt}`;
   const systemPrompt = generateContractSystemPrompt(expert);
 
   try {

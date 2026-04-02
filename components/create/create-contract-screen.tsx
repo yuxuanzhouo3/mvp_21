@@ -24,11 +24,13 @@ type CreateFlowContext = "standalone" | "dashboard";
 interface CreateContractScreenProps {
   showSidebarTrigger?: boolean;
   flowContext?: CreateFlowContext;
+  initialTemplateId?: string;
 }
 
 export function CreateContractScreen({
   showSidebarTrigger = false,
   flowContext = "standalone",
+  initialTemplateId,
 }: CreateContractScreenProps) {
   const router = useRouter();
   const { language } = useLanguage();
@@ -97,6 +99,9 @@ export function CreateContractScreen({
       if (flowContext === "dashboard") {
         params.set("ctx", "dashboard");
       }
+      if (initialTemplateId) {
+        params.set("templateId", initialTemplateId);
+      }
       router.push(`/create/ai-chat${params.toString() ? `?${params.toString()}` : ""}`);
       return;
     }
@@ -104,6 +109,9 @@ export function CreateContractScreen({
     const params = new URLSearchParams({ method: selectedMethod });
     if (flowContext === "dashboard") {
       params.set("ctx", "dashboard");
+    }
+    if (initialTemplateId) {
+      params.set("templateId", initialTemplateId);
     }
     router.push(`/create/import?${params.toString()}`);
   };

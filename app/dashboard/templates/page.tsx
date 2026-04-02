@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Copy,
@@ -130,10 +130,6 @@ export default function TemplatesPage() {
   );
 
   useEffect(() => {
-    void loadTemplates();
-  }, []);
-
-  useEffect(() => {
     if (!selectedTemplate) {
       return;
     }
@@ -146,20 +142,24 @@ export default function TemplatesPage() {
     });
   }, [selectedTemplate]);
 
-  async function loadTemplates() {
+  const loadTemplates = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
       const result = await getDashboardTemplates();
       setTemplates(result.templates || []);
-      setPermissions(result.permissions || permissions);
+      setPermissions((current) => result.permissions || current);
     } catch (loadError) {
       console.error("[TemplatesPage] Failed to load templates:", loadError);
       setError(content.loadFailed);
     } finally {
       setLoading(false);
     }
-  }
+  }, [content.loadFailed]);
+
+  useEffect(() => {
+    void loadTemplates();
+  }, [loadTemplates]);
 
   const formatDate = (value?: string) => {
     if (!value) {

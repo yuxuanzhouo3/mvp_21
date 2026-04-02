@@ -22,6 +22,8 @@ function PaymentSuccessContent() {
   const { language } = useLanguage();
   const t = useTranslations(language);
   const content = t.paymentSuccessPage;
+  const errorTitle = content.errorTitle;
+  const missingParameters = content.missingParameters;
   const [isProcessing, setIsProcessing] = useState(true);
   const [paymentStatus, setPaymentStatus] = useState<"processing" | "success" | "error">("processing");
   const [paymentDetails, setPaymentDetails] = useState<{
@@ -45,7 +47,7 @@ function PaymentSuccessContent() {
         const wechatOutTradeNo = searchParams.get("wechat_out_trade_no");
 
         if (!sessionId && !token && !outTradeNo && !tradeNo && !wechatOutTradeNo) {
-          throw new Error(content.missingParameters);
+          throw new Error(missingParameters);
         }
 
         const params = new URLSearchParams();
@@ -70,7 +72,7 @@ function PaymentSuccessContent() {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || content.errorTitle);
+          throw new Error(errorData.error || errorTitle);
         }
 
         const result = await response.json();
@@ -98,7 +100,7 @@ function PaymentSuccessContent() {
 
           setPaymentStatus("success");
         } else {
-          throw new Error(result.error || content.errorTitle);
+          throw new Error(result.error || errorTitle);
         }
       } catch (error) {
         console.error("Payment confirmation error:", error);
@@ -110,7 +112,7 @@ function PaymentSuccessContent() {
     };
 
     handlePaymentSuccess();
-  }, [searchParams, hasProcessed, refreshUser]);
+  }, [searchParams, hasProcessed, refreshUser, errorTitle, missingParameters]);
 
   const handleContinue = () => {
     router.push("/");

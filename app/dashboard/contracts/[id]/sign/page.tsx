@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FileText } from "lucide-react";
 
 import { ContractSignFlow } from "@/components/contracts/contract-sign-flow";
+import { getAppDisplayName } from "@/lib/config/deployment.config";
 
 interface SignContractPageProps {
   params: Promise<{ id: string }>;
@@ -9,6 +10,7 @@ interface SignContractPageProps {
 
 export default async function SignContractPage({ params }: SignContractPageProps) {
   const { id } = await params;
+  const appName = getAppDisplayName();
 
   return (
     <div className="min-h-screen bg-background">
@@ -16,7 +18,7 @@ export default async function SignContractPage({ params }: SignContractPageProps
         <nav className="container flex h-16 items-center px-4">
           <Link href="/" className="flex items-center gap-2">
             <FileText className="h-6 w-6 text-primary" />
-            <span className="text-xl font-semibold">ContractHub</span>
+            <span className="text-xl font-semibold">{appName}</span>
           </Link>
         </nav>
       </header>

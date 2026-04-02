@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CreditCard, Download, Receipt, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -43,11 +43,7 @@ export function BillingHistory({ userId }: BillingHistoryProps) {
   const isEn = language === "en";
   const t = useTranslations(language);
 
-  useEffect(() => {
-    void fetchBillingHistory();
-  }, [userId]);
-
-  async function fetchBillingHistory() {
+  const fetchBillingHistory = useCallback(async () => {
     if (!userId) {
       setLoading(false);
       return;
@@ -80,7 +76,11 @@ export function BillingHistory({ userId }: BillingHistoryProps) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [t.payment.messages.failed, userId]);
+
+  useEffect(() => {
+    void fetchBillingHistory();
+  }, [fetchBillingHistory]);
 
   const getStatusBadge = (status: BillingRecord["status"]) => {
     const config = {

@@ -5,13 +5,14 @@ import { Check, ChevronLeft, FileText } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { getAppDisplayName } from "@/lib/config/deployment.config";
 import { cn } from "@/lib/utils";
 
 const CREATE_FLOW_STEPS = {
   zh: [
-    { id: 1, title: "选择导入方式", subtitle: "选择渠道" },
+    { id: 1, title: "选择导入方式", subtitle: "确定来源" },
     { id: 2, title: "导入对话内容", subtitle: "准备材料" },
-    { id: 3, title: "AI 分析确认", subtitle: "校对信息" },
+    { id: 3, title: "确认 AI 分析", subtitle: "校对信息" },
     { id: 4, title: "编辑并导出合同", subtitle: "生成结果" },
   ],
   en: [
@@ -76,6 +77,7 @@ export function CreateFlowShell({
   const { language } = useLanguage();
   const locale = language === "en" ? "en" : "zh";
   const steps = CREATE_FLOW_STEPS[locale];
+  const appName = getAppDisplayName();
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_0%_0%,hsl(var(--primary)/0.08),transparent_40%),radial-gradient(circle_at_100%_0%,hsl(var(--accent)/0.1),transparent_35%)]">
@@ -88,7 +90,7 @@ export function CreateFlowShell({
               className="flex items-center gap-2 text-foreground transition-opacity hover:opacity-80"
             >
               <FileText className="h-5 w-5 text-primary" />
-              <span className="text-sm font-semibold sm:text-base">ContractHub</span>
+              <span className="text-sm font-semibold sm:text-base">{appName}</span>
             </Link>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2">
@@ -110,6 +112,7 @@ export function CreateFlowShell({
             {steps.map((item, index) => {
               const isActive = item.id === step;
               const isCompleted = item.id < step;
+
               return (
                 <li key={item.id} className="relative flex items-center gap-3">
                   <StepCircle stepId={item.id} currentStep={step} />
@@ -126,9 +129,9 @@ export function CreateFlowShell({
                     </p>
                     <p className="text-xs text-muted-foreground">{item.subtitle}</p>
                   </div>
-                  {index < steps.length - 1 && (
+                  {index < steps.length - 1 ? (
                     <span className="pointer-events-none absolute -right-2 top-4 hidden h-px w-4 bg-border lg:block" />
-                  )}
+                  ) : null}
                 </li>
               );
             })}

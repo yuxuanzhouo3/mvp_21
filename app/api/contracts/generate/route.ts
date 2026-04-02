@@ -1,55 +1,89 @@
-/**
- * 合同生成 API
- * POST /api/contracts/generate
- *
- * 根据分析结果生成正式合同
- */
+import { NextRequest, NextResponse } from "next/server";
 
-import { NextRequest, NextResponse } from 'next/server';
-import { generateContract } from '@/lib/ai';
-import { AIAnalysisResult } from '@/lib/ai/types';
+import { generateContract } from "@/lib/ai";
+import { type AIAnalysisResult } from "@/lib/ai/types";
+import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
+import { getDashboardTemplateById } from "@/lib/data/dashboard-store";
+
+async function resolveCurrentUserId(request: NextRequest) {
+  const authHeader = request.headers.get("authorization");
+  const { token } = extractTokenFromHeader(authHeader);
+
+  if (!token) {
+    return "";
+  }
+
+  const authResult = await verifyAuthToken(token);
+  return authResult.success && authResult.userId ? authResult.userId : "";
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { analysisResult, templateId, customFields } = body as {
+    const {
+      analysisResult,
+      templateId,
+      templateName,
+      templateContent,
+      templateVersion,
+      customFields,
+    } = body as {
       analysisResult: AIAnalysisResult;
       templateId?: string;
+      templateName?: string;
+      templateContent?: string;
+      templateVersion?: number;
       customFields?: Record<string, string>;
     };
 
-    // 验证必填字段
     if (!analysisResult || !analysisResult.contractType) {
       return NextResponse.json(
         {
           success: false,
           error: {
-            code: 'INVALID_INPUT',
-            message: '请提供有效的分析结果',
+            code: "INVALID_INPUT",
+            message: "请提供有效的分析结果。",
           },
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // 验证关键条款
     if (!analysisResult.keyTerms || analysisResult.keyTerms.length === 0) {
       return NextResponse.json(
         {
           success: false,
           error: {
-            code: 'NO_KEY_TERMS',
-            message: '未提取到关键条款，请检查对话内容',
+            code: "NO_KEY_TERMS",
+            message: "未提取到关键条款，请先补充合同事实后再生成。",
           },
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // 调用 AI 生成合同
+    let resolvedTemplateName = templateName;
+    let resolvedTemplateContent = templateContent;
+    let resolvedTemplateVersion = templateVersion;
+
+    if ((!resolvedTemplateContent || !resolvedTemplateContent.trim()) && templateId) {
+      const userId = await resolveCurrentUserId(request);
+      if (userId) {
+        const template = await getDashboardTemplateById(userId, templateId).catch(() => null);
+        if (template?.content) {
+          resolvedTemplateName = template.name;
+          resolvedTemplateContent = template.content;
+          resolvedTemplateVersion = template.version;
+        }
+      }
+    }
+
     const contract = await generateContract({
       analysisResult,
       templateId,
+      templateName: resolvedTemplateName,
+      templateContent: resolvedTemplateContent,
+      templateVersion: resolvedTemplateVersion,
       customFields,
     });
 
@@ -58,19 +92,18 @@ export async function POST(request: NextRequest) {
       data: contract,
     });
   } catch (error) {
-    console.error('生成合同失败:', error);
+    console.error("生成合同失败:", error);
 
-    // 检查是否是 API 密钥问题
-    if (error instanceof Error && error.message.includes('API')) {
+    if (error instanceof Error && error.message.includes("API")) {
       return NextResponse.json(
         {
           success: false,
           error: {
-            code: 'AI_SERVICE_ERROR',
-            message: 'AI 服务暂时不可用，请稍后重试',
+            code: "AI_SERVICE_ERROR",
+            message: "AI 服务暂时不可用，请稍后重试。",
           },
         },
-        { status: 503 }
+        { status: 503 },
       );
     }
 
@@ -78,11 +111,11 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         error: {
-          code: 'GENERATE_FAILED',
-          message: '生成失败，请重试',
+          code: "GENERATE_FAILED",
+          message: "生成失败，请稍后重试。",
         },
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

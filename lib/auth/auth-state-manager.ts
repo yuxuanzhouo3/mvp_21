@@ -34,6 +34,37 @@ function syncAuthCookies(maxAge: number, role?: string): void {
   document.cookie = `auth-role=${role || "user"}; path=/; max-age=${maxAge}; SameSite=Lax`;
 }
 
+function clearAuthCookies(): void {
+  document.cookie = "auth-logged-in=; path=/; max-age=0; SameSite=Lax";
+  document.cookie = "auth-role=; path=/; max-age=0; SameSite=Lax";
+}
+
+function getRefreshTokenRemainingSeconds(authState: StoredAuthState): number {
+  const refreshTokenExpiresAt =
+    authState.savedAt + authState.tokenMeta.refreshTokenExpiresIn * 1000;
+  return Math.floor((refreshTokenExpiresAt - Date.now()) / 1000);
+}
+
+export function syncAuthCookiesFromStoredState(
+  authState: StoredAuthState | null,
+): boolean {
+  if (typeof window === "undefined") return false;
+
+  if (!authState?.user?.id || !authState.tokenMeta?.refreshTokenExpiresIn) {
+    clearAuthCookies();
+    return false;
+  }
+
+  const remainingSeconds = getRefreshTokenRemainingSeconds(authState);
+  if (remainingSeconds <= 0) {
+    clearAuthCookies();
+    return false;
+  }
+
+  syncAuthCookies(Math.max(remainingSeconds, 60), authState.user.role);
+  return true;
+}
+
 /**
  * 初始化认证状态管理器
  * 清理旧格式的 localStorage 键
@@ -117,6 +148,12 @@ export function getStoredAuthState(): StoredAuthState | null {
       !authState.tokenMeta
     ) {
       console.warn("⚠️ [Auth] 存储的认证状态不完整");
+      clearAuthState();
+      return null;
+    }
+
+    if (!syncAuthCookiesFromStoredState(authState)) {
+      console.warn("⚠️ [Auth] Local auth state expired or lost cookie sync");
       clearAuthState();
       return null;
     }
@@ -304,8 +341,7 @@ export function clearAuthState(): void {
     console.log("🗑️  [Auth] 认证状态已清除");
 
     // 同步清除 cookie
-    document.cookie = "auth-logged-in=; path=/; max-age=0; SameSite=Lax";
-    document.cookie = "auth-role=; path=/; max-age=0; SameSite=Lax";
+    clearAuthCookies();
 
     window.dispatchEvent(new CustomEvent("auth-state-changed"));
   } catch (error) {

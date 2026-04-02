@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ export function WechatQrcodeLogin({
   const { language } = useLanguage();
   const isEn = language === "en";
 
-  const fetchQrcodeUrl = async () => {
+  const fetchQrcodeUrl = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -42,7 +42,7 @@ export function WechatQrcodeLogin({
     } finally {
       setLoading(false);
     }
-  };
+  }, [isEn, onError]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -51,8 +51,8 @@ export function WechatQrcodeLogin({
   };
 
   useEffect(() => {
-    fetchQrcodeUrl();
-  }, []);
+    void fetchQrcodeUrl();
+  }, [fetchQrcodeUrl]);
 
   if (loading) {
     return (

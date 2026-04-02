@@ -1,16 +1,17 @@
-// app/api/payment/create/route.ts - ֧������API·��
+// app/api/payment/create/route.ts - Payment creation API route
 import { NextRequest, NextResponse } from "next/server";
-import { getPayment } from "@/lib/payment/adapter";
-import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
-import { paymentRateLimit } from "@/lib/security/rate-limit";
-import { captureException } from "@/lib/integrations/sentry";
-import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
-import { isChinaRegion } from "@/lib/config/region";
-import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
-import { buildSubscriptionPaymentFields } from "@/lib/payment/subscription-payment-sync";
 import { z } from "zod";
 
-// ֧������������֤schema
+import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
+import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
+import { isChinaRegion } from "@/lib/config/region";
+import { captureException } from "@/lib/integrations/sentry";
+import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
+import { getPayment } from "@/lib/payment/adapter";
+import { buildSubscriptionPaymentFields } from "@/lib/payment/subscription-payment-sync";
+import { paymentRateLimit } from "@/lib/security/rate-limit";
+
+// Validate payment creation payloads from the client.
 const createPaymentSchema = z.object({
   method: z.string().min(1, "Payment method is required"),
   amount: z.number().positive("Amount must be positive"),
@@ -23,21 +24,19 @@ const createPaymentSchema = z.object({
 
 /**
  * POST /api/payment/create
- * ����֧������
+ * Create a new payment order after auth and rate-limit checks.
  */
 export async function POST(request: NextRequest) {
-  // Apply rate limiting
   return new Promise<NextResponse>((resolve) => {
     const mockRes = {
       status: (code: number) => ({
         json: (data: any) => resolve(NextResponse.json(data, { status: code })),
       }),
-      setHeader: () => { },
+      setHeader: () => {},
       getHeader: () => undefined,
     };
 
     paymentRateLimit(request as any, mockRes as any, async () => {
-      // Rate limit not exceeded, handle the request
       resolve(await handlePaymentCreate(request));
     });
   });
@@ -45,7 +44,7 @@ export async function POST(request: NextRequest) {
 
 async function handlePaymentCreate(request: NextRequest) {
   try {
-    // ��֤�û���֤
+    // Ensure the caller is authenticated.
     const authResult = await requireAuth(request);
     if (!authResult) {
       return createAuthErrorResponse();
@@ -53,7 +52,7 @@ async function handlePaymentCreate(request: NextRequest) {
 
     const { user } = authResult;
 
-    // ��֤������
+    // Validate the request body before touching payment state.
     const body = await request.json();
     const validationResult = createPaymentSchema.safeParse(body);
 
@@ -65,7 +64,7 @@ async function handlePaymentCreate(request: NextRequest) {
           code: "VALIDATION_ERROR",
           details: validationResult.error.errors,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -79,15 +78,13 @@ async function handlePaymentCreate(request: NextRequest) {
       idempotencyKey,
     } = validationResult.data;
 
-    // ʹ����֤�û���ID
     const userId = user.id;
 
-    // 检查重复支付请求
+    // Block repeated create requests that arrive within a short window.
     let recentPayments: any[] = [];
     let checkError: any = null;
 
     if (isChinaRegion()) {
-      // CloudBase 用户：从 CloudBase 检查重复支付
       try {
         const db = getDatabase();
         const _ = db.command;
@@ -97,8 +94,8 @@ async function handlePaymentCreate(request: NextRequest) {
           .collection("payments")
           .where({
             user_id: userId,
-            amount: amount,
-            currency: currency,
+            amount,
+            currency,
             payment_method: method,
             created_at: _.gte(oneMinuteAgo),
             status: _.in(["pending", "completed"]),
@@ -113,7 +110,6 @@ async function handlePaymentCreate(request: NextRequest) {
         checkError = error;
       }
     } else {
-      // 国际用户：从 Supabase 检查重复支付
       const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
       const { data, error } = await supabaseAdmin
         .from("payments")
@@ -131,21 +127,17 @@ async function handlePaymentCreate(request: NextRequest) {
       checkError = error;
     }
 
-    if (
-      checkError &&
-      (!isChinaRegion() || (checkError as any)?.code !== "PGRST116")
-    ) {
+    if (checkError && (!isChinaRegion() || (checkError as any)?.code !== "PGRST116")) {
       console.error("Error checking existing payment:", checkError);
       return NextResponse.json(
         {
           success: false,
           error: "Unable to verify payment uniqueness, please try again",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
-    // 处理重复支付请求
     if (recentPayments && recentPayments.length > 0) {
       const latestPayment = recentPayments[0];
       const paymentAge =
@@ -154,9 +146,8 @@ async function handlePaymentCreate(request: NextRequest) {
 
       console.warn(
         `Duplicate payment request blocked: User ${userId} tried to create payment within ${Math.floor(
-          paymentAge / 1000
-        )}s of existing payment ${latestPayment.id || latestPayment._id
-        } (status: ${latestPayment.status})`
+          paymentAge / 1000,
+        )}s of existing payment ${latestPayment.id || latestPayment._id} (status: ${latestPayment.status})`,
       );
 
       return NextResponse.json(
@@ -168,11 +159,11 @@ async function handlePaymentCreate(request: NextRequest) {
           existingPaymentId: latestPayment.id || latestPayment._id,
           waitTime: Math.ceil((60000 - paymentAge) / 1000),
         },
-        { status: 429 }
+        { status: 429 },
       );
     }
 
-    // ��ȡ֧��������
+    // Derive normalized billing metadata for downstream persistence.
     const paymentFields = buildSubscriptionPaymentFields({
       planType: planType || "pro",
       billingCycle: billingCycle || "monthly",
@@ -180,14 +171,12 @@ async function handlePaymentCreate(request: NextRequest) {
 
     const payment = getPayment();
 
-    // ����֧������
     const order = {
       amount,
       currency,
       description:
         description ||
-        `${billingCycle === "monthly" ? "1 Month" : "1 Year"
-        } Premium Membership`,
+        `${billingCycle === "monthly" ? "1 Month" : "1 Year"} Premium Membership`,
       userId,
       planType: paymentFields.metadata.planType,
       billingCycle: paymentFields.metadata.billingCycle,
@@ -196,14 +185,17 @@ async function handlePaymentCreate(request: NextRequest) {
 
     console.log(`Creating payment with method: ${method} using adapter`);
 
-    // 使用适配器创建支付订单
+    // Create the provider order through the payment adapter.
     const orderResult = await payment.createOrder(amount, userId);
+    const normalizedOrderResult = orderResult as typeof orderResult & {
+      qrCode?: string;
+      expiresAt?: string;
+    };
 
-    // 记录支付到相应数据库
+    // Persist the pending payment record in the region-specific store.
     let paymentRecordError: any = null;
 
     if (isChinaRegion()) {
-      // CloudBase 用户：记录到 CloudBase
       try {
         const db = getDatabase();
         const paymentsCollection = db.collection("payments");
@@ -230,7 +222,6 @@ async function handlePaymentCreate(request: NextRequest) {
         paymentRecordError = error;
       }
     } else {
-      // 国际用户：记录到 Supabase
       const { error } = await supabaseAdmin.from("payments").insert({
         user_id: userId,
         amount,
@@ -247,7 +238,7 @@ async function handlePaymentCreate(request: NextRequest) {
       });
 
       if (!error) {
-        console.log("✅ Payment recorded with metadata:", {
+        console.log("Payment recorded with metadata:", {
           transactionId: orderResult.orderId,
           metadata: paymentFields.metadata,
         });
@@ -263,29 +254,36 @@ async function handlePaymentCreate(request: NextRequest) {
           success: false,
           error: "Failed to record payment",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
-    // 返回支付信息
-    const response = {
+    return NextResponse.json({
       success: true,
-      orderId: orderResult.orderId,
-      paymentUrl: orderResult.paymentUrl,
-      formHtml: orderResult.formHtml,
-    };
-
-    return NextResponse.json(response);
+      data: {
+        orderId: orderResult.orderId,
+        paymentUrl: orderResult.paymentUrl,
+        qrCode: normalizedOrderResult.qrCode,
+        expiresAt: normalizedOrderResult.expiresAt,
+        method: order.method,
+        amount: order.amount,
+        currency: order.currency,
+        description: order.description,
+        planType: order.planType,
+        billingCycle: order.billingCycle,
+        idempotencyKey,
+      },
+    });
   } catch (error) {
-    console.error("Payment creation error:", error);
-    captureException(error);
-
-    const errorMessage =
-      error instanceof Error ? error.message : "Internal server error";
+    console.error("Payment create error:", error);
+    captureException(error as Error);
 
     return NextResponse.json(
-      { success: false, error: errorMessage },
-      { status: 500 }
+      {
+        success: false,
+        error: "Failed to create payment",
+      },
+      { status: 500 },
     );
   }
 }

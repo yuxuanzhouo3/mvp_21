@@ -1,5 +1,12 @@
 import { CreateContractScreen } from "@/components/create/create-contract-screen";
 
-export default function CreateContractPage() {
-  return <CreateContractScreen />;
+interface CreateContractPageProps {
+  searchParams: Promise<{
+    templateId?: string;
+  }>;
+}
+
+export default async function CreateContractPage({ searchParams }: CreateContractPageProps) {
+  const params = await searchParams;
+  return <CreateContractScreen initialTemplateId={params.templateId} />;
 }

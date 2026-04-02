@@ -21,6 +21,7 @@ import { useLanguage } from "@/components/language-provider";
 import { useUser } from "@/components/user-context";
 import { Button } from "@/components/ui/button";
 import { isAdminRole, resolveUserRole } from "@/lib/auth/user-role";
+import { getAppDisplayName } from "@/lib/config/deployment.config";
 import { cn } from "@/lib/utils";
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
@@ -32,6 +33,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const isEn = language === "en";
   const role = resolveUserRole(user);
   const hasAdminAccess = isAdminRole(role);
+  const appName = getAppDisplayName();
 
   const navItems = [
     { href: "/admin", label: isEn ? "Dashboard" : "仪表盘", icon: LayoutDashboard },
@@ -48,16 +50,19 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     { href: "/admin/settings", label: isEn ? "Settings" : "系统设置", icon: Settings },
   ];
 
-  const titleMap: Record<string, string> = {
-    "/admin": isEn ? "Admin Dashboard" : "后台仪表盘",
-    "/admin/users": isEn ? "User Management" : "用户管理",
-    "/admin/ads": isEn ? "Ad Management" : "广告位管理",
-    "/admin/subscriptions": isEn ? "Subscription Management" : "订阅管理",
-    "/admin/analytics": isEn ? "Analytics" : "数据分析",
-    "/admin/versions": isEn ? "Version Management" : "版本发布管理",
-    "/admin/audit": isEn ? "Admin Audit" : "后台操作审计",
-    "/admin/settings": isEn ? "System Settings" : "系统设置",
-  };
+  const titleMap = useMemo<Record<string, string>>(
+    () => ({
+      "/admin": isEn ? "Admin Dashboard" : "后台仪表盘",
+      "/admin/users": isEn ? "User Management" : "用户管理",
+      "/admin/ads": isEn ? "Ad Management" : "广告位管理",
+      "/admin/subscriptions": isEn ? "Subscription Management" : "订阅管理",
+      "/admin/analytics": isEn ? "Analytics" : "数据分析",
+      "/admin/versions": isEn ? "Version Management" : "版本管理",
+      "/admin/audit": isEn ? "Admin Audit" : "后台审计",
+      "/admin/settings": isEn ? "System Settings" : "系统设置",
+    }),
+    [isEn],
+  );
 
   const pageTitle = useMemo(() => {
     const matched = Object.keys(titleMap).find((key) =>
@@ -135,7 +140,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <FileText className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-sm font-semibold">ContractHub Admin</p>
+              <p className="text-sm font-semibold">{appName} Admin</p>
               <p className="text-xs text-muted-foreground">
                 {isEn ? "Operations Console" : "运营控制台"}
               </p>

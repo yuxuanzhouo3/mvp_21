@@ -41,6 +41,7 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import { getAppDisplayName } from "@/lib/config/deployment.config";
 
 const consoleItems = [
   { key: "overview", url: "/dashboard", icon: LayoutDashboard },
@@ -59,6 +60,7 @@ export function AppSidebar() {
   const { language } = useLanguage();
   const { user, signOut } = useUser();
   const isEn = language === "en";
+  const appName = getAppDisplayName();
 
   const labels = {
     overview: isEn ? "Overview" : "总览",
@@ -73,7 +75,7 @@ export function AppSidebar() {
     quickLinks: isEn ? "Quick Links" : "快捷入口",
     plans: isEn ? "Plans" : "套餐",
     support: isEn ? "Support" : "支持",
-    workspace: isEn ? "Workspace" : "工作区",
+    workspace: isEn ? "Workspace" : "工作台",
     newContract: isEn ? "New Contract" : "新建合同",
     user: isEn ? "User" : "用户",
     myAccount: isEn ? "My Account" : "我的账户",
@@ -110,7 +112,7 @@ export function AppSidebar() {
             <FileText className="h-5 w-5 text-primary" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold tracking-tight">ContractHub</p>
+            <p className="text-sm font-semibold tracking-tight">{appName}</p>
             <p className="text-xs text-muted-foreground">{labels.workspace}</p>
           </div>
         </Link>
