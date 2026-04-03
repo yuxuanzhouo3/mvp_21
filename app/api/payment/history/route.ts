@@ -79,7 +79,10 @@ async function handlePaymentHistory(request: NextRequest) {
             : payment.status,
         description: "Subscription payment",
         paymentMethod,
-        invoiceUrl: null as string | null,
+        invoiceUrl:
+          payment.status === "completed"
+            ? `/api/payment/invoice/${payment.id}`
+            : null,
       };
     });
 

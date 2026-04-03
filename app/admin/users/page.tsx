@@ -86,47 +86,56 @@ export default function UsersPage() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
-  const copy = {
-    title: isEn ? 'User Management' : '用户管理',
-    description: isEn ? 'Manage registered users and account status.' : '查看注册用户、订阅方案和账户状态。',
-    export: isEn ? 'Export Data' : '导出数据',
-    retry: isEn ? 'Retry' : '重新加载',
-    clearFilters: isEn ? 'Clear Filters' : '清空筛选',
-    searchPlaceholder: isEn ? 'Search by name, email or phone...' : '按昵称、邮箱或手机号搜索...',
-    planPlaceholder: isEn ? 'Plan' : '订阅方案',
-    allPlans: isEn ? 'All Plans' : '全部方案',
-    users: isEn ? 'Users' : '用户列表',
-    noUsers: isEn ? 'No users found.' : '暂无匹配的用户数据。',
-    noUsersHint: isEn ? 'Try adjusting search terms or plan filters.' : '可以尝试调整搜索词或订阅方案筛选。',
-    loadFailed: isEn ? 'Failed to load user list.' : '加载用户列表失败。',
-    detailsFailed: isEn ? 'Failed to load user details.' : '加载用户详情失败。',
-    operationFailed: isEn ? 'Operation failed. Please retry.' : '操作失败，请稍后重试。',
-    banned: isEn ? 'Banned' : '已封禁',
-    active: isEn ? 'Active' : '正常',
-    user: isEn ? 'User' : '用户',
-    plan: isEn ? 'Plan' : '方案',
-    role: isEn ? 'Role' : '角色',
-    registeredAt: isEn ? 'Registered At' : '注册时间',
-    status: isEn ? 'Status' : '状态',
-    actions: isEn ? 'Actions' : '操作',
-    viewDetails: isEn ? 'View Details' : '查看详情',
-    banAccount: isEn ? 'Ban Account' : '封禁账号',
-    unbanAccount: isEn ? 'Unban Account' : '解除封禁',
-    detailsTitle: isEn ? 'User Details' : '用户详情',
-    detailsDesc: isEn ? 'Review user profile and recent activity.' : '查看用户资料、订单和最近活动。',
-    unnamedUser: isEn ? 'Unnamed user' : '未命名用户',
-    admin: isEn ? 'Admin' : '管理员',
-    normalUser: isEn ? 'User' : '普通用户',
-    currentPlan: isEn ? 'Current Plan' : '当前方案',
-    accountStatus: isEn ? 'Account Status' : '账户状态',
-    userRole: isEn ? 'User Role' : '用户角色',
-    usageOverview: isEn ? 'Usage Overview' : '使用概览',
-    totalContracts: isEn ? 'Total Contracts' : '累计合同数',
-    recentOrders: isEn ? 'Recent Orders' : '最近订单',
-    recentActivity: isEn ? 'Recent Activity' : '最近活动',
-    noOrders: isEn ? 'No order records yet.' : '暂无订单记录。',
-    noLogs: isEn ? 'No recent activity yet.' : '暂无最近活动。',
-  };
+  const copy = useMemo(
+    () => ({
+      title: isEn ? 'User Management' : '用户管理',
+      description: isEn ? 'Search accounts, review activity, and manage account status.' : '检索账号、查看活跃记录，并统一管理账户状态。',
+      export: isEn ? 'Export Data' : '导出数据',
+      retry: isEn ? 'Retry' : '重新加载',
+      clearFilters: isEn ? 'Clear Filters' : '清空筛选',
+      searchPlaceholder: isEn ? 'Search by name, email, or phone...' : '按昵称、邮箱或手机号搜索...',
+      planPlaceholder: isEn ? 'Plan' : '套餐',
+      allPlans: isEn ? 'All Plans' : '全部套餐',
+      users: isEn ? 'Users' : '用户列表',
+      noUsers: isEn ? 'No users found.' : '当前没有匹配的用户数据。',
+      noUsersHint: isEn ? 'Try another keyword or switch the plan filter.' : '可以尝试调整搜索词或切换套餐筛选。',
+      loadFailed: isEn ? 'Failed to load user list.' : '加载用户列表失败。',
+      detailsFailed: isEn ? 'Failed to load user details.' : '加载用户详情失败。',
+      operationFailed: isEn ? 'Operation failed. Please retry.' : '操作失败，请稍后重试。',
+      banSuccess: isEn ? 'User has been banned.' : '该用户已被封禁。',
+      unbanSuccess: isEn ? 'User has been restored.' : '该用户已恢复正常状态。',
+      banned: isEn ? 'Banned' : '已封禁',
+      active: isEn ? 'Active' : '正常',
+      user: isEn ? 'User' : '用户',
+      plan: isEn ? 'Plan' : '套餐',
+      role: isEn ? 'Role' : '角色',
+      registeredAt: isEn ? 'Registered At' : '注册时间',
+      status: isEn ? 'Status' : '状态',
+      actions: isEn ? 'Actions' : '操作',
+      viewDetails: isEn ? 'View Details' : '查看详情',
+      banAccount: isEn ? 'Ban Account' : '封禁账号',
+      unbanAccount: isEn ? 'Unban Account' : '解除封禁',
+      detailsTitle: isEn ? 'User Details' : '用户详情',
+      detailsDesc: isEn ? 'Review user profile, orders, and recent activity.' : '查看用户资料、订单与最近操作记录。',
+      unnamedUser: isEn ? 'Unnamed user' : '未命名用户',
+      admin: isEn ? 'Admin' : '管理员',
+      normalUser: isEn ? 'User' : '普通用户',
+      currentPlan: isEn ? 'Current Plan' : '当前套餐',
+      accountStatus: isEn ? 'Account Status' : '账户状态',
+      userRole: isEn ? 'User Role' : '账户角色',
+      usageOverview: isEn ? 'Usage Overview' : '使用概览',
+      totalContracts: isEn ? 'Total Contracts' : '累计合同数',
+      recentOrders: isEn ? 'Recent Orders' : '最近订单',
+      recentActivity: isEn ? 'Recent Activity' : '最近活动',
+      noOrders: isEn ? 'No order records yet.' : '暂无订单记录。',
+      noLogs: isEn ? 'No recent activity yet.' : '暂无最近活动。',
+      previous: isEn ? 'Previous' : '上一页',
+      next: isEn ? 'Next' : '下一页',
+      summary: (currentPage: number, pageCount: number, recordTotal: number) =>
+        isEn ? `Total ${recordTotal} users, page ${currentPage} of ${pageCount}` : `共 ${recordTotal} 位用户，第 ${currentPage} / ${pageCount} 页`,
+    }),
+    [isEn],
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -166,7 +175,7 @@ export default function UsersPage() {
       setTotal(result.data.total || 0);
       setTotalPages(result.data.totalPages || 1);
     } catch (fetchError) {
-      console.error('Failed to fetch users:', fetchError);
+      console.error('[AdminUsers] Failed to fetch users:', fetchError);
       const message = fetchError instanceof Error ? fetchError.message : copy.loadFailed;
       setError(message);
       toast.error(copy.loadFailed);
@@ -183,12 +192,10 @@ export default function UsersPage() {
     try {
       setDetailsLoading(true);
       setSelectedUserDetails(null);
-      const result = await adminFetchJson<{ success: true; data: UserDetails }>(
-        `/api/admin/users/${userId}`,
-      );
+      const result = await adminFetchJson<{ success: true; data: UserDetails }>(`/api/admin/users/${userId}`);
       setSelectedUserDetails(result.data);
     } catch (fetchError) {
-      console.error('Failed to fetch user details:', fetchError);
+      console.error('[AdminUsers] Failed to fetch user details:', fetchError);
       toast.error(copy.detailsFailed);
     } finally {
       setDetailsLoading(false);
@@ -208,17 +215,9 @@ export default function UsersPage() {
         await fetchUserDetails(userId);
       }
 
-      toast.success(
-        ban
-          ? isEn
-            ? 'User has been flagged as banned.'
-            : '该用户已被标记为封禁。'
-          : isEn
-            ? 'User has been restored.'
-            : '该用户已恢复正常状态。',
-      );
+      toast.success(ban ? copy.banSuccess : copy.unbanSuccess);
     } catch (operationError) {
-      console.error('Operation failed:', operationError);
+      console.error('[AdminUsers] Operation failed:', operationError);
       toast.error(copy.operationFailed);
     }
   };
@@ -233,13 +232,14 @@ export default function UsersPage() {
     link.download = 'admin-users.json';
     link.click();
     URL.revokeObjectURL(url);
+    toast.success(isEn ? 'Current page exported.' : '当前页数据已导出。');
   };
 
   const getPlanBadge = (plan: string) => {
     const styles = {
       free: 'bg-gray-100 text-gray-600',
       pro: 'bg-blue-100 text-blue-600',
-      enterprise: 'bg-purple-100 text-purple-600',
+      enterprise: 'bg-amber-100 text-amber-700',
     };
     const labels = {
       free: isEn ? 'Free' : '免费版',
@@ -273,14 +273,13 @@ export default function UsersPage() {
     );
   };
 
-  const summaryText = useMemo(() => {
-    return isEn ? `Total ${total} users, page ${page} of ${totalPages}` : `共 ${total} 位用户，第 ${page} / ${totalPages} 页`;
-  }, [isEn, page, total, totalPages]);
+  const summaryText = useMemo(() => copy.summary(page, totalPages, total), [copy, page, total, totalPages]);
 
   const formatCurrency = (amount?: number, currency = 'CNY') => {
     if (typeof amount !== 'number') {
       return '-';
     }
+
     try {
       return new Intl.NumberFormat(locale, {
         style: 'currency',
@@ -446,7 +445,7 @@ export default function UsersPage() {
                 <p className="text-sm text-gray-500">{summaryText}</p>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>
-                    {isEn ? 'Previous' : '上一页'}
+                    {copy.previous}
                   </Button>
                   <Button
                     variant="outline"
@@ -454,7 +453,7 @@ export default function UsersPage() {
                     disabled={page >= totalPages}
                     onClick={() => setPage((current) => current + 1)}
                   >
-                    {isEn ? 'Next' : '下一页'}
+                    {copy.next}
                   </Button>
                 </div>
               </div>
@@ -495,14 +494,8 @@ export default function UsersPage() {
               <div className="grid grid-cols-2 gap-4">
                 <StatCard label={copy.currentPlan} valueNode={getPlanBadge(selectedUser.subscription_type)} />
                 <StatCard label={copy.accountStatus} valueNode={getStatusBadge(selectedUser)} />
-                <StatCard
-                  label={copy.userRole}
-                  valueText={selectedUser.role === 'admin' ? copy.admin : copy.normalUser}
-                />
-                <StatCard
-                  label={copy.registeredAt}
-                  valueText={new Date(selectedUser.created_at).toLocaleString(locale)}
-                />
+                <StatCard label={copy.userRole} valueText={selectedUser.role === 'admin' ? copy.admin : copy.normalUser} />
+                <StatCard label={copy.registeredAt} valueText={new Date(selectedUser.created_at).toLocaleString(locale)} />
               </div>
 
               {detailsLoading ? (
@@ -529,7 +522,7 @@ export default function UsersPage() {
                               <div>
                                 <p className="font-medium">{order.plan_type || '-'}</p>
                                 <p className="text-sm text-muted-foreground">
-                                  {order.payment_method || '-'} · {order.status || '-'}
+                                  {(order.payment_method || '-') + ' · ' + (order.status || '-')}
                                 </p>
                               </div>
                               <div className="text-right text-sm">

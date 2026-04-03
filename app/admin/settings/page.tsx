@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, RefreshCw, RotateCcw, Save } from 'lucide-react';
+import { AlertTriangle, RefreshCw, RotateCcw, Save, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useLanguage } from '@/components/language-provider';
@@ -34,26 +34,39 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<AdminSettings>(DEFAULT_ADMIN_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDispatching, setIsDispatching] = useState(false);
   const [error, setError] = useState('');
 
   const copy = useMemo(
     () => ({
       title: isEn ? 'System Settings' : '系统设置',
       description: isEn
-        ? 'Manage platform configuration, contact channels, quotas, payment switches, and notification policies.'
-        : '统一管理平台配置、联系渠道、额度、支付开关和通知策略。',
+        ? 'Manage platform profile, quotas, payment switches, and notification policies.'
+        : '统一管理平台资料、配额、支付开关和通知策略。',
       save: isEn ? 'Save Settings' : '保存设置',
-      reset: isEn ? 'Reset to Defaults' : '恢复默认值',
+      reset: isEn ? 'Reset to Defaults' : '恢复默认',
       retry: isEn ? 'Retry' : '重新加载',
       loadFailed: isEn ? 'Failed to load settings.' : '加载系统设置失败。',
       saveFailed: isEn ? 'Failed to save settings.' : '保存系统设置失败。',
       saveSuccess: isEn ? 'Settings saved.' : '系统设置已保存。',
-      resetSuccess: isEn ? 'Default settings restored locally.' : '已在当前页面恢复默认设置。',
+      resetSuccess: isEn ? 'Default settings restored locally.' : '当前页面已恢复默认设置。',
       general: isEn ? 'General' : '基础设置',
-      quota: isEn ? 'Quota' : '额度设置',
+      quota: isEn ? 'Quota' : '配额设置',
       payment: isEn ? 'Payment' : '支付设置',
       notification: isEn ? 'Notifications' : '通知设置',
       updatedAt: isEn ? 'Last updated' : '最近更新',
+      dispatchTitle: isEn ? 'Failure Notification Dispatch' : '失败通知补偿发送',
+      dispatchDescription: isEn
+        ? 'Queued payment-failure notifications are retried automatically. Use this action to trigger an immediate manual sweep.'
+        : '支付失败通知会按重试策略留在队列中。你也可以在这里手动触发一次立即补偿发送。',
+      dispatchAction: isEn ? 'Run Dispatch Now' : '立即执行补偿发送',
+      dispatchRunning: isEn ? 'Dispatching...' : '正在补偿发送...',
+      dispatchSuccess: isEn ? 'Queued notifications processed.' : '队列通知已处理。',
+      dispatchFailed: isEn ? 'Failed to dispatch queued notifications.' : '执行补偿发送失败。',
+      dispatchSummary: (processed: number, sent: number, partial: number, failed: number, suppressed: number) =>
+        isEn
+          ? `Processed ${processed}, sent ${sent}, partial ${partial}, failed ${failed}, suppressed ${suppressed}.`
+          : `本次处理 ${processed} 条，发送成功 ${sent} 条，部分成功 ${partial} 条，失败 ${failed} 条，抑制 ${suppressed} 条。`,
     }),
     [isEn],
   );
@@ -107,6 +120,41 @@ export default function SettingsPage() {
     }
   };
 
+  const handleDispatchNotifications = async () => {
+    try {
+      setIsDispatching(true);
+      const result = await adminFetchJson<{
+        success: true;
+        data: {
+          processed: number;
+          sent: number;
+          partial: number;
+          failed: number;
+          suppressed: number;
+        };
+      }>('/api/admin/notifications/payment-failures', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 10 }),
+      });
+
+      toast.success(copy.dispatchSuccess, {
+        description: copy.dispatchSummary(
+          result.data.processed,
+          result.data.sent,
+          result.data.partial,
+          result.data.failed,
+          result.data.suppressed,
+        ),
+      });
+    } catch (dispatchError) {
+      console.error('[AdminSettings] Failed to dispatch queued notifications:', dispatchError);
+      toast.error(copy.dispatchFailed);
+    } finally {
+      setIsDispatching(false);
+    }
+  };
+
   const restoreDefaults = () => {
     setSettings(DEFAULT_ADMIN_SETTINGS);
     toast.success(copy.resetSuccess);
@@ -138,22 +186,22 @@ export default function SettingsPage() {
     {
       key: 'userRegistration' as const,
       title: isEn ? 'User Registration' : '用户注册',
-      description: isEn ? 'Allow new users to sign up.' : '允许新用户注册平台账户。',
+      description: isEn ? 'Allow new users to create accounts.' : '允许新用户注册平台账号。',
     },
     {
       key: 'adDisplay' as const,
       title: isEn ? 'Ad Display' : '广告展示',
-      description: isEn ? 'Show ads to free users.' : '向免费用户展示广告。',
+      description: isEn ? 'Display marketing slots for free users.' : '向免费用户展示广告位内容。',
     },
     {
       key: 'aiContractGeneration' as const,
       title: isEn ? 'AI Contract Generation' : 'AI 合同生成',
-      description: isEn ? 'Enable AI-powered drafting.' : '启用 AI 自动起草能力。',
+      description: isEn ? 'Enable AI-assisted drafting workflows.' : '启用 AI 辅助起草与分析能力。',
     },
     {
       key: 'maintenanceMode' as const,
       title: isEn ? 'Maintenance Mode' : '维护模式',
-      description: isEn ? 'Temporarily block regular user access.' : '开启后临时阻止普通用户访问。',
+      description: isEn ? 'Temporarily block normal user access.' : '临时限制普通用户访问平台。',
     },
   ];
 
@@ -161,39 +209,39 @@ export default function SettingsPage() {
     {
       key: 'newUserSignup' as const,
       title: isEn ? 'New User Signup' : '新用户注册通知',
-      description: isEn ? 'Notify when a new user signs up.' : '当有新用户注册时触发通知。',
+      description: isEn ? 'Send an alert when a new account is created.' : '有新用户注册时发送提醒。',
     },
     {
       key: 'paymentSuccess' as const,
       title: isEn ? 'Payment Success' : '支付成功通知',
-      description: isEn ? 'Notify after successful payment.' : '支付成功后触发通知。',
+      description: isEn ? 'Send a message after successful payment collection.' : '支付成功后发送确认通知。',
     },
     {
       key: 'paymentFailure' as const,
       title: isEn ? 'Payment Failure' : '支付失败通知',
       description: isEn
-        ? 'Queue failure notifications when recurring payment collection fails.'
-        : '当续费扣款失败时，进入失败通知与补偿队列。',
+        ? 'Queue user-facing follow-up emails when recurring payment collection fails.'
+        : '续费扣款失败时，将面向用户的后续通知加入队列。',
     },
     {
       key: 'subscriptionExpiry' as const,
       title: isEn ? 'Subscription Expiry' : '订阅到期提醒',
-      description: isEn ? 'Notify before membership expires.' : '在会员到期前发送提醒。',
+      description: isEn ? 'Notify users before their plan expires.' : '在会员到期前发送提醒。',
     },
   ];
 
   const adminNotificationToggles = [
     {
       key: 'dailyReport' as const,
-      title: isEn ? 'Daily Report' : '每日报告',
-      description: isEn ? 'Send a daily operations summary.' : '每日汇总运营数据与异常情况。',
+      title: isEn ? 'Daily Report' : '每日汇总',
+      description: isEn ? 'Send a daily operations summary to admins.' : '向管理员发送每日运营摘要。',
     },
     {
       key: 'exceptionAlerts' as const,
       title: isEn ? 'Exception Alerts' : '异常告警',
       description: isEn
-        ? 'Alert admins immediately for important payment and system failures.'
-        : '重要支付失败和系统异常时即时通知管理员。',
+        ? 'Alert admins when payment collection or platform operations fail.'
+        : '支付与系统操作出现异常时，立即提醒管理员。',
     },
   ];
 
@@ -236,9 +284,9 @@ export default function SettingsPage() {
         <TabsContent value="general" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>{isEn ? 'Platform Info' : '平台信息'}</CardTitle>
+              <CardTitle>{isEn ? 'Platform Profile' : '平台信息'}</CardTitle>
               <CardDescription>
-                {isEn ? 'Basic platform profile and public contact info.' : '平台基础资料和对外联系信息。'}
+                {isEn ? 'Edit the public-facing platform profile and support channels.' : '维护平台对外资料与联系渠道。'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -278,7 +326,7 @@ export default function SettingsPage() {
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <InputField
-                  label={isEn ? 'Support Email' : '客服邮箱'}
+                  label={isEn ? 'Support Email' : '支持邮箱'}
                   value={settings.general.supportEmail}
                   onChange={(value) =>
                     setSettings((current) =>
@@ -312,7 +360,7 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>{isEn ? 'Feature Toggles' : '功能开关'}</CardTitle>
               <CardDescription>
-                {isEn ? 'Enable or disable key product capabilities.' : '统一控制核心产品能力开关。'}
+                {isEn ? 'Turn key product capabilities on or off.' : '统一控制平台核心能力的开关状态。'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -336,15 +384,15 @@ export default function SettingsPage() {
         <TabsContent value="quota" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>{isEn ? 'Free Plan Quotas' : '免费版额度'}</CardTitle>
+              <CardTitle>{isEn ? 'Free Plan Quotas' : '免费版配额'}</CardTitle>
               <CardDescription>
-                {isEn ? 'Set usage limits for free users.' : '配置免费用户的使用额度。'}
+                {isEn ? 'Set usage limits for free accounts.' : '配置免费账户的使用限制。'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <InputField
-                  label={isEn ? 'Contracts / Month' : '每月合同数'}
+                  label={isEn ? 'Contracts / Month' : '每月可创建合同数'}
                   type="number"
                   value={String(settings.quota.freeContractsPerMonth)}
                   onChange={(value) =>
@@ -357,7 +405,7 @@ export default function SettingsPage() {
                   }
                 />
                 <InputField
-                  label={isEn ? 'Cloud Storage Days' : '云存储天数'}
+                  label={isEn ? 'Storage Retention (Days)' : '存储保留天数'}
                   type="number"
                   value={String(settings.quota.freeStorageDays)}
                   onChange={(value) =>
@@ -378,8 +426,8 @@ export default function SettingsPage() {
                     <p className="font-medium text-yellow-800">{isEn ? 'Tip' : '提示'}</p>
                     <p className="text-sm text-yellow-700">
                       {isEn
-                        ? 'Higher free quotas usually improve retention, but they also increase infrastructure cost.'
-                        : '提高免费额度通常有利于留存，但也会提升基础设施成本。'}
+                        ? 'Higher free quotas improve activation, but they also increase storage and AI cost.'
+                        : '提高免费额度有助于提升转化前体验，但也会增加存储与 AI 成本。'}
                     </p>
                   </div>
                 </div>
@@ -389,14 +437,14 @@ export default function SettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>{isEn ? 'Pro Plan Quotas' : 'Pro 额度'}</CardTitle>
+              <CardTitle>{isEn ? 'Paid Plan Quotas' : '付费版配额'}</CardTitle>
               <CardDescription>
                 {isEn ? 'Configure limits for paid members.' : '配置付费会员的容量上限。'}
               </CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <SelectField
-                label={isEn ? 'Contracts / Month' : '每月合同数'}
+                label={isEn ? 'Contracts / Month' : '每月可创建合同数'}
                 value={settings.quota.proContractsPerMonth}
                 options={[
                   { value: '100', label: '100' },
@@ -410,12 +458,12 @@ export default function SettingsPage() {
                 }
               />
               <SelectField
-                label={isEn ? 'Cloud Storage' : '云存储时长'}
+                label={isEn ? 'Storage Retention' : '存储保留时长'}
                 value={settings.quota.proStorageDays}
                 options={[
                   { value: '30', label: isEn ? '30 days' : '30 天' },
                   { value: '365', label: isEn ? '1 year' : '1 年' },
-                  { value: 'unlimited', label: isEn ? 'Permanent' : '长期' },
+                  { value: 'unlimited', label: isEn ? 'Permanent' : '长期保留' },
                 ]}
                 onValueChange={(value) =>
                   setSettings((current) =>
@@ -432,7 +480,7 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>{isEn ? 'Payment Channels' : '支付渠道'}</CardTitle>
               <CardDescription>
-                {isEn ? 'Configure enabled channels across regions.' : '统一管理各区域可用的支付渠道。'}
+                {isEn ? 'Enable supported channels by deployment region.' : '按部署区域控制可用支付方式。'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -445,7 +493,7 @@ export default function SettingsPage() {
                 <ToggleRow
                   key={item.key}
                   title={item.label}
-                  description={isEn ? 'Available in supported regions.' : '在支持的区域内启用该支付方式。'}
+                  description={isEn ? 'Available when the active deployment region supports it.' : '在当前部署区域支持时开放给用户使用。'}
                   checked={settings.payment.channels[item.key]}
                   onCheckedChange={(checked) =>
                     setSettings((current) =>
@@ -462,9 +510,9 @@ export default function SettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>{isEn ? 'Pricing Settings' : '定价设置'}</CardTitle>
+              <CardTitle>{isEn ? 'Pricing Benchmarks' : '定价基线'}</CardTitle>
               <CardDescription>
-                {isEn ? 'Set benchmark prices for plan configuration.' : '设置会员方案的基准价格。'}
+                {isEn ? 'Set benchmark prices for operational configuration.' : '设置运营侧使用的套餐价格基线。'}
               </CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -496,9 +544,9 @@ export default function SettingsPage() {
         <TabsContent value="notification" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>{isEn ? 'Email Notifications' : '邮件通知'}</CardTitle>
+              <CardTitle>{isEn ? 'Email Notifications' : '用户通知'}</CardTitle>
               <CardDescription>
-                {isEn ? 'Configure user-facing lifecycle emails.' : '统一配置面向用户的生命周期通知。'}
+                {isEn ? 'Manage user-facing lifecycle and billing notifications.' : '统一管理面向用户的生命周期与支付通知。'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -525,7 +573,7 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>{isEn ? 'Admin Notifications' : '管理员通知'}</CardTitle>
               <CardDescription>
-                {isEn ? 'Set recipients and ops alert switches.' : '设置运维通知接收人和告警策略。'}
+                {isEn ? 'Set recipients and escalation switches for operations alerts.' : '配置运维通知接收人和告警策略。'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -559,6 +607,35 @@ export default function SettingsPage() {
                   }
                 />
               ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{copy.dispatchTitle}</CardTitle>
+              <CardDescription>{copy.dispatchDescription}</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-1 text-sm text-muted-foreground">
+                <p>
+                  {isEn
+                    ? 'When the payment provider fails to collect a subscription renewal, the system queues a notification record and retries delivery with backoff.'
+                    : '当支付渠道扣款失败时，系统会先记录通知队列，并按退避策略自动重试发送。'}
+                </p>
+                <p>
+                  {isEn
+                    ? 'Use the manual action after updating the notification recipient list or email provider configuration.'
+                    : '如果你刚更新了接收邮箱或邮件通道配置，可以手动执行一次补偿发送。'}
+                </p>
+              </div>
+              <Button onClick={handleDispatchNotifications} disabled={isDispatching}>
+                {isDispatching ? (
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                {isDispatching ? copy.dispatchRunning : copy.dispatchAction}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

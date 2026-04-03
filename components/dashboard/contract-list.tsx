@@ -18,6 +18,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -40,6 +50,7 @@ import {
   listContractsForCurrentUser,
   type ContractListItem,
 } from "@/lib/contracts/client";
+import { toast } from "sonner";
 
 type ContractFilter = "all" | "pending" | "completed" | "draft" | "signed";
 
@@ -99,6 +110,7 @@ export function ContractList() {
   const [searchQuery, setSearchQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ContractListItem | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -207,19 +219,20 @@ export function ContractList() {
       );
   }, [contracts, filter, searchQuery]);
 
-  const handleDelete = async (contract: ContractListItem) => {
-    if (!window.confirm(content.deleteConfirm)) {
+  const handleDelete = async () => {
+    if (!deleteTarget) {
       return;
     }
 
     try {
-      setDeletingId(contract.id);
-      await deleteContractForCurrentUser(contract.id);
-      setContracts((current) => current.filter((item) => item.id !== contract.id));
-      window.alert(content.deleteSuccess);
+      setDeletingId(deleteTarget.id);
+      await deleteContractForCurrentUser(deleteTarget.id);
+      setContracts((current) => current.filter((item) => item.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      toast.success(content.deleteSuccess);
     } catch (deleteError) {
       console.error("[ContractList] Failed to delete contract:", deleteError);
-      window.alert(content.deleteFailed);
+      toast.error(content.deleteFailed);
     } finally {
       setDeletingId(null);
     }
@@ -231,7 +244,7 @@ export function ContractList() {
       await downloadContractForCurrentUser(contract.id);
     } catch (downloadError) {
       console.error("[ContractList] Failed to download contract:", downloadError);
-      window.alert(isEn ? "Failed to download the contract." : "下载合同失败，请稍后重试。");
+      toast.error(isEn ? "Failed to download the contract." : "下载合同失败，请稍后重试。");
     } finally {
       setDownloadingId(null);
     }
@@ -353,7 +366,7 @@ export function ContractList() {
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
                           disabled={deletingId === contract.id}
-                          onClick={() => void handleDelete(contract)}
+                          onClick={() => setDeleteTarget(contract)}
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
                           {content.deleteAction}
@@ -367,6 +380,21 @@ export function ContractList() {
           </div>
         )}
       </CardContent>
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => (!open ? setDeleteTarget(null) : null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{isEn ? "Delete Contract?" : "删除合同？"}</AlertDialogTitle>
+            <AlertDialogDescription>{content.deleteConfirm}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{isEn ? "Cancel" : "取消"}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleDelete()} disabled={deletingId === deleteTarget?.id}>
+              {deletingId === deleteTarget?.id ? (isEn ? "Deleting..." : "删除中...") : content.deleteAction}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

@@ -5,26 +5,28 @@ import { PublicInfoShell } from "@/components/layout/public-info-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { loadAdminSettings } from "@/lib/data/admin-settings-store";
 
+export const dynamic = "force-dynamic";
+
 export default async function ContactPage() {
   const settings = await loadAdminSettings();
   const channels = [
     {
       title: "Sales Inquiry",
-      description: "For pricing, enterprise plan, and procurement requirements.",
+      description: "For pricing, enterprise rollout planning, and procurement requirements.",
       value: settings.general.salesEmail,
       href: `mailto:${settings.general.salesEmail}`,
       icon: Mail,
     },
     {
       title: "Product Consultation",
-      description: "For workflow setup, migration, and feature guidance.",
+      description: "For workflow setup, migration planning, and adoption guidance.",
       value: settings.general.supportEmail,
       href: `mailto:${settings.general.supportEmail}`,
       icon: MessageSquare,
     },
     {
       title: "Priority Hotline",
-      description: "For urgent onboarding and production launch support.",
+      description: "For urgent onboarding coordination and production launch support.",
       value: settings.general.hotline,
       href: `tel:${settings.general.hotline.replace(/\s+/g, "")}`,
       icon: Phone,
@@ -57,11 +59,11 @@ export default async function ContactPage() {
         </div>
 
         <p className="mt-8 text-sm text-muted-foreground">
-          Prefer self-service? Go to{" "}
+          Need a faster path? Start with{" "}
           <Link href="/pricing" className="text-primary underline">
             Pricing
           </Link>{" "}
-          or{" "}
+          or go straight to{" "}
           <Link href="/create" className="text-primary underline">
             Create Contract
           </Link>

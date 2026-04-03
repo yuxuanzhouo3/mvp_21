@@ -2,6 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  DollarSign,
+  Eye,
+  Loader2,
+  MousePointer,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+  TrendingUp,
+} from 'lucide-react';
+import {
   Bar,
   BarChart,
   CartesianGrid,
@@ -13,19 +24,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import {
-  DollarSign,
-  Eye,
-  Loader2,
-  MousePointer,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Trash2,
-  TrendingUp,
-} from 'lucide-react';
+import { toast } from 'sonner';
 
-import { adminFetchJson } from '@/lib/admin/client';
 import { useLanguage } from '@/components/language-provider';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -40,22 +40,10 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { adminFetchJson } from '@/lib/admin/client';
 
 type AdStats = {
   totalImpressions: number;
@@ -127,61 +115,112 @@ export default function AdsPage() {
     () => ({
       title: isEn ? 'Ad Management' : '广告位管理',
       subtitle: isEn
-        ? 'Validate slot inventory, monitor delivery, and maintain campaign configuration.'
-        : '核对广告位库存、监控投放表现，并维护广告配置。',
+        ? 'Maintain slot inventory, monitor delivery data, and keep campaign settings tidy.'
+        : '统一维护广告位库存、投放数据和排期配置，方便上线前后持续运营。',
       refresh: isEn ? 'Refresh' : '刷新',
-      createSlot: isEn ? 'Create Slot' : '新建广告位',
-      loadFailed: isEn ? 'Failed to load ad management data.' : '加载广告位管理数据失败。',
-      saveFailed: isEn ? 'Failed to save ad.' : '保存广告位失败。',
-      deleteFailed: isEn ? 'Failed to delete ad.' : '删除广告位失败。',
+      create: isEn ? 'Create Slot' : '新建广告位',
+      retry: isEn ? 'Retry' : '重新加载',
+      loadFailed: isEn ? 'Failed to load ad data.' : '加载广告位数据失败，请稍后重试。',
+      saveFailed: isEn ? 'Failed to save the ad slot.' : '保存广告位失败，请检查后重试。',
+      saveSuccessCreate: isEn ? 'Ad slot created.' : '广告位已创建。',
+      saveSuccessUpdate: isEn ? 'Ad slot updated.' : '广告位已更新。',
+      deleteFailed: isEn ? 'Failed to delete the ad slot.' : '删除广告位失败，请稍后重试。',
+      deleteSuccess: isEn ? 'Ad slot deleted.' : '广告位已删除。',
       requiredFields: isEn
         ? 'Name, position, and type are required.'
-        : '广告位名称、位置和类型不能为空。',
-      notSet: isEn ? 'Not set' : '未设置',
-      impressions: isEn ? 'Impressions' : '展示量',
-      clicks: isEn ? 'Clicks' : '点击量',
-      revenue: isEn ? 'Estimated Revenue' : '预估收入',
-      deliveryTrend: isEn ? 'Delivery Trend' : '投放趋势',
-      deliveryTrendDesc: isEn ? 'Last 7 days of impressions and clicks.' : '最近 7 天展示与点击走势。',
-      noTrend: isEn ? 'No trend data yet.' : '暂时还没有趋势数据。',
-      topSlots: isEn ? 'Top Slots' : '高表现广告位',
-      topSlotsDesc: isEn ? 'Sorted by click volume.' : '按点击量排序。',
-      createToStart: isEn ? 'Create ad slots to start acceptance.' : '创建广告位后即可开始验收。',
-      slotInventory: isEn ? 'Slot Inventory' : '广告位列表',
-      inventoryDesc: isEn
-        ? `Total ${items.length} managed slots across the current data source.`
-        : `当前数据源共 ${items.length} 个可管理广告位。`,
-      noSlots: isEn ? 'No ad slots found.' : '暂无广告位数据。',
+        : '请先填写广告位名称、位置和类型。',
+      metricsImpressions: isEn ? 'Impressions' : '展示量',
+      metricsClicks: isEn ? 'Clicks' : '点击量',
+      metricsCtr: isEn ? 'CTR' : '点击率',
+      metricsRevenue: isEn ? 'Estimated Revenue' : '预计收入',
+      trendTitle: isEn ? 'Delivery Trend' : '投放趋势',
+      trendDescription: isEn
+        ? 'Recent impressions and clicks from the current reporting window.'
+        : '展示最近一段时间的展示量与点击量变化。',
+      ctrTitle: isEn ? 'CTR Trend' : '点击率趋势',
+      ctrDescription: isEn
+        ? 'Daily click-through rate helps spot creative fatigue quickly.'
+        : '通过每日点击率快速识别素材表现和疲劳度。',
+      topTitle: isEn ? 'Top Performing Slots' : '高表现广告位',
+      topDescription: isEn
+        ? 'Quickly review the best-performing slots by click volume.'
+        : '按点击量查看当前表现较好的广告位。',
+      tableTitle: isEn ? 'Slot Inventory' : '广告位清单',
+      tableDescription: isEn
+        ? `There are ${items.length} managed slots in the current data source.`
+        : `当前数据源共收录 ${items.length} 个可管理广告位。`,
+      noTrend: isEn ? 'No trend data available yet.' : '暂无趋势数据。',
+      noCtr: isEn ? 'No CTR data available yet.' : '暂无点击率趋势数据。',
+      noTop: isEn ? 'Create the first slot to start tracking performance.' : '先创建广告位，再开始跟踪投放表现。',
+      noItems: isEn ? 'No ad slots found.' : '暂无广告位数据。',
       slot: isEn ? 'Slot' : '广告位',
       status: isEn ? 'Status' : '状态',
       performance: isEn ? 'Performance' : '表现',
       schedule: isEn ? 'Schedule' : '投放周期',
       actions: isEn ? 'Actions' : '操作',
-      ctrTrend: isEn ? 'CTR Trend' : '点击率趋势',
-      ctrTrendDesc: isEn ? 'Daily click-through rate derived from ad delivery data.' : '基于投放数据计算的每日点击率。',
-      noCtr: isEn ? 'No CTR data yet.' : '暂时还没有点击率数据。',
       edit: isEn ? 'Edit' : '编辑',
       delete: isEn ? 'Delete' : '删除',
-      cancel: isEn ? 'Cancel' : '取消',
-      saveChanges: isEn ? 'Save Changes' : '保存修改',
-      dialogCreate: isEn ? 'Create Ad Slot' : '新建广告位',
-      dialogEdit: isEn ? 'Edit Ad Slot' : '编辑广告位',
-      dialogDesc: isEn
-        ? 'Manage slot metadata, delivery state, and scheduling.'
-        : '维护广告位基础信息、投放状态与排期。',
-      slotName: isEn ? 'Slot Name' : '广告位名称',
+      dialogCreateTitle: isEn ? 'Create Ad Slot' : '新建广告位',
+      dialogEditTitle: isEn ? 'Edit Ad Slot' : '编辑广告位',
+      dialogDescription: isEn
+        ? 'Update slot metadata, creative notes, and delivery schedule.'
+        : '维护广告位基础信息、投放状态、素材说明和排期。',
+      name: isEn ? 'Slot Name' : '广告位名称',
       position: isEn ? 'Position' : '位置',
       type: isEn ? 'Type' : '类型',
-      startTime: isEn ? 'Start Time' : '开始时间',
-      endTime: isEn ? 'End Time' : '结束时间',
-      targetLink: isEn ? 'Target Link' : '跳转链接',
-      content: isEn ? 'Content / Material Notes' : '广告内容 / 素材说明',
+      link: isEn ? 'Target Link' : '跳转链接',
+      content: isEn ? 'Creative Notes' : '素材说明',
+      startDate: isEn ? 'Start Time' : '开始时间',
+      endDate: isEn ? 'End Time' : '结束时间',
+      cancel: isEn ? 'Cancel' : '取消',
+      submitCreate: isEn ? 'Create Slot' : '创建广告位',
+      submitUpdate: isEn ? 'Save Changes' : '保存修改',
+      placeholderName: isEn ? 'Homepage banner - Spring campaign' : '例如：首页 Banner - 春季活动',
+      placeholderLink: isEn ? 'https://example.com/landing' : '请输入跳转链接',
+      placeholderContent: isEn
+        ? 'Describe the material, audience, or delivery notes...'
+        : '填写素材说明、投放目标或备注信息...',
+      dateNotSet: isEn ? 'Not set' : '未设置',
+      dateOpenEnded: isEn ? 'Long-running' : '长期投放',
+      deleteConfirm: (name: string) =>
+        isEn ? `Delete ad slot "${name}"?` : `确认删除广告位“${name}”吗？此操作不可撤销。`,
       active: isEn ? 'Active' : '投放中',
-      paused: isEn ? 'Paused' : '暂停',
+      paused: isEn ? 'Paused' : '已暂停',
       archived: isEn ? 'Archived' : '已归档',
       draft: isEn ? 'Draft' : '草稿',
     }),
     [isEn, items.length],
+  );
+
+  const positionOptions = useMemo(
+    () => [
+      { value: 'dashboard_top', label: isEn ? 'Dashboard Top' : '控制台顶部' },
+      { value: 'dashboard_sidebar', label: isEn ? 'Dashboard Sidebar' : '控制台侧边栏' },
+      { value: 'create_page', label: isEn ? 'Create Page' : '创建页' },
+      { value: 'contract_detail', label: isEn ? 'Contract Detail' : '合同详情页' },
+      { value: 'marketing_home', label: isEn ? 'Marketing Homepage' : '营销首页' },
+    ],
+    [isEn],
+  );
+
+  const typeOptions = useMemo(
+    () => [
+      { value: 'banner', label: isEn ? 'Banner' : '横幅' },
+      { value: 'card', label: isEn ? 'Card' : '卡片' },
+      { value: 'popup', label: isEn ? 'Popup' : '弹窗' },
+      { value: 'native', label: isEn ? 'Native' : '原生位' },
+    ],
+    [isEn],
+  );
+
+  const statusOptions = useMemo(
+    () => [
+      { value: 'draft', label: copy.draft },
+      { value: 'active', label: copy.active },
+      { value: 'paused', label: copy.paused },
+      { value: 'archived', label: copy.archived },
+    ],
+    [copy.active, copy.archived, copy.draft, copy.paused],
   );
 
   const fetchData = useCallback(async () => {
@@ -202,10 +241,12 @@ export default function AdsPage() {
       setTrend(result.data.trend || []);
       setItems(result.data.items || []);
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : copy.loadFailed);
+      const message = fetchError instanceof Error ? fetchError.message : copy.loadFailed;
+      setError(message);
       setStats(null);
       setTrend([]);
       setItems([]);
+      toast.error(copy.loadFailed);
     } finally {
       setLoading(false);
     }
@@ -228,13 +269,13 @@ export default function AdsPage() {
   const formatDate = useCallback(
     (value?: string | null) => {
       if (!value) {
-        return copy.notSet;
+        return copy.dateNotSet;
       }
 
       const parsed = new Date(value);
       return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString(locale);
     },
-    [copy.notSet, locale],
+    [copy.dateNotSet, locale],
   );
 
   const openCreateDialog = () => {
@@ -258,15 +299,13 @@ export default function AdsPage() {
   };
 
   const updateForm = (key: keyof AdFormState, value: string) => {
-    setForm((current) => ({
-      ...current,
-      [key]: value,
-    }));
+    setForm((current) => ({ ...current, [key]: value }));
   };
 
   const saveAd = async () => {
     if (!form.name.trim() || !form.position.trim() || !form.type.trim()) {
       setError(copy.requiredFields);
+      toast.error(copy.requiredFields);
       return;
     }
 
@@ -290,18 +329,19 @@ export default function AdsPage() {
 
       setDialogOpen(false);
       setForm(EMPTY_FORM);
+      toast.success(form.id ? copy.saveSuccessUpdate : copy.saveSuccessCreate);
       await fetchData();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : copy.saveFailed);
+      const message = saveError instanceof Error ? saveError.message : copy.saveFailed;
+      setError(message);
+      toast.error(copy.saveFailed);
     } finally {
       setSaving(false);
     }
   };
 
   const deleteAd = async (item: AdRecord) => {
-    const confirmed = window.confirm(
-      isEn ? `Delete ad slot "${item.name}"?` : `确认删除广告位“${item.name}”吗？`,
-    );
+    const confirmed = window.confirm(copy.deleteConfirm(item.name));
     if (!confirmed) {
       return;
     }
@@ -313,27 +353,33 @@ export default function AdsPage() {
       await adminFetchJson(`/api/admin/ads/${item.id}`, {
         method: 'DELETE',
       });
+      toast.success(copy.deleteSuccess);
       await fetchData();
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : copy.deleteFailed);
+      const message = deleteError instanceof Error ? deleteError.message : copy.deleteFailed;
+      setError(message);
+      toast.error(copy.deleteFailed);
     } finally {
       setSaving(false);
     }
   };
 
-  const statusBadge = (status: string) => {
-    const normalized = status?.toLowerCase?.() || 'draft';
-    const variant: 'default' | 'secondary' | 'outline' =
-      normalized === 'active' ? 'default' : normalized === 'archived' ? 'outline' : 'secondary';
-    const labelMap: Record<string, string> = {
-      active: copy.active,
-      paused: copy.paused,
-      archived: copy.archived,
-      draft: copy.draft,
-    };
+  const statusBadge = useCallback(
+    (value: string) => {
+      const normalized = value?.toLowerCase?.() || 'draft';
+      const variant: 'default' | 'secondary' | 'outline' =
+        normalized === 'active' ? 'default' : normalized === 'archived' ? 'outline' : 'secondary';
+      const labelMap: Record<string, string> = {
+        active: copy.active,
+        paused: copy.paused,
+        archived: copy.archived,
+        draft: copy.draft,
+      };
 
-    return <Badge variant={variant}>{labelMap[normalized] || normalized}</Badge>;
-  };
+      return <Badge variant={variant}>{labelMap[normalized] || normalized}</Badge>;
+    },
+    [copy.active, copy.archived, copy.draft, copy.paused],
+  );
 
   const topPerformers = useMemo(
     () => [...items].sort((left, right) => (right.clicks || 0) - (left.clicks || 0)).slice(0, 3),
@@ -342,7 +388,7 @@ export default function AdsPage() {
 
   if (loading && !stats) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
@@ -355,14 +401,14 @@ export default function AdsPage() {
           <h1 className="text-2xl font-bold">{copy.title}</h1>
           <p className="text-muted-foreground">{copy.subtitle}</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => void fetchData()}>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => void fetchData()} disabled={loading}>
             <RefreshCw className="mr-2 h-4 w-4" />
             {copy.refresh}
           </Button>
           <Button onClick={openCreateDialog}>
             <Plus className="mr-2 h-4 w-4" />
-            {copy.createSlot}
+            {copy.create}
           </Button>
         </div>
       </div>
@@ -373,30 +419,30 @@ export default function AdsPage() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{copy.impressions}</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{copy.metricsImpressions}</CardTitle>
             <Eye className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalImpressions.toLocaleString(locale) || 0}</div>
+            <div className="text-2xl font-bold">{(stats?.totalImpressions || 0).toLocaleString(locale)}</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{copy.clicks}</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{copy.metricsClicks}</CardTitle>
             <MousePointer className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalClicks.toLocaleString(locale) || 0}</div>
+            <div className="text-2xl font-bold">{(stats?.totalClicks || 0).toLocaleString(locale)}</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">CTR</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{copy.metricsCtr}</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -406,7 +452,7 @@ export default function AdsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{copy.revenue}</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{copy.metricsRevenue}</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -415,53 +461,72 @@ export default function AdsPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[2fr,1fr]">
+      <div className="grid gap-6 xl:grid-cols-[1.2fr,1.2fr,0.9fr]">
         <Card>
           <CardHeader>
-            <CardTitle>{copy.deliveryTrend}</CardTitle>
-            <CardDescription>{copy.deliveryTrendDesc}</CardDescription>
+            <CardTitle>{copy.trendTitle}</CardTitle>
+            <CardDescription>{copy.trendDescription}</CardDescription>
           </CardHeader>
           <CardContent>
-            {trend.length > 0 ? (
-              <ResponsiveContainer width="100%" height={320}>
+            {trend.length === 0 ? (
+              <div className="flex min-h-[280px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+                {copy.noTrend}
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={trend}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" />
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="impressions"
-                    stroke="#2563eb"
-                    strokeWidth={2}
-                    name={copy.impressions}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="clicks"
-                    stroke="#16a34a"
-                    strokeWidth={2}
-                    name={copy.clicks}
-                  />
+                  <Line type="monotone" dataKey="impressions" stroke="#2563eb" strokeWidth={2} name={copy.metricsImpressions} />
+                  <Line type="monotone" dataKey="clicks" stroke="#16a34a" strokeWidth={2} name={copy.metricsClicks} />
                 </LineChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="py-16 text-center text-muted-foreground">{copy.noTrend}</div>
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>{copy.topSlots}</CardTitle>
-            <CardDescription>{copy.topSlotsDesc}</CardDescription>
+            <CardTitle>{copy.ctrTitle}</CardTitle>
+            <CardDescription>{copy.ctrDescription}</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {topPerformers.length > 0 ? (
+          <CardContent>
+            {trend.length === 0 ? (
+              <div className="flex min-h-[280px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+                {copy.noCtr}
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={trend}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="ctr" fill="#f59e0b" name={copy.metricsCtr} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{copy.topTitle}</CardTitle>
+            <CardDescription>{copy.topDescription}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {topPerformers.length === 0 ? (
+              <div className="flex min-h-[280px] items-center justify-center rounded-lg border border-dashed px-6 text-center text-sm text-muted-foreground">
+                {copy.noTop}
+              </div>
+            ) : (
               topPerformers.map((item) => (
-                <div key={item.id} className="rounded-lg border p-3">
-                  <div className="flex items-center justify-between gap-3">
+                <div key={item.id} className="rounded-lg border p-4">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="font-medium">{item.name}</div>
                       <div className="text-xs text-muted-foreground">
@@ -470,24 +535,22 @@ export default function AdsPage() {
                     </div>
                     {statusBadge(item.status)}
                   </div>
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                  <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
                     <div>
-                      <div className="text-muted-foreground">{copy.impressions}</div>
+                      <div className="text-muted-foreground">{copy.metricsImpressions}</div>
                       <div className="font-medium">{(item.impressions || 0).toLocaleString(locale)}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">{copy.clicks}</div>
+                      <div className="text-muted-foreground">{copy.metricsClicks}</div>
                       <div className="font-medium">{(item.clicks || 0).toLocaleString(locale)}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">{isEn ? 'Revenue' : '收入'}</div>
+                      <div className="text-muted-foreground">{copy.metricsRevenue}</div>
                       <div className="font-medium">{formatCurrency(item.revenue || 0)}</div>
                     </div>
                   </div>
                 </div>
               ))
-            ) : (
-              <div className="py-8 text-center text-muted-foreground">{copy.createToStart}</div>
             )}
           </CardContent>
         </Card>
@@ -495,12 +558,14 @@ export default function AdsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{copy.slotInventory}</CardTitle>
-          <CardDescription>{copy.inventoryDesc}</CardDescription>
+          <CardTitle>{copy.tableTitle}</CardTitle>
+          <CardDescription>{copy.tableDescription}</CardDescription>
         </CardHeader>
         <CardContent>
           {items.length === 0 ? (
-            <div className="py-16 text-center text-muted-foreground">{copy.noSlots}</div>
+            <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+              {copy.noItems}
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -521,20 +586,29 @@ export default function AdsPage() {
                         <div className="text-xs text-muted-foreground">
                           {item.position} / {item.type}
                         </div>
-                        <div className="line-clamp-1 text-xs text-muted-foreground">
-                          {item.link || item.content || '-'}
-                        </div>
+                        {item.link ? (
+                          <a
+                            href={item.link}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="line-clamp-1 text-xs text-primary hover:underline"
+                          >
+                            {item.link}
+                          </a>
+                        ) : null}
                       </div>
                     </TableCell>
                     <TableCell>{statusBadge(item.status)}</TableCell>
-                    <TableCell className="text-sm">
-                      <div>{copy.impressions}: {(item.impressions || 0).toLocaleString(locale)}</div>
-                      <div>{copy.clicks}: {(item.clicks || 0).toLocaleString(locale)}</div>
-                      <div>{isEn ? 'Revenue' : '收入'}: {formatCurrency(item.revenue || 0)}</div>
+                    <TableCell>
+                      <div className="space-y-1 text-sm">
+                        <div>{copy.metricsImpressions}: {(item.impressions || 0).toLocaleString(locale)}</div>
+                        <div>{copy.metricsClicks}: {(item.clicks || 0).toLocaleString(locale)}</div>
+                        <div>{copy.metricsRevenue}: {formatCurrency(item.revenue || 0)}</div>
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       <div>{formatDate(item.start_date)}</div>
-                      <div>{formatDate(item.end_date)}</div>
+                      <div>{item.end_date ? formatDate(item.end_date) : copy.dateOpenEnded}</div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
@@ -542,7 +616,12 @@ export default function AdsPage() {
                           <Pencil className="mr-2 h-4 w-4" />
                           {copy.edit}
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => void deleteAd(item)} disabled={saving}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void deleteAd(item)}
+                          disabled={saving}
+                        >
                           <Trash2 className="mr-2 h-4 w-4" />
                           {copy.delete}
                         </Button>
@@ -556,111 +635,112 @@ export default function AdsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{copy.ctrTrend}</CardTitle>
-          <CardDescription>{copy.ctrTrendDesc}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {trend.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={trend}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="ctr" fill="#f59e0b" name={isEn ? 'CTR (%)' : '点击率 (%)'} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="py-16 text-center text-muted-foreground">{copy.noCtr}</div>
-          )}
-        </CardContent>
-      </Card>
-
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{form.id ? copy.dialogEdit : copy.dialogCreate}</DialogTitle>
-            <DialogDescription>{copy.dialogDesc}</DialogDescription>
+            <DialogTitle>{form.id ? copy.dialogEditTitle : copy.dialogCreateTitle}</DialogTitle>
+            <DialogDescription>{copy.dialogDescription}</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="ad-name">{copy.slotName}</Label>
-              <Input id="ad-name" value={form.name} onChange={(event) => updateForm('name', event.target.value)} />
+              <Label htmlFor="ad-name">{copy.name}</Label>
+              <Input
+                id="ad-name"
+                value={form.name}
+                placeholder={copy.placeholderName}
+                onChange={(event) => updateForm('name', event.target.value)}
+              />
             </div>
+
             <div className="space-y-2">
               <Label htmlFor="ad-position">{copy.position}</Label>
-              <Input id="ad-position" value={form.position} onChange={(event) => updateForm('position', event.target.value)} />
+              <Select value={form.position} onValueChange={(value) => updateForm('position', value)}>
+                <SelectTrigger id="ad-position">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {positionOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+
             <div className="space-y-2">
-              <Label>{copy.type}</Label>
+              <Label htmlFor="ad-type">{copy.type}</Label>
               <Select value={form.type} onValueChange={(value) => updateForm('type', value)}>
-                <SelectTrigger>
+                <SelectTrigger id="ad-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="banner">Banner</SelectItem>
-                  <SelectItem value="sidebar">Sidebar</SelectItem>
-                  <SelectItem value="inline">Inline</SelectItem>
-                  <SelectItem value="popup">Popup</SelectItem>
+                  {typeOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
+
             <div className="space-y-2">
-              <Label>{copy.status}</Label>
+              <Label htmlFor="ad-status">{copy.status}</Label>
               <Select value={form.status} onValueChange={(value) => updateForm('status', value)}>
-                <SelectTrigger>
+                <SelectTrigger id="ad-status">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="draft">{copy.draft}</SelectItem>
-                  <SelectItem value="active">{copy.active}</SelectItem>
-                  <SelectItem value="paused">{copy.paused}</SelectItem>
-                  <SelectItem value="archived">{copy.archived}</SelectItem>
+                  {statusOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="ad-link">{copy.link}</Label>
+              <Input
+                id="ad-link"
+                value={form.link}
+                placeholder={copy.placeholderLink}
+                onChange={(event) => updateForm('link', event.target.value)}
+              />
+            </div>
+
             <div className="space-y-2">
-              <Label htmlFor="ad-start">{copy.startTime}</Label>
+              <Label htmlFor="ad-start">{copy.startDate}</Label>
               <Input
                 id="ad-start"
+                type="datetime-local"
                 value={form.start_date}
                 onChange={(event) => updateForm('start_date', event.target.value)}
-                placeholder="2026-03-30T09:00:00Z"
               />
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="ad-end">{copy.endTime}</Label>
+              <Label htmlFor="ad-end">{copy.endDate}</Label>
               <Input
                 id="ad-end"
+                type="datetime-local"
                 value={form.end_date}
                 onChange={(event) => updateForm('end_date', event.target.value)}
-                placeholder="2026-04-30T23:59:59Z"
               />
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="ad-link">{copy.targetLink}</Label>
-            <Input
-              id="ad-link"
-              value={form.link}
-              onChange={(event) => updateForm('link', event.target.value)}
-              placeholder="https://example.com"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="ad-content">{copy.content}</Label>
-            <Textarea
-              id="ad-content"
-              value={form.content}
-              onChange={(event) => updateForm('content', event.target.value)}
-              rows={5}
-            />
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="ad-content">{copy.content}</Label>
+              <Textarea
+                id="ad-content"
+                rows={5}
+                value={form.content}
+                placeholder={copy.placeholderContent}
+                onChange={(event) => updateForm('content', event.target.value)}
+              />
+            </div>
           </div>
 
           <DialogFooter>
@@ -669,7 +749,7 @@ export default function AdsPage() {
             </Button>
             <Button onClick={() => void saveAd()} disabled={saving}>
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {form.id ? copy.saveChanges : copy.createSlot}
+              {form.id ? copy.submitUpdate : copy.submitCreate}
             </Button>
           </DialogFooter>
         </DialogContent>

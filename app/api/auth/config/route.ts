@@ -1,21 +1,15 @@
-import {
-  currentRegion,
-  getAuthProvider,
-  getDefaultLanguage,
-  isAuthFeatureSupported,
-} from "@/lib/config/deployment.config";
+import { getAuthProvider, getDefaultLanguage } from "@/lib/config/deployment.config";
+import { getPublicAuthConfig } from "@/lib/config/third-party-capabilities";
 
 export async function GET() {
+  const authConfig = getPublicAuthConfig();
+
   return Response.json({
-    region: currentRegion,
+    region: authConfig.region,
     defaultLanguage: getDefaultLanguage(),
     authProvider: getAuthProvider(),
-    features: {
-      emailAuth: isAuthFeatureSupported("emailAuth"),
-      wechatAuth: isAuthFeatureSupported("wechatAuth"),
-      googleAuth: isAuthFeatureSupported("googleAuth"),
-      githubAuth: isAuthFeatureSupported("githubAuth"),
-    },
+    features: authConfig.features,
+    availability: authConfig.availability,
     wechatAppId: process.env.NEXT_PUBLIC_WECHAT_APP_ID,
     appUrl: process.env.NEXT_PUBLIC_APP_URL,
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,

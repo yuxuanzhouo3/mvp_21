@@ -11,6 +11,10 @@ export interface AuthConfig {
     googleAuth: boolean;
     githubAuth: boolean;
   };
+  availability?: {
+    wechat?: { enabled: boolean; reason?: string };
+    google?: { enabled: boolean; reason?: string };
+  };
   wechatAppId: string | undefined;
   appUrl: string | undefined;
   supabaseUrl: string | undefined;

@@ -12,8 +12,8 @@ import {
   Users,
   XCircle,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
-import { adminFetchJson } from '@/lib/admin/client';
 import { useLanguage } from '@/components/language-provider';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,22 +28,10 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { adminFetchJson } from '@/lib/admin/client';
 
 type AdminTab = 'subscriptions' | 'payments';
 
@@ -158,13 +146,16 @@ export default function SubscriptionsPage() {
     () => ({
       title: isEn ? 'Subscription Management' : '订阅管理',
       subtitle: isEn
-        ? 'Review real subscription data, adjust plans, and validate billing records.'
-        : '核对真实订阅数据、调整套餐状态，并验收支付记录。',
+        ? 'Review real subscription records, align billing status, and audit payment history.'
+        : '统一查看真实订阅记录、账单状态和支付流水，便于后台运营和客服处理。',
       refresh: isEn ? 'Refresh' : '刷新',
       exportView: isEn ? 'Export Current View' : '导出当前视图',
+      exportSuccess: (count: number) =>
+        isEn ? `Exported ${count} records.` : `已导出 ${count} 条记录。`,
+      exportFailed: isEn ? 'Failed to export the current view.' : '导出当前视图失败，请稍后重试。',
       info: isEn
-        ? 'Data source: unified subscriptions and payments models. Saving a subscription also syncs the latest plan state back to the user profile metadata.'
-        : '数据源：统一 subscriptions / payments 模型。保存订阅时会同步最新套餐状态回写到用户资料元数据。',
+        ? 'Data comes from unified subscription and payment models. Saving a subscription also syncs the latest plan state back to the user profile.'
+        : '数据来自统一的订阅与支付模型。保存订阅后，会同步用户当前套餐状态，避免后台信息不一致。',
       activeSubscriptions: isEn ? 'Active Subscriptions' : '有效订阅',
       monthlyMrr: isEn ? 'Monthly MRR' : '月度 MRR',
       renewalRate: isEn ? 'Renewal Rate' : '续费率',
@@ -194,27 +185,33 @@ export default function SubscriptionsPage() {
       next: isEn ? 'Next' : '下一页',
       editDialogTitle: isEn ? 'Edit Subscription' : '编辑订阅',
       editDialogDescription: isEn
-        ? 'This updates the latest unified subscription record and syncs related user metadata.'
-        : '这里会更新最新统一订阅记录，并同步相关用户元数据。',
+        ? 'This updates the latest subscription record and syncs the related user metadata.'
+        : '这里会更新最新订阅记录，并同步相关用户元数据。',
       email: isEn ? 'Email' : '邮箱',
       currency: isEn ? 'Currency' : '币种',
       billingCycle: isEn ? 'Billing Cycle' : '计费周期',
       currentPeriodEnd: isEn ? 'Current Period End' : '当前周期结束时间',
       cancel: isEn ? 'Cancel' : '取消',
       saveSubscription: isEn ? 'Save Subscription' : '保存订阅',
-      notSet: isEn ? 'Not set' : '未设置',
-      loadFailed: isEn ? 'Failed to load subscription management data.' : '加载订阅管理数据失败。',
-      saveFailed: isEn ? 'Failed to save subscription.' : '保存订阅失败。',
+      saveSuccess: isEn ? 'Subscription saved.' : '订阅已保存。',
+      saveFailed: isEn ? 'Failed to save subscription.' : '保存订阅失败，请稍后重试。',
+      loadFailed: isEn ? 'Failed to load subscription data.' : '加载订阅管理数据失败，请稍后重试。',
       subscriptionSearch: isEn
-        ? 'Search user, email, plan, or subscription ID...'
+        ? 'Search by user, email, plan, or subscription ID...'
         : '按用户、邮箱、套餐或订阅 ID 搜索...',
       paymentSearch: isEn
-        ? 'Search user, email, or transaction ID...'
-        : '按用户、邮箱或交易 ID 搜索...',
+        ? 'Search by user, email, transaction ID, or payment ID...'
+        : '按用户、邮箱、交易号或支付 ID 搜索...',
       monthly: isEn ? 'Monthly' : '月付',
       yearly: isEn ? 'Yearly' : '年付',
       pageCount: (count: number) =>
         isEn ? `Showing ${count} items on this page.` : `当前页展示 ${count} 条记录。`,
+      noSearchResults: isEn ? 'No matching records found.' : '没有匹配到相关记录。',
+      notSet: isEn ? 'Not set' : '未设置',
+      retry: isEn ? 'Retry' : '重新加载',
+      allStatus: isEn ? 'All Status' : '全部状态',
+      free: isEn ? 'Free' : '免费',
+      enterprise: isEn ? 'Enterprise' : '企业版',
     }),
     [isEn, pagination.page, pagination.total, pagination.totalPages],
   );
@@ -222,7 +219,7 @@ export default function SubscriptionsPage() {
   const statusOptions = useMemo(() => {
     if (tab === 'subscriptions') {
       return [
-        { value: 'all', label: isEn ? 'All Status' : '全部状态' },
+        { value: 'all', label: copy.allStatus },
         { value: 'active', label: isEn ? 'Active' : '有效' },
         { value: 'inactive', label: isEn ? 'Inactive' : '未生效' },
         { value: 'paused', label: isEn ? 'Paused' : '已暂停' },
@@ -232,13 +229,13 @@ export default function SubscriptionsPage() {
     }
 
     return [
-      { value: 'all', label: isEn ? 'All Status' : '全部状态' },
+      { value: 'all', label: copy.allStatus },
       { value: 'completed', label: isEn ? 'Completed' : '成功' },
       { value: 'pending', label: isEn ? 'Pending' : '处理中' },
       { value: 'failed', label: isEn ? 'Failed' : '失败' },
       { value: 'refunded', label: isEn ? 'Refunded' : '已退款' },
     ];
-  }, [isEn, tab]);
+  }, [copy.allStatus, isEn, tab]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -273,10 +270,12 @@ export default function SubscriptionsPage() {
         setPayments((result.data.items || []) as PaymentItem[]);
       }
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : copy.loadFailed);
+      const message = fetchError instanceof Error ? fetchError.message : copy.loadFailed;
+      setError(message);
       setSubscriptions([]);
       setPayments([]);
       setPagination(EMPTY_PAGINATION);
+      toast.error(copy.loadFailed);
     } finally {
       setLoading(false);
     }
@@ -344,68 +343,82 @@ export default function SubscriptionsPage() {
   }, [payments, searchQuery]);
 
   const exportCurrentView = useCallback(() => {
-    const data = tab === 'subscriptions' ? filteredSubscriptions : filteredPayments;
-    const fileName = tab === 'subscriptions' ? 'admin-subscriptions.json' : 'admin-payments.json';
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: 'application/json;charset=utf-8',
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    link.click();
-    URL.revokeObjectURL(url);
-  }, [filteredPayments, filteredSubscriptions, tab]);
+    try {
+      const data = tab === 'subscriptions' ? filteredSubscriptions : filteredPayments;
+      const fileName = tab === 'subscriptions' ? 'admin-subscriptions.json' : 'admin-payments.json';
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: 'application/json;charset=utf-8',
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success(copy.exportSuccess(data.length));
+    } catch {
+      toast.error(copy.exportFailed);
+    }
+  }, [copy, filteredPayments, filteredSubscriptions, tab]);
 
-  const getPlanBadge = (plan: string) => {
-    const labelMap: Record<string, string> = {
-      free: isEn ? 'Free' : '免费',
-      pro: 'Pro',
-      enterprise: isEn ? 'Enterprise' : '企业版',
-    };
-    const variant: 'default' | 'secondary' | 'outline' =
-      plan === 'enterprise' ? 'default' : plan === 'pro' ? 'secondary' : 'outline';
+  const getPlanBadge = useCallback(
+    (plan: string) => {
+      const labelMap: Record<string, string> = {
+        free: copy.free,
+        pro: 'Pro',
+        enterprise: copy.enterprise,
+      };
+      const variant: 'default' | 'secondary' | 'outline' =
+        plan === 'enterprise' ? 'default' : plan === 'pro' ? 'secondary' : 'outline';
 
-    return <Badge variant={variant}>{labelMap[plan] || plan}</Badge>;
-  };
+      return <Badge variant={variant}>{labelMap[plan] || plan}</Badge>;
+    },
+    [copy.enterprise, copy.free],
+  );
 
-  const getStatusBadge = (value: string) => {
-    const normalized = value?.toLowerCase?.() || 'inactive';
-    const variant: 'default' | 'outline' | 'destructive' =
-      normalized === 'active' || normalized === 'completed'
-        ? 'default'
-        : normalized === 'failed' || normalized === 'cancelled' || normalized === 'canceled'
-          ? 'destructive'
-          : 'outline';
+  const getStatusBadge = useCallback(
+    (value: string) => {
+      const normalized = value?.toLowerCase?.() || 'inactive';
+      const variant: 'default' | 'outline' | 'destructive' =
+        normalized === 'active' || normalized === 'completed'
+          ? 'default'
+          : normalized === 'failed' || normalized === 'cancelled' || normalized === 'canceled'
+            ? 'destructive'
+            : 'outline';
 
-    const labelMap: Record<string, string> = {
-      active: isEn ? 'Active' : '有效',
-      inactive: isEn ? 'Inactive' : '未生效',
-      paused: isEn ? 'Paused' : '已暂停',
-      cancelled: isEn ? 'Cancelled' : '已取消',
-      canceled: isEn ? 'Cancelled' : '已取消',
-      expired: isEn ? 'Expired' : '已过期',
-      completed: isEn ? 'Completed' : '成功',
-      pending: isEn ? 'Pending' : '处理中',
-      failed: isEn ? 'Failed' : '失败',
-      refunded: isEn ? 'Refunded' : '已退款',
-    };
+      const labelMap: Record<string, string> = {
+        active: isEn ? 'Active' : '有效',
+        inactive: isEn ? 'Inactive' : '未生效',
+        paused: isEn ? 'Paused' : '已暂停',
+        cancelled: isEn ? 'Cancelled' : '已取消',
+        canceled: isEn ? 'Cancelled' : '已取消',
+        expired: isEn ? 'Expired' : '已过期',
+        completed: isEn ? 'Completed' : '成功',
+        pending: isEn ? 'Pending' : '处理中',
+        failed: isEn ? 'Failed' : '失败',
+        refunded: isEn ? 'Refunded' : '已退款',
+      };
 
-    return <Badge variant={variant}>{labelMap[normalized] || normalized}</Badge>;
-  };
+      return <Badge variant={variant}>{labelMap[normalized] || normalized}</Badge>;
+    },
+    [isEn],
+  );
 
-  const getPaymentMethodLabel = (method: string) => {
-    const labels: Record<string, string> = {
-      wechat: isEn ? 'WeChat Pay' : '微信支付',
-      alipay: 'Alipay',
-      stripe: 'Stripe',
-      paypal: 'PayPal',
-      card: isEn ? 'Card' : '银行卡',
-      manual: isEn ? 'Manual' : '人工处理',
-    };
+  const getPaymentMethodLabel = useCallback(
+    (method: string) => {
+      const labels: Record<string, string> = {
+        wechat: isEn ? 'WeChat Pay' : '微信支付',
+        alipay: 'Alipay',
+        stripe: 'Stripe',
+        paypal: 'PayPal',
+        card: isEn ? 'Card' : '银行卡',
+        manual: isEn ? 'Manual' : '人工处理',
+      };
 
-    return labels[method?.toLowerCase?.() || ''] || method || '-';
-  };
+      return labels[method?.toLowerCase?.() || ''] || method || '-';
+    },
+    [isEn],
+  );
 
   const openEditDialog = (item: SubscriptionItem) => {
     setForm({
@@ -424,10 +437,7 @@ export default function SubscriptionsPage() {
   };
 
   const updateForm = (key: keyof SubscriptionForm, value: string) => {
-    setForm((current) => ({
-      ...current,
-      [key]: value,
-    }));
+    setForm((current) => ({ ...current, [key]: value }));
   };
 
   const saveSubscription = async () => {
@@ -447,24 +457,29 @@ export default function SubscriptionsPage() {
           plan: form.plan,
           status: form.status,
           price: Number(form.price || 0),
-          currency: form.currency,
+          currency: form.currency.trim().toUpperCase(),
           billingCycle: form.billingCycle,
-          paymentMethod: form.paymentMethod,
+          paymentMethod: form.paymentMethod.trim(),
           currentPeriodEnd: form.currentPeriodEnd ? new Date(form.currentPeriodEnd).toISOString() : null,
         }),
       });
 
       setDialogOpen(false);
       setForm(EMPTY_FORM);
+      toast.success(copy.saveSuccess);
       await fetchData();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : copy.saveFailed);
+      const message = saveError instanceof Error ? saveError.message : copy.saveFailed;
+      setError(message);
+      toast.error(copy.saveFailed);
     } finally {
       setSaving(false);
     }
   };
 
   const currentRows = tab === 'subscriptions' ? filteredSubscriptions.length : filteredPayments.length;
+  const showEmptyState = !loading && currentRows === 0;
+  const isSearching = searchQuery.trim().length > 0;
 
   return (
     <div className="space-y-6">
@@ -473,8 +488,8 @@ export default function SubscriptionsPage() {
           <h1 className="text-2xl font-bold">{copy.title}</h1>
           <p className="text-muted-foreground">{copy.subtitle}</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => void fetchData()}>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => void fetchData()} disabled={loading}>
             <RefreshCw className="mr-2 h-4 w-4" />
             {copy.refresh}
           </Button>
@@ -493,7 +508,7 @@ export default function SubscriptionsPage() {
 
       <div className="rounded-xl border bg-card/60 p-4 text-sm text-muted-foreground">{copy.info}</div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">{copy.activeSubscriptions}</CardTitle>
@@ -577,11 +592,14 @@ export default function SubscriptionsPage() {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="flex items-center justify-center py-16">
+                <div className="flex min-h-[220px] items-center justify-center">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
-              ) : filteredSubscriptions.length === 0 ? (
-                <div className="py-16 text-center text-muted-foreground">{copy.noSubscriptions}</div>
+              ) : showEmptyState ? (
+                <div className="rounded-lg border border-dashed p-12 text-center">
+                  <p className="font-medium">{isSearching ? copy.noSearchResults : copy.noSubscriptions}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">{copy.pageHint}</p>
+                </div>
               ) : (
                 <Table>
                   <TableHeader>
@@ -634,11 +652,14 @@ export default function SubscriptionsPage() {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="flex items-center justify-center py-16">
+                <div className="flex min-h-[220px] items-center justify-center">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
-              ) : filteredPayments.length === 0 ? (
-                <div className="py-16 text-center text-muted-foreground">{copy.noPayments}</div>
+              ) : showEmptyState ? (
+                <div className="rounded-lg border border-dashed p-12 text-center">
+                  <p className="font-medium">{isSearching ? copy.noSearchResults : copy.noPayments}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">{copy.pageHint}</p>
+                </div>
               ) : (
                 <Table>
                   <TableHeader>
@@ -675,7 +696,7 @@ export default function SubscriptionsPage() {
         </TabsContent>
       </Tabs>
 
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className="flex flex-col gap-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
         <p>{copy.pageHint}</p>
         <div className="flex gap-2">
           <Button
@@ -720,9 +741,9 @@ export default function SubscriptionsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="free">{isEn ? 'Free' : '免费'}</SelectItem>
+                  <SelectItem value="free">{copy.free}</SelectItem>
                   <SelectItem value="pro">Pro</SelectItem>
-                  <SelectItem value="enterprise">{isEn ? 'Enterprise' : '企业版'}</SelectItem>
+                  <SelectItem value="enterprise">{copy.enterprise}</SelectItem>
                 </SelectContent>
               </Select>
             </div>

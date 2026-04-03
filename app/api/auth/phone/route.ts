@@ -12,7 +12,7 @@ import {
 import { getDb, TABLES } from "@/lib/db";
 
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "contracthub-secret-key-change-in-production",
+  process.env.JWT_SECRET || "morncontract-secret-key-change-in-production",
 );
 
 async function generateToken(user: any): Promise<string> {

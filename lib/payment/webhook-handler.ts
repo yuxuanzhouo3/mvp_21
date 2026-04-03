@@ -15,6 +15,7 @@ import {
   logBusinessEvent,
 } from "../utils/logger";
 import { queuePaymentFailureNotification } from "../data/payment-failure-notifications-store";
+import { dispatchQueuedPaymentFailureNotifications } from "./payment-failure-dispatcher";
 
 export interface WebhookEvent {
   id: string;
@@ -1888,7 +1889,7 @@ export class WebhookHandler {
         currency: invoice.currency,
         nextPaymentAttempt: invoice.next_payment_attempt,
       });
-      await queuePaymentFailureNotification({
+      const notification = await queuePaymentFailureNotification({
         userId: user.userId,
         provider: "stripe",
         paymentReference: invoice.id || subscriptionId,
@@ -1900,6 +1901,16 @@ export class WebhookHandler {
           ? new Date(invoice.next_payment_attempt * 1000).toISOString()
           : undefined,
       });
+      await dispatchQueuedPaymentFailureNotifications({ id: notification.id, limit: 1 }).catch(
+        (dispatchError) => {
+          logWarn("Failed to dispatch queued payment failure notification immediately", {
+            operationId,
+            notificationId: notification.id,
+            error:
+              dispatchError instanceof Error ? dispatchError.message : String(dispatchError),
+          });
+        },
+      );
 
       return true;
     } catch (error) {
@@ -1912,7 +1923,7 @@ export class WebhookHandler {
   }
 
   /**
-   * 更新订阅状态 - CloudBase 实现（中国地区）
+   * Keep subscription state and failed-payment records aligned for recurring Stripe invoices.
    */
   private async handleStripeInvoicePaymentFailedConsistent(
     invoice: any
@@ -1981,7 +1992,7 @@ export class WebhookHandler {
         });
       }
 
-      await queuePaymentFailureNotification({
+      const notification = await queuePaymentFailureNotification({
         userId: user.userId,
         provider: "stripe",
         paymentReference: invoice.id || subscriptionId,
@@ -1993,6 +2004,16 @@ export class WebhookHandler {
           ? new Date(invoice.next_payment_attempt * 1000).toISOString()
           : undefined,
       });
+      await dispatchQueuedPaymentFailureNotifications({ id: notification.id, limit: 1 }).catch(
+        (dispatchError) => {
+          logWarn("Failed to dispatch queued payment failure notification immediately", {
+            operationId,
+            notificationId: notification.id,
+            error:
+              dispatchError instanceof Error ? dispatchError.message : String(dispatchError),
+          });
+        },
+      );
 
       return true;
     } catch (error) {

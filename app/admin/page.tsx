@@ -51,35 +51,42 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const copy = {
-    title: isEn ? 'Dashboard' : '后台总览',
-    description: isEn ? "Welcome back. Here's today's platform overview." : '查看今天的核心经营与使用情况。',
-    loadFailed: isEn ? 'Failed to load admin overview.' : '加载后台总览失败。',
-    retry: isEn ? 'Retry' : '重新加载',
-    totalUsers: isEn ? 'Total Users' : '总用户数',
-    activeUsers: isEn ? 'Active Users' : '活跃用户',
-    paidUsers: isEn ? 'Paid Users' : '付费用户',
-    monthlyRevenue: isEn ? 'Monthly Revenue' : '本月收入',
-    adImpressions: isEn ? 'Ad Impressions' : '广告展示',
-    adClicks: isEn ? 'Ad Clicks' : '广告点击',
-    adRevenue: isEn ? 'Ad Revenue' : '广告收入',
-    contractMetrics: isEn ? 'Contract Metrics' : '合同数据',
-    contractMetricsDesc: isEn ? 'Core metrics for contract creation.' : '查看合同生成与使用效率的关键指标。',
-    recentUsers: isEn ? 'Recent Users' : '最近注册用户',
-    recentUsersDesc: isEn ? 'Latest users created on the platform.' : '最近进入平台的新用户。',
-    noRecentUsers: isEn ? 'No recent user data yet.' : '暂时还没有最近注册用户。',
-    allTime: isEn ? 'All time' : '历史累计',
-    todayCreated: isEn ? 'Created today' : '今日新增',
-    contractsPerUser: isEn ? 'Contracts per user' : '人均合同数',
-    avgContracts: isEn ? 'Average contracts generated per user' : '平均每位用户生成的合同数量',
-    unnamedUser: isEn ? 'Unnamed user' : '未命名用户',
-    activeRate: isEn ? 'Active rate' : '活跃率',
-    conversionRate: isEn ? 'Conversion' : '付费转化率',
-    ctr: isEn ? 'CTR' : '点击率',
-    attributedRevenue: isEn ? 'Estimated revenue attributed to clicks' : '基于点击归因的预估收入',
-    monthAccumulated: isEn ? 'Accumulated this month' : '本月累计',
-    revenueTrend: isEn ? 'Revenue trend versus last month' : '相较上月的收入走势',
-  };
+  const copy = useMemo(
+    () => ({
+      title: isEn ? 'Admin Overview' : '后台总览',
+      description: isEn ? "Monitor today's platform health, growth, and contract activity." : '查看今日平台经营、增长与合同流转概况。',
+      loadFailed: isEn ? 'Failed to load admin overview.' : '加载后台总览失败。',
+      retry: isEn ? 'Retry' : '重新加载',
+      totalUsers: isEn ? 'Total Users' : '总用户数',
+      activeUsers: isEn ? 'Active Users' : '活跃用户',
+      paidUsers: isEn ? 'Paid Users' : '付费用户',
+      monthlyRevenue: isEn ? 'Monthly Revenue' : '本月收入',
+      adImpressions: isEn ? 'Ad Impressions' : '广告展示',
+      adClicks: isEn ? 'Ad Clicks' : '广告点击',
+      adRevenue: isEn ? 'Ad Revenue' : '广告收入',
+      contractMetrics: isEn ? 'Contract Metrics' : '合同指标',
+      contractMetricsDesc: isEn ? 'Key creation and usage indicators from the contract workflow.' : '合同创建与使用环节的核心指标。',
+      recentUsers: isEn ? 'Recent Users' : '最近注册用户',
+      recentUsersDesc: isEn ? 'New accounts created recently.' : '最近进入平台的新账户。',
+      noRecentUsers: isEn ? 'No recent user data yet.' : '暂无最近注册用户。',
+      allTime: isEn ? 'All time' : '历史累计',
+      todayCreated: isEn ? 'Created today' : '今日新增',
+      contractsPerUser: isEn ? 'Contracts per user' : '人均合同数',
+      avgContracts: isEn ? 'Average contracts generated per user' : '平均每位用户生成的合同数量',
+      unnamedUser: isEn ? 'Unnamed user' : '未命名用户',
+      activeRate: isEn ? 'Active rate' : '活跃率',
+      conversionRate: isEn ? 'Paid conversion' : '付费转化率',
+      ctr: isEn ? 'CTR' : '点击率',
+      attributedRevenue: isEn ? 'Revenue attributed to ad clicks' : '广告点击归因收入',
+      monthAccumulated: isEn ? 'Accumulated this month' : '本月累计',
+      revenueTrend: isEn ? 'Current month revenue snapshot' : '本月收入快照',
+      totalContracts: isEn ? 'Total Contracts' : '累计合同数',
+      realTimeMetric: isEn ? 'Real-time metric' : '实时统计',
+      free: isEn ? 'Free' : '免费版',
+      enterprise: isEn ? 'Enterprise' : '企业版',
+    }),
+    [isEn],
+  );
 
   const fetchStats = useCallback(async () => {
     try {
@@ -97,7 +104,7 @@ export default function AdminDashboard() {
       setStats(result.data.stats);
       setRecentUsers(result.data.recentUsers || []);
     } catch (fetchError) {
-      console.error('Failed to fetch admin stats:', fetchError);
+      console.error('[AdminOverview] Failed to fetch admin stats:', fetchError);
       setError(fetchError instanceof Error ? fetchError.message : copy.loadFailed);
     } finally {
       setLoading(false);
@@ -143,12 +150,12 @@ export default function AdminDashboard() {
 
   const planLabel = (plan: string) => {
     if (plan === 'free') {
-      return isEn ? 'Free' : '免费版';
+      return copy.free;
     }
     if (plan === 'pro') {
       return 'Pro';
     }
-    return isEn ? 'Enterprise' : '企业版';
+    return copy.enterprise;
   };
 
   if (loading) {
@@ -184,7 +191,7 @@ export default function AdminDashboard() {
         <MetricCard
           title={copy.totalUsers}
           value={stats.totalUsers.toLocaleString(locale)}
-          hint={`${isEn ? '+' : ''}${stats.newUsersToday} ${isEn ? 'today' : '今日新增'}`}
+          hint={`${isEn ? '+' : ''}${stats.newUsersToday} ${copy.todayCreated}`}
           icon={<Users className="h-4 w-4 text-gray-400" />}
           positive
         />
@@ -239,7 +246,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="space-y-4">
             <SummaryRow
-              label={isEn ? 'Total Contracts' : '累计合同数'}
+              label={copy.totalContracts}
               hint={copy.allTime}
               value={stats.totalContracts.toLocaleString(locale)}
               icon={<FileText className="h-5 w-5 text-blue-600" />}
@@ -247,7 +254,7 @@ export default function AdminDashboard() {
             />
             <SummaryRow
               label={copy.todayCreated}
-              hint={isEn ? 'Real-time metric' : '实时统计'}
+              hint={copy.realTimeMetric}
               value={stats.contractsToday.toLocaleString(locale)}
               icon={<TrendingUp className="h-5 w-5 text-green-600" />}
               tone="green"
@@ -271,10 +278,7 @@ export default function AdminDashboard() {
             <div className="space-y-3">
               {recentUsers.length > 0 ? (
                 recentUsers.map((user) => (
-                  <div
-                    key={user.id}
-                    className="flex items-center justify-between border-b py-2 last:border-0"
-                  >
+                  <div key={user.id} className="flex items-center justify-between border-b py-2 last:border-0">
                     <div className="flex items-center gap-3">
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100">
                         <span className="text-sm font-medium text-gray-600">
@@ -282,9 +286,7 @@ export default function AdminDashboard() {
                         </span>
                       </div>
                       <div>
-                        <p className="text-sm font-medium">
-                          {user.nickname || copy.unnamedUser}
-                        </p>
+                        <p className="text-sm font-medium">{user.nickname || copy.unnamedUser}</p>
                         <p className="text-xs text-gray-500">{user.email}</p>
                       </div>
                     </div>
@@ -293,9 +295,7 @@ export default function AdminDashboard() {
                       <span className="inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
                         {planLabel(user.subscription_type)}
                       </span>
-                      <p className="mt-1 text-xs text-gray-400">
-                        {new Date(user.created_at).toLocaleString(locale)}
-                      </p>
+                      <p className="mt-1 text-xs text-gray-400">{new Date(user.created_at).toLocaleString(locale)}</p>
                     </div>
                   </div>
                 ))
@@ -359,17 +359,15 @@ function SummaryRow({
   };
 
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between rounded-lg border p-4">
       <div className="flex items-center gap-3">
-        <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${tones[tone]}`}>
-          {icon}
-        </div>
+        <div className={`flex h-10 w-10 items-center justify-center rounded-full ${tones[tone]}`}>{icon}</div>
         <div>
           <p className="font-medium">{label}</p>
-          <p className="text-sm text-gray-500">{hint}</p>
+          <p className="text-sm text-muted-foreground">{hint}</p>
         </div>
       </div>
-      <span className="text-xl font-bold">{value}</span>
+      <div className="text-xl font-semibold">{value}</div>
     </div>
   );
 }

@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { AlertCircle, CreditCard, Loader2, Smartphone } from "lucide-react";
+
+import { useLanguage } from "@/components/language-provider";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -8,16 +14,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { CreditCard, Smartphone, Loader2, AlertCircle } from "lucide-react";
-import { paymentRouter } from "@/lib/architecture-modules/layers/third-party/payment/router";
 import { getAuthClient } from "@/lib/auth/client";
 import { RegionType } from "@/lib/architecture-modules/core/types";
-import { toast } from "@/hooks/use-toast";
-import { useLanguage } from "@/components/language-provider";
+import { paymentRouter } from "@/lib/architecture-modules/layers/third-party/payment/router";
 import { useTranslations } from "@/lib/i18n";
+import { toast } from "@/hooks/use-toast";
 
 interface PaymentFormProps {
   planId: string;
@@ -35,6 +37,11 @@ interface PaymentFormProps {
   };
 }
 
+interface PaymentConfigResponse {
+  availableMethods: string[];
+  methods: Record<string, { enabled: boolean; reason?: string }>;
+}
+
 export function PaymentForm({
   planId,
   billingCycle,
@@ -49,16 +56,23 @@ export function PaymentForm({
 }: PaymentFormProps) {
   const [selectedMethod, setSelectedMethod] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [paymentConfig, setPaymentConfig] = useState<PaymentConfigResponse | null>(null);
   const { language } = useLanguage();
   const isEn = language === "en";
   const t = useTranslations(language);
 
-  // 使用 ref 跟踪支付请求，防止重复提交
   const paymentRequestRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // 获取可用的支付方式
-  const availableMethods = paymentRouter.getAvailableMethods(region);
+  const regionMethods = paymentRouter.getAvailableMethods(region);
+  const availableMethods = paymentConfig?.availableMethods ?? regionMethods;
+  const unavailableReasons = regionMethods
+    .map((method) => ({
+      method,
+      enabled: paymentConfig?.methods?.[method]?.enabled,
+      reason: paymentConfig?.methods?.[method]?.reason,
+    }))
+    .filter((item) => item.enabled === false && item.reason);
 
   const paymentMethods = {
     stripe: {
@@ -83,30 +97,59 @@ export function PaymentForm({
     },
   };
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchPaymentConfig() {
+      try {
+        const response = await fetch("/api/payment/config", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const nextConfig = (await response.json()) as PaymentConfigResponse;
+        if (!cancelled) {
+          setPaymentConfig(nextConfig);
+        }
+      } catch (error) {
+        console.error("[PaymentForm] Failed to load payment config:", error);
+      }
+    }
+
+    void fetchPaymentConfig();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (selectedMethod && !availableMethods.includes(selectedMethod)) {
+      setSelectedMethod("");
+    }
+  }, [availableMethods, selectedMethod]);
+
   const handlePayment = async () => {
     if (!selectedMethod) {
       onError(t.payment.selectPaymentMethod);
       return;
     }
 
-    // 防止重复点击
     if (isProcessing) {
       console.warn("Payment already in progress, ignoring duplicate click");
       return;
     }
 
-    // 生成幂等性键（基于用户、计划、金额和时间戳）
     const idempotencyKey = `${userId}-${planId}-${billingCycle}-${amount}-${Date.now()}`;
-
-    // 检查是否已有相同的支付请求正在处理
     if (paymentRequestRef.current === idempotencyKey) {
-      console.warn(
-        "Duplicate payment request with same idempotency key, ignoring",
-      );
+      console.warn("Duplicate payment request with same idempotency key, ignoring");
       return;
     }
 
-    // 如果有正在进行的请求，先取消它
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -115,7 +158,6 @@ export function PaymentForm({
     setIsProcessing(true);
 
     try {
-      // 存储支付信息到本地存储，用于后续确认
       try {
         localStorage.setItem(
           "pending_payment",
@@ -129,18 +171,15 @@ export function PaymentForm({
             idempotencyKey,
           }),
         );
-      } catch (e) {
-        // 忽略本地存储写入错误，不影响支付流程
-        console.warn("pending_payment localStorage write failed", e);
+      } catch (error) {
+        console.warn("pending_payment localStorage write failed", error);
       }
 
-      // 调用服务端API来创建支付
       const controller = new AbortController();
       abortControllerRef.current = controller;
-      const TIMEOUT_MS = 20000; // 20s 超时，避免无限加载
-      const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+
       console.time("create-payment");
-      // Attach authorization header if session exists
       const sessionResult = await getAuthClient().getSession();
       const token = sessionResult.data.session?.access_token;
 
@@ -148,27 +187,19 @@ export function PaymentForm({
         "Content-Type": "application/json",
       };
       if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
+        headers.Authorization = `Bearer ${token}`;
       }
 
-      // 🔄 修改为一次性支付API
       const response = await fetch("/api/payment/onetime/create", {
         method: "POST",
         headers,
         body: JSON.stringify({
           method: selectedMethod,
-          billingCycle, // 一次性支付只需要这两个参数
-          // 以下参数不再需要(由后端根据billingCycle自动确定)
-          // amount,
-          // currency,
-          // description,
-          // userId,
-          // planType: planId,
-          // region,
-          // idempotencyKey,
+          billingCycle,
         }),
         signal: controller.signal,
       });
+
       console.timeEnd("create-payment");
       clearTimeout(timeoutId);
       abortControllerRef.current = null;
@@ -176,12 +207,10 @@ export function PaymentForm({
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
 
-        // 处理特定的错误代码
         if (errorData.code === "DUPLICATE_SUBSCRIPTION") {
           throw new Error(t.payment.messages.failed);
         }
 
-        // 处理重复支付请求
         if (errorData.code === "DUPLICATE_PAYMENT_REQUEST") {
           throw new Error(
             isEn
@@ -194,22 +223,22 @@ export function PaymentForm({
       }
 
       const result = await response.json();
-
       if (result.success) {
         onSuccess(result);
-      } else {
-        const msg = result.error || t.payment.messages.failed;
-        onError(msg);
-        toast({
-          title: t.payment.messages.failed,
-          description: String(msg),
-          variant: "destructive",
-        });
+        return;
       }
+
+      const message = result.error || t.payment.messages.failed;
+      onError(message);
+      toast({
+        title: t.payment.messages.failed,
+        description: String(message),
+        variant: "destructive",
+      });
     } catch (error) {
       console.error("Payment error:", error);
-      const isAbort = (error as any)?.name === "AbortError";
-      const errorMessage = isAbort
+      const isAbort = (error as { name?: string })?.name === "AbortError";
+      const message = isAbort
         ? isEn
           ? "Request timed out. Please try again."
           : "请求超时，请稍后重试。"
@@ -218,35 +247,41 @@ export function PaymentForm({
           : isEn
             ? "Unknown error"
             : "未知错误";
-      onError(`${t.payment.messages.failed}: ${errorMessage}`);
+
+      onError(`${t.payment.messages.failed}: ${message}`);
       toast({
         title: t.payment.messages.failed,
-        description: errorMessage,
+        description: message,
         variant: "destructive",
       });
     } finally {
       setIsProcessing(false);
-      // 清理幂等性键（延迟清理，确保快速重复点击被阻止）
       setTimeout(() => {
         paymentRequestRef.current = null;
       }, 3000);
     }
   };
 
-  const formatAmount = (amount: number, currency: string) => {
-    return new Intl.NumberFormat(isEn ? "en-US" : "zh-CN", {
+  const formatAmount = (nextAmount: number, nextCurrency: string) =>
+    new Intl.NumberFormat(isEn ? "en-US" : "zh-CN", {
       style: "currency",
-      currency: currency,
-    }).format(amount);
-  };
+      currency: nextCurrency,
+    }).format(nextAmount);
 
   if (availableMethods.length === 0) {
     return (
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="space-y-3 pt-6">
           <div className="text-center text-muted-foreground">
             {t.payment.onlineUnavailable}
           </div>
+          {unavailableReasons.length > 0 ? (
+            <Alert>
+              <AlertDescription>
+                {unavailableReasons.map((item) => `${item.method}: ${item.reason}`).join(" ")}
+              </AlertDescription>
+            </Alert>
+          ) : null}
         </CardContent>
       </Card>
     );
@@ -263,26 +298,24 @@ export function PaymentForm({
       </CardHeader>
 
       <CardContent className="space-y-6">
-        {/* 当前订阅状态 */}
-        {currentSubscription && currentSubscription.status === "active" && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        {currentSubscription?.status === "active" ? (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
             <div className="flex items-center gap-2">
               <AlertCircle className="h-4 w-4 text-blue-600" />
               <span className="text-sm font-medium text-blue-800">
                 {t.payment.currentPlan}: {currentSubscription.planId}
               </span>
             </div>
-            <p className="text-sm text-blue-600 mt-1">
+            <p className="mt-1 text-sm text-blue-600">
               {isEn
                 ? "This purchase will replace your current subscription."
                 : "本次购买将替换你当前的订阅计划。"}
             </p>
           </div>
-        )}
+        ) : null}
 
-        {/* 订单摘要 */}
-        <div className="bg-muted/50 p-4 rounded-lg">
-          <h3 className="font-medium mb-2">{t.payment.orderSummary}</h3>
+        <div className="rounded-lg bg-muted/50 p-4">
+          <h3 className="mb-2 font-medium">{t.payment.orderSummary}</h3>
           <div className="space-y-1 text-sm">
             <div className="flex items-start justify-between gap-3">
               <span className="break-words">{description}</span>
@@ -296,21 +329,28 @@ export function PaymentForm({
           </div>
         </div>
 
-        {/* 支付方式选择 */}
         <div className="space-y-3">
-          <h3 className="font-medium">
-            {isEn ? "Payment Methods" : "支付方式"}
-          </h3>
+          <h3 className="font-medium">{isEn ? "Payment Methods" : "支付方式"}</h3>
+          {unavailableReasons.length > 0 ? (
+            <Alert>
+              <AlertDescription>
+                {isEn
+                  ? "Some payment methods are hidden because the current deployment is not fully configured."
+                  : "部分支付方式已隐藏，因为当前环境尚未完成对应配置。"}
+              </AlertDescription>
+            </Alert>
+          ) : null}
           <div className="grid gap-3">
             {availableMethods.map((method) => {
-              const methodInfo =
-                paymentMethods[method as keyof typeof paymentMethods];
-              if (!methodInfo) return null;
+              const methodInfo = paymentMethods[method as keyof typeof paymentMethods];
+              if (!methodInfo) {
+                return null;
+              }
 
               return (
                 <div
                   key={method}
-                  className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                  className={`cursor-pointer rounded-lg border p-4 transition-colors ${
                     selectedMethod === method
                       ? "border-primary bg-primary/5"
                       : "border-border hover:border-primary/50"
@@ -322,16 +362,16 @@ export function PaymentForm({
                       {methodInfo.icon}
                       <div className="min-w-0">
                         <div className="font-medium">{methodInfo.name}</div>
-                        <div className="text-sm text-muted-foreground break-words">
+                        <div className="break-words text-sm text-muted-foreground">
                           {methodInfo.description}
                         </div>
                       </div>
                     </div>
-                    {selectedMethod === method && (
+                    {selectedMethod === method ? (
                       <Badge variant="default" className="w-fit">
                         {isEn ? "Selected" : "已选择"}
                       </Badge>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               );
@@ -339,7 +379,6 @@ export function PaymentForm({
           </div>
         </div>
 
-        {/* 支付按钮 */}
         <Button
           className="w-full"
           size="lg"
@@ -358,7 +397,6 @@ export function PaymentForm({
           )}
         </Button>
 
-        {/* 安全提示 */}
         <div className="text-center text-sm text-muted-foreground">
           <div className="flex items-center justify-center gap-1">
             <CreditCard className="h-4 w-4" />

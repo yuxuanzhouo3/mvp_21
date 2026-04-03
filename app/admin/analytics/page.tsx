@@ -51,71 +51,89 @@ export default function AnalyticsPage() {
   const [days, setDays] = useState('30');
   const [error, setError] = useState('');
 
-  const copy = {
-    title: isEn ? 'Analytics' : '数据分析',
-    description: isEn ? 'Detailed platform metrics and trend analysis.' : '查看平台关键趋势、分布与活跃情况。',
-    retry: isEn ? 'Retry' : '重新加载',
-    export: isEn ? 'Export Report' : '导出报表',
-    loadFailed: isEn ? 'Failed to load analytics data.' : '加载分析数据失败。',
-    noChartData: isEn ? 'No chart data available for this range.' : '当前时间范围内暂无可展示的数据。',
-    lastDays: isEn ? `Last ${days} days` : `最近 ${days} 天`,
-    newUsers: isEn ? 'New Users' : '新增用户',
-    contractsGenerated: isEn ? 'Contracts Generated' : '生成合同数',
-    revenue: isEn ? 'Revenue' : '收入',
-    activeRate: isEn ? 'Active Rate' : '活跃率',
-    trends: isEn ? 'Trends' : '趋势分析',
-    distribution: isEn ? 'Distribution' : '分布统计',
-    userTrend: isEn ? 'User Growth Trend' : '用户增长趋势',
-    userTrendDesc: isEn ? 'Daily new users.' : '按天查看新增用户数量。',
-    contractTrend: isEn ? 'Contract Generation Trend' : '合同生成趋势',
-    contractTrendDesc: isEn ? 'Daily generated contracts.' : '按天查看合同生成数量。',
-    revenueTrend: isEn ? 'Revenue Trend' : '收入趋势',
-    revenueTrendDesc: isEn ? 'Daily revenue amount.' : '按天查看收入变化。',
-    subscriptionDistribution: isEn ? 'Subscription Distribution' : '订阅方案分布',
-    subscriptionDistributionDesc: isEn ? 'Share by subscription plan.' : '不同订阅方案的占比。',
-    contractTypeDistribution: isEn ? 'Contract Type Distribution' : '合同类型分布',
-    contractTypeDistributionDesc: isEn ? 'Share by contract type.' : '不同合同类型的占比。',
-    paymentDistribution: isEn ? 'Payment Method Distribution' : '支付方式分布',
-    paymentDistributionDesc: isEn ? 'Usage by payment method.' : '不同支付方式的使用情况。',
-    userActivity: isEn ? 'User Activity' : '用户活跃度',
-    userActivityDesc: isEn ? '7-day active user metrics.' : '最近 7 天的活跃用户情况。',
-    totalUsers: isEn ? 'Total Users' : '总用户数',
-    activeUsers7d: isEn ? 'Active in 7 days' : '7 天内活跃用户',
-    orders: isEn ? 'Orders' : '订单数',
-    last7: isEn ? 'Last 7 days' : '最近 7 天',
-    last30: isEn ? 'Last 30 days' : '最近 30 天',
-    last90: isEn ? 'Last 90 days' : '最近 90 天',
-  };
+  const copy = useMemo(
+    () => ({
+      title: isEn ? 'Analytics' : '数据分析',
+      description: isEn ? 'Inspect growth, contract usage, revenue, and payment structure.' : '查看增长、合同使用、收入与支付结构等关键数据。',
+      retry: isEn ? 'Retry' : '重新加载',
+      export: isEn ? 'Export Report' : '导出报表',
+      loadFailed: isEn ? 'Failed to load analytics data.' : '加载分析数据失败。',
+      noChartData: isEn ? 'No chart data available for this range.' : '当前时间范围内暂无可展示的数据。',
+      lastDays: isEn ? `Last ${days} days` : `最近 ${days} 天`,
+      newUsers: isEn ? 'New Users' : '新增用户',
+      contractsGenerated: isEn ? 'Contracts Generated' : '生成合同数',
+      revenue: isEn ? 'Revenue' : '收入',
+      activeRate: isEn ? 'Active Rate' : '活跃率',
+      trends: isEn ? 'Trends' : '趋势分析',
+      distribution: isEn ? 'Distribution' : '结构分布',
+      userTrend: isEn ? 'User Growth Trend' : '用户增长趋势',
+      userTrendDesc: isEn ? 'Daily new user acquisition.' : '按天查看新增用户数量。',
+      contractTrend: isEn ? 'Contract Generation Trend' : '合同生成趋势',
+      contractTrendDesc: isEn ? 'Daily generated contracts.' : '按天查看合同生成数量。',
+      revenueTrend: isEn ? 'Revenue Trend' : '收入趋势',
+      revenueTrendDesc: isEn ? 'Daily revenue changes.' : '按天查看收入变化。',
+      subscriptionDistribution: isEn ? 'Subscription Distribution' : '订阅套餐分布',
+      subscriptionDistributionDesc: isEn ? 'Share by subscription plan.' : '不同订阅套餐的占比分布。',
+      contractTypeDistribution: isEn ? 'Contract Type Distribution' : '合同类型分布',
+      contractTypeDistributionDesc: isEn ? 'Share by contract type.' : '不同合同类型的占比分布。',
+      paymentDistribution: isEn ? 'Payment Method Distribution' : '支付方式分布',
+      paymentDistributionDesc: isEn ? 'Usage split by payment method.' : '不同支付方式的使用占比。',
+      userActivity: isEn ? 'User Activity' : '用户活跃',
+      userActivityDesc: isEn ? '7-day active user metrics.' : '最近 7 天的活跃用户情况。',
+      totalUsers: isEn ? 'Total Users' : '总用户数',
+      activeUsers7d: isEn ? 'Active in 7 days' : '7 天内活跃用户',
+      last7: isEn ? 'Last 7 days' : '最近 7 天',
+      last30: isEn ? 'Last 30 days' : '最近 30 天',
+      last90: isEn ? 'Last 90 days' : '最近 90 天',
+      contractTypeCustom: isEn ? 'Custom' : '自定义',
+      contractTypeLabor: isEn ? 'Labor' : '劳动合同',
+      contractTypeService: isEn ? 'Service' : '服务合同',
+      contractTypeCooperation: isEn ? 'Cooperation' : '合作协议',
+      contractTypeNda: isEn ? 'NDA' : '保密协议',
+      paymentCard: isEn ? 'Card' : '银行卡',
+      paymentManual: isEn ? 'Manual' : '人工处理',
+      paymentWechat: isEn ? 'WeChat Pay' : '微信支付',
+      free: isEn ? 'Free' : '免费版',
+      enterprise: isEn ? 'Enterprise' : '企业版',
+      activityHint: isEn ? '7-day active users / total users' : '7 天活跃用户 / 总用户数',
+    }),
+    [days, isEn],
+  );
 
   const mapSubscriptionName = useCallback(
     (value: string) => {
       if (value === 'free') {
-        return isEn ? 'Free' : '免费版';
+        return copy.free;
       }
       if (value === 'pro') {
         return 'Pro';
       }
       if (value === 'enterprise') {
-        return isEn ? 'Enterprise' : '企业版';
+        return copy.enterprise;
       }
       return value;
     },
-    [isEn],
+    [copy.enterprise, copy.free],
   );
 
   const mapContractTypeName = useCallback(
     (value: string) => {
-      const labels: Record<string, { zh: string; en: string }> = {
-        labor: { zh: '劳动合同', en: 'Labor' },
-        service: { zh: '服务合同', en: 'Service' },
-        cooperation: { zh: '合作协议', en: 'Cooperation' },
-        nda: { zh: '保密协议', en: 'NDA' },
-        custom: { zh: '自定义合同', en: 'Custom' },
+      const labels: Record<string, string> = {
+        labor: copy.contractTypeLabor,
+        service: copy.contractTypeService,
+        cooperation: copy.contractTypeCooperation,
+        nda: copy.contractTypeNda,
+        custom: copy.contractTypeCustom,
       };
-      const matched = labels[value];
-      return matched ? (isEn ? matched.en : matched.zh) : value;
+      return labels[value] || value;
     },
-    [isEn],
+    [
+      copy.contractTypeCooperation,
+      copy.contractTypeCustom,
+      copy.contractTypeLabor,
+      copy.contractTypeNda,
+      copy.contractTypeService,
+    ],
   );
 
   const mapPaymentMethodName = useCallback(
@@ -124,25 +142,23 @@ export default function AnalyticsPage() {
         stripe: 'Stripe',
         paypal: 'PayPal',
         alipay: 'Alipay',
-        wechat: isEn ? 'WeChat Pay' : '微信支付',
-        card: isEn ? 'Card' : '银行卡',
-        manual: isEn ? 'Manual' : '人工处理',
+        wechat: copy.paymentWechat,
+        card: copy.paymentCard,
+        manual: copy.paymentManual,
       };
       return labels[value] || value;
     },
-    [isEn],
+    [copy.paymentCard, copy.paymentManual, copy.paymentWechat],
   );
 
   const fetchAnalytics = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
-      const result = await adminFetchJson<{ success: true; data: AnalyticsData }>(
-        `/api/admin/analytics?days=${days}`,
-      );
+      const result = await adminFetchJson<{ success: true; data: AnalyticsData }>(`/api/admin/analytics?days=${days}`);
       setData(result.data);
     } catch (fetchError) {
-      console.error('Failed to fetch analytics:', fetchError);
+      console.error('[AdminAnalytics] Failed to fetch analytics:', fetchError);
       setError(fetchError instanceof Error ? fetchError.message : copy.loadFailed);
     } finally {
       setLoading(false);
@@ -153,18 +169,9 @@ export default function AnalyticsPage() {
     void fetchAnalytics();
   }, [fetchAnalytics]);
 
-  const totalContracts = useMemo(
-    () => data?.contractTrend.reduce((sum, item) => sum + item.count, 0) || 0,
-    [data],
-  );
-  const totalRevenue = useMemo(
-    () => data?.revenueTrend.reduce((sum, item) => sum + item.amount, 0) || 0,
-    [data],
-  );
-  const totalNewUsers = useMemo(
-    () => data?.userTrend.reduce((sum, item) => sum + item.count, 0) || 0,
-    [data],
-  );
+  const totalContracts = useMemo(() => data?.contractTrend.reduce((sum, item) => sum + item.count, 0) || 0, [data]);
+  const totalRevenue = useMemo(() => data?.revenueTrend.reduce((sum, item) => sum + item.amount, 0) || 0, [data]);
+  const totalNewUsers = useMemo(() => data?.userTrend.reduce((sum, item) => sum + item.count, 0) || 0, [data]);
   const localizedSubscriptionChart = useMemo(
     () => data?.subscriptionChart.map((item) => ({ ...item, name: mapSubscriptionName(item.name) })) || [],
     [data, mapSubscriptionName],
@@ -240,7 +247,7 @@ export default function AnalyticsPage() {
         <Metric title={copy.newUsers} value={totalNewUsers.toLocaleString(locale)} hint={copy.lastDays} icon={<Users className="h-4 w-4 text-gray-400" />} />
         <Metric title={copy.contractsGenerated} value={totalContracts.toLocaleString(locale)} hint={copy.lastDays} icon={<FileText className="h-4 w-4 text-gray-400" />} />
         <Metric title={copy.revenue} value={new Intl.NumberFormat(locale, { style: 'currency', currency: isEn ? 'USD' : 'CNY', maximumFractionDigits: 0 }).format(totalRevenue)} hint={copy.lastDays} icon={<DollarSign className="h-4 w-4 text-gray-400" />} />
-        <Metric title={copy.activeRate} value={`${data.stats.activeRate}%`} hint={isEn ? '7-day active users / total users' : '7 天活跃用户 / 总用户'} icon={<TrendingUp className="h-4 w-4 text-gray-400" />} />
+        <Metric title={copy.activeRate} value={`${data.stats.activeRate}%`} hint={copy.activityHint} icon={<TrendingUp className="h-4 w-4 text-gray-400" />} />
       </div>
 
       <Tabs defaultValue="trends">
@@ -338,14 +345,23 @@ export default function AnalyticsPage() {
 
             <ChartCard title={copy.paymentDistribution} description={copy.paymentDistributionDesc} hasData={localizedPaymentMethodChart.length > 0} emptyText={copy.noChartData}>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={localizedPaymentMethodChart}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
+                <PieChart>
+                  <Pie
+                    data={localizedPaymentMethodChart}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {localizedPaymentMethodChart.map((entry, index) => (
+                      <Cell key={`payment-${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
                   <Tooltip />
-                  <Legend />
-                  <Bar dataKey="value" fill="#8884D8" name={copy.orders} />
-                </BarChart>
+                </PieChart>
               </ResponsiveContainer>
             </ChartCard>
 
@@ -355,9 +371,8 @@ export default function AnalyticsPage() {
                 <CardDescription>{copy.userActivityDesc}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <StatLine label={copy.totalUsers} value={data.stats.totalUsers.toLocaleString(locale)} />
-                <StatLine label={copy.activeUsers7d} value={data.stats.activeUsers7d.toLocaleString(locale)} accent />
-                <StatLine label={copy.activeRate} value={`${data.stats.activeRate}%`} strong />
+                <Metric title={copy.totalUsers} value={data.stats.totalUsers.toLocaleString(locale)} hint={copy.lastDays} icon={<Users className="h-4 w-4 text-gray-400" />} />
+                <Metric title={copy.activeUsers7d} value={data.stats.activeUsers7d.toLocaleString(locale)} hint={copy.last7} icon={<TrendingUp className="h-4 w-4 text-gray-400" />} />
               </CardContent>
             </Card>
           </div>
@@ -386,7 +401,7 @@ function Metric({
       </CardHeader>
       <CardContent>
         <div className="text-2xl font-bold">{value}</div>
-        <div className="mt-1 text-xs text-gray-500">{hint}</div>
+        <p className="text-xs text-gray-500">{hint}</p>
       </CardContent>
     </Card>
   );
@@ -411,32 +426,7 @@ function ChartCard({
         <CardTitle>{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
-      <CardContent>
-        {hasData ? children : <div className="py-24 text-center text-sm text-muted-foreground">{emptyText}</div>}
-      </CardContent>
+      <CardContent>{hasData ? children : <div className="py-16 text-center text-muted-foreground">{emptyText}</div>}</CardContent>
     </Card>
-  );
-}
-
-function StatLine({
-  label,
-  value,
-  accent = false,
-  strong = false,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-  strong?: boolean;
-}) {
-  return (
-    <div className={`flex items-center justify-between ${strong ? 'border-t pt-4' : ''}`}>
-      <span className={`text-sm ${strong ? 'font-medium' : 'text-gray-500'}`}>{label}</span>
-      <span
-        className={`${strong ? 'text-3xl' : 'text-2xl'} font-bold ${accent ? 'text-green-600' : strong ? 'text-primary' : ''}`}
-      >
-        {value}
-      </span>
-    </div>
   );
 }

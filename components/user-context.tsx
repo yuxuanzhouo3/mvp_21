@@ -49,8 +49,8 @@ const BYPASS_AUTH_FOR_PREVIEW = false;
 
 const PREVIEW_USER: UserProfile = {
   id: "preview-user",
-  email: "preview@contracthub.local",
-  name: "Preview User",
+  email: "preview@morncontract.local",
+  name: "MornContract Preview",
   role: "admin",
   subscription_plan: "pro",
   subscription_status: "active",

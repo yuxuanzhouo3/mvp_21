@@ -15,6 +15,11 @@ interface ListPaymentOptions {
   offset?: number;
 }
 
+interface GetPaymentOptions {
+  userId: string;
+  paymentId: string;
+}
+
 export async function listPaymentsByUser({
   userId,
   limit = 20,
@@ -95,4 +100,40 @@ export async function getLatestSubscriptionByUser(
   }
 
   return normalizeSubscriptionRecord(data as Record<string, any>);
+}
+
+export async function getPaymentByIdForUser({
+  userId,
+  paymentId,
+}: GetPaymentOptions): Promise<UnifiedPaymentRecord | null> {
+  if (isChinaRegion()) {
+    const db = getDatabase();
+    const result = await db
+      .collection("payments")
+      .where({
+        _id: paymentId,
+        user_id: userId,
+      })
+      .limit(1)
+      .get()
+      .catch(() => ({ data: [] }));
+
+    const record = result.data?.[0] as Record<string, any> | undefined;
+    return record ? normalizePaymentRecord(record) : null;
+  }
+
+  const { data, error } = await getSupabaseAdmin()
+    .from("payments")
+    .select(
+      "id,user_id,amount,currency,status,payment_method,transaction_id,external_payment_id,subscription_id,metadata,created_at,updated_at",
+    )
+    .eq("id", paymentId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return normalizePaymentRecord(data as Record<string, any>);
 }

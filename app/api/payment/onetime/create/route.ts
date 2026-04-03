@@ -7,6 +7,7 @@ import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/
 import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
 import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
 import { getDatabase } from "@/lib/auth/auth-utils";
+import { getPaymentMethodStatus } from "@/lib/config/third-party-capabilities";
 import { isChinaRegion } from "@/lib/config/region";
 import { paymentRateLimit } from "@/lib/security/rate-limit";
 import { captureException } from "@/lib/integrations/sentry";
@@ -92,6 +93,26 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
           error: "Invalid billing cycle. Must be 'monthly' or 'yearly'",
         },
         { status: 400 }
+      );
+    }
+
+    const methodStatus = getPaymentMethodStatus(method);
+    if (!methodStatus.enabled) {
+      logWarn("Payment method unavailable due to configuration", {
+        operationId,
+        userId: user.id,
+        method,
+        reason: methodStatus.reason,
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            methodStatus.reason ||
+            "Payment method is not available in this environment.",
+          code: "PAYMENT_METHOD_UNAVAILABLE",
+        },
+        { status: 503 }
       );
     }
 

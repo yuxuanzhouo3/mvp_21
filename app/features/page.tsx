@@ -5,9 +5,9 @@ import { PublicInfoShell } from "@/components/layout/public-info-shell";
 export default function FeaturesPage() {
   return (
     <PublicInfoShell
-      badge="Platform"
-      title="Core capabilities for drafting, signing, and retaining contracts"
-      description="A single workspace for template-based drafting, AI-assisted generation, signer coordination, and long-term document retention."
+      badge="MornContract"
+      title="Core capabilities for drafting, signing, governing, and retaining contracts"
+      description="One production-ready workspace for template-driven drafting, AI analysis, signer coordination, document verification, and long-term record retention."
     >
       <Features />
       <CTA />

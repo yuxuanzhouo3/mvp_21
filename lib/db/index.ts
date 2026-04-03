@@ -380,7 +380,7 @@ function seedDemoData(db: MemoryDbService) {
   db.seed(TABLES.USERS, [
     {
       id: 'user_1',
-      email: 'admin@contracthub.com',
+      email: 'admin@morn.local',
       name: '管理员',
       role: 'admin',
       plan: 'enterprise',
@@ -393,7 +393,7 @@ function seedDemoData(db: MemoryDbService) {
     },
     {
       id: 'user_2',
-      email: 'li@example.com',
+      email: 'ops.cn@morn.local',
       name: '李四',
       role: 'user',
       plan: 'pro',
@@ -406,7 +406,7 @@ function seedDemoData(db: MemoryDbService) {
     },
     {
       id: 'user_3',
-      email: 'wang@example.com',
+      email: 'legal@morn.local',
       name: '王五',
       role: 'user',
       plan: 'free',
@@ -427,7 +427,7 @@ function seedDemoData(db: MemoryDbService) {
       position: 'banner_top',
       type: 'image',
       content: '/ads/banner1.jpg',
-      link: 'https://example.com/promo1',
+      link: 'https://morncontract.com/pricing',
       status: 'active',
       impressions: 15680,
       clicks: 342,
@@ -443,7 +443,7 @@ function seedDemoData(db: MemoryDbService) {
       position: 'sidebar',
       type: 'image',
       content: '/ads/sidebar1.jpg',
-      link: 'https://example.com/promo2',
+      link: 'https://morncontract.com/features',
       status: 'active',
       impressions: 8920,
       clicks: 156,

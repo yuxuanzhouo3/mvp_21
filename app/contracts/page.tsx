@@ -16,6 +16,16 @@ import {
 import { Header } from "@/components/header";
 import { useLanguage } from "@/components/language-provider";
 import { useUser } from "@/components/user-context";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,6 +45,7 @@ import {
   type ContractListItem,
 } from "@/lib/contracts/client";
 import { useTranslations } from "@/lib/i18n";
+import { toast } from "sonner";
 
 type ContractFilter = "all" | ContractListItem["status"] | "archived";
 type SortMode = "updated_desc" | "updated_asc" | "title_asc" | "title_desc";
@@ -73,6 +84,7 @@ export default function ContractsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [archivingId, setArchivingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ContractListItem | null>(null);
 
   useEffect(() => {
     if (!userLoading && !user) {
@@ -219,19 +231,20 @@ export default function ContractsPage() {
     [contracts],
   );
 
-  const handleDelete = async (contract: ContractListItem) => {
-    if (!window.confirm(content.deleteConfirm)) {
+  const handleDelete = async () => {
+    if (!deleteTarget) {
       return;
     }
 
     try {
-      setDeletingId(contract.id);
-      await deleteContractForCurrentUser(contract.id);
-      setContracts((current) => current.filter((item) => item.id !== contract.id));
-      window.alert(content.deleteSuccess);
+      setDeletingId(deleteTarget.id);
+      await deleteContractForCurrentUser(deleteTarget.id);
+      setContracts((current) => current.filter((item) => item.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      toast.success(content.deleteSuccess);
     } catch (deleteError) {
       console.error("[ContractsPage] Failed to delete contract:", deleteError);
-      window.alert(content.deleteFailed);
+      toast.error(content.deleteFailed);
     } finally {
       setDeletingId(null);
     }
@@ -243,7 +256,7 @@ export default function ContractsPage() {
       await downloadContractForCurrentUser(contract.id);
     } catch (downloadError) {
       console.error("[ContractsPage] Failed to download contract:", downloadError);
-      window.alert(isEn ? "Failed to download the contract." : "下载合同失败，请稍后重试。");
+      toast.error(isEn ? "Failed to download the contract." : "下载合同失败，请稍后重试。");
     } finally {
       setDownloadingId(null);
     }
@@ -282,7 +295,7 @@ export default function ContractsPage() {
       );
     } catch (archiveError) {
       console.error("[ContractsPage] Failed to toggle archive:", archiveError);
-      window.alert(isEn ? "Failed to update archive status." : "更新归档状态失败。");
+      toast.error(isEn ? "Failed to update archive status." : "更新归档状态失败。");
     } finally {
       setArchivingId(null);
     }
@@ -516,7 +529,7 @@ export default function ContractsPage() {
                     variant="outline"
                     size="sm"
                     className="text-red-600 hover:text-red-700"
-                    onClick={() => void handleDelete(contract)}
+                    onClick={() => setDeleteTarget(contract)}
                     disabled={deletingId === contract.id}
                   >
                     <Trash2 className="mr-1 h-4 w-4" />
@@ -527,6 +540,21 @@ export default function ContractsPage() {
             </Card>
           ))}
         </div>
+
+        <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => (!open ? setDeleteTarget(null) : null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{isEn ? "Delete Contract?" : "删除合同？"}</AlertDialogTitle>
+              <AlertDialogDescription>{content.deleteConfirm}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{isEn ? "Cancel" : "取消"}</AlertDialogCancel>
+              <AlertDialogAction onClick={() => void handleDelete()} disabled={deletingId === deleteTarget?.id}>
+                {deletingId === deleteTarget?.id ? (isEn ? "Deleting..." : "删除中...") : content.deleteAction}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
     </div>
   );

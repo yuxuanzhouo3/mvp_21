@@ -754,7 +754,7 @@ export const zh = {
     titleHighlight: "跨境无忧",
     subtitle: "AI 驱动的智能合同创建、电子签名与跨境管理平台，支持中英文双语与双区域部署。",
     cta: "立即创建合同",
-    demo: "查看演示",
+    demo: "查看产品能力",
     platforms: "支持 Web、iOS、Android、微信小程序等多端使用",
   },
 

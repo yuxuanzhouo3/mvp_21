@@ -6,8 +6,8 @@ export default function HowItWorksPage() {
   return (
     <PublicInfoShell
       badge="Workflow"
-      title="From conversation records to a signed contract"
-      description="Import source material, confirm AI analysis, route signers, and keep the final document in one managed workflow."
+      title="From source material to a signed and verified contract"
+      description="Import chat records or existing drafts, confirm AI analysis, route signers, and keep the final agreement in a governed workflow."
     >
       <HowItWorks />
       <CTA />

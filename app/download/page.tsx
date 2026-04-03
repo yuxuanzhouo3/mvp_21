@@ -1,51 +1,108 @@
 "use client";
 
-/* eslint-disable react-hooks/set-state-in-effect */
-
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  ArrowLeft,
-  Download,
-  Monitor,
-  Smartphone,
-  Apple,
-  Laptop,
-  ChevronRight,
-} from "lucide-react";
-import { useLanguage } from "@/components/language-provider";
-import { useTranslations } from "@/lib/i18n";
-import {
-  getDownloadConfig,
-  detectUserPlatform,
-  type PlatformType,
-} from "@/lib/config/download.config";
-import { isChinaRegion } from "@/lib/config/region";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Apple, ArrowLeft, ChevronRight, Download, Laptop, Monitor, Smartphone } from "lucide-react";
+
+import { useLanguage } from "@/components/language-provider";
+import { Button } from "@/components/ui/button";
+import { detectUserPlatform, type PlatformType } from "@/lib/config/download.config";
+import { isChinaRegion } from "@/lib/config/region";
+import { useTranslations } from "@/lib/i18n";
 import { cn } from "@/lib/utils/utils";
 
-const UPDATE_LOG_DATE_LABELS = {
-  latest: "2026-03-30",
-  fixes: "2026-03-27",
-} as const;
+type DownloadItem = {
+  platform: PlatformType;
+  label: string;
+  href: string;
+  version?: string;
+  fileSize?: number;
+};
+
+type DownloadLog = {
+  id: string;
+  text: string;
+  date: string;
+};
+
+type DownloadCatalog = {
+  downloads: DownloadItem[];
+  logs: DownloadLog[];
+};
+
+function formatFileSize(fileSize?: number) {
+  if (!fileSize) {
+    return "";
+  }
+
+  if (fileSize < 1024 * 1024) {
+    return `${(fileSize / 1024).toFixed(1)} KB`;
+  }
+
+  if (fileSize < 1024 * 1024 * 1024) {
+    return `${(fileSize / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  return `${(fileSize / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
 
 export default function DownloadPage() {
   const { language } = useLanguage();
   const t = useTranslations(language);
-  const [isChina, setIsChina] = useState(false);
   const [userPlatform, setUserPlatform] = useState<PlatformType | null>(null);
+  const [catalog, setCatalog] = useState<DownloadCatalog>({ downloads: [], logs: [] });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setIsChina(isChinaRegion());
     setUserPlatform(detectUserPlatform());
   }, []);
 
-  const config = getDownloadConfig(isChina);
+  useEffect(() => {
+    let cancelled = false;
 
-  const getPlatformIcon = (platform: PlatformType, className = "w-6 h-6") => {
+    async function loadCatalog() {
+      try {
+        setLoading(true);
+        const response = await fetch("/api/downloads?catalog=1", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to load download catalog: ${response.status}`);
+        }
+
+        const nextCatalog = (await response.json()) as DownloadCatalog;
+        if (!cancelled) {
+          setCatalog({
+            downloads: Array.isArray(nextCatalog.downloads) ? nextCatalog.downloads : [],
+            logs: Array.isArray(nextCatalog.logs) ? nextCatalog.logs : [],
+          });
+        }
+      } catch (error) {
+        console.error("[DownloadPage] Failed to load catalog:", error);
+        if (!cancelled) {
+          setCatalog({ downloads: [], logs: [] });
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadCatalog();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const getPlatformIcon = (platform: PlatformType, className = "h-6 w-6") => {
     switch (platform) {
       case "android":
       case "ios":
+      case "harmonyos":
         return <Smartphone className={className} />;
       case "macos":
         return <Apple className={className} />;
@@ -58,145 +115,126 @@ export default function DownloadPage() {
     }
   };
 
-  // 模拟日志
-  const updateLogs = [
-    {
-      text: `${language === "zh" ? "最新版本发布" : "Latest Version Released"}`,
-      date: UPDATE_LOG_DATE_LABELS.latest,
-    },
-    {
-      text: `${
-        language === "zh" ? "性能优化与Bug修复" : "Performance & Bug Fixes"
-      }`,
-      date: UPDATE_LOG_DATE_LABELS.fixes,
-    },
-  ];
-
   return (
-    <div className="min-h-screen w-full flex flex-col items-center relative overflow-hidden bg-white text-slate-900 font-sans selection:bg-blue-100">
-      {/* 顶部返回按钮 */}
-      <div className="absolute top-6 left-6 z-20">
+    <div className="relative flex min-h-screen w-full flex-col items-center overflow-hidden bg-white font-sans text-slate-900 selection:bg-blue-100">
+      <div className="absolute left-6 top-6 z-20">
         <Link href="/">
           <Button
             variant="ghost"
-            className="text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+            className="text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
           >
-            <ArrowLeft className="w-5 h-5 mr-1" />
+            <ArrowLeft className="mr-1 h-5 w-5" />
             {t.common.back}
           </Button>
         </Link>
       </div>
 
-      {/* 核心内容区 */}
-      <div className="flex-1 flex flex-col items-center justify-center w-full max-w-5xl px-4 py-12">
-        {/* 1. Logo 和 标题 */}
-        <div className="text-center mb-12 md:mb-20 animate-in fade-in slide-in-from-top-4 duration-700">
-          <div className="w-20 h-20 mx-auto bg-blue-50 rounded-[20px] flex items-center justify-center mb-6 shadow-sm">
-            <Download className="w-10 h-10 text-blue-600" />
+      <div className="flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-4 py-12">
+        <div className="mb-12 text-center duration-700 animate-in fade-in slide-in-from-top-4 md:mb-20">
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-[20px] bg-blue-50 shadow-sm">
+            <Download className="h-10 w-10 text-blue-600" />
           </div>
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">
             {t.download.title}
           </h1>
+          <p className="mt-3 text-sm text-slate-500 md:text-base">
+            {isChinaRegion() ? t.download.chinaDescription : t.download.intlDescription}
+          </p>
         </div>
 
-        {/* 2. 日志列表 (灰色调) */}
-        <div className="w-full max-w-lg mb-16 md:mb-24">
-          {/* 分割线 - 灰色渐变 */}
-          <div className="w-full h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent mb-6" />
+        <div className="mb-16 w-full max-w-xl md:mb-24">
+          <div className="mb-6 h-px w-full bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
 
-          <div className="space-y-3 text-sm md:text-base text-slate-500">
-            {updateLogs.map((log, i) => (
-              <div key={i} className="flex justify-between items-center px-4">
-                <span className="font-medium text-slate-700">{log.text}</span>
-                <span className="opacity-60 text-xs md:text-sm font-mono bg-slate-50 px-2 py-0.5 rounded text-slate-400">
-                  {log.date}
-                </span>
-              </div>
-            ))}
-            <div className="flex justify-between items-center px-4 pt-2 cursor-pointer hover:text-blue-600 transition-colors group">
-              <span className="flex items-center gap-1 text-sm">
-                {language === "zh" ? "查看更多日志" : "View More Logs"}
-                <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* 3. 底部横排图标 (白底适配版) */}
-        <div className="w-full flex flex-wrap justify-center gap-8 md:gap-16 pb-10">
-          {config.downloads.map((download) => {
-            const isCurrent = userPlatform === download.platform;
-
-            // 根据语言动态获取平台标签
-            const platformLabel =
-              t.download.platform[
-                download.platform as keyof typeof t.download.platform
-              ];
-
-            // ✅ 修复：为国内版本生成 API 调用 URL，国际版本使用直接 URL
-            const getDownloadLink = () => {
-              if (isChina && download.fileID) {
-                // 国内版：调用 /api/downloads API
-                const params = new URLSearchParams({
-                  platform: download.platform,
-                  region: "CN",
-                });
-                // 如果是 macOS，添加 arch 参数
-                if (download.platform === "macos" && download.arch) {
-                  params.append("arch", download.arch);
-                }
-                return `/api/downloads?${params.toString()}`;
-              }
-              // 国际版：直接使用 URL
-              return download.url || "#";
-            };
-
-            return (
-              <a
-                key={`${download.platform}-${download.arch || "default"}`}
-                href={getDownloadLink()}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group flex flex-col items-center gap-4 transition-all duration-300 hover:-translate-y-2"
-              >
-                {/* 圆形图标容器 */}
-                <div
-                  className={cn(
-                    "w-16 h-16 md:w-[72px] md:h-[72px] rounded-full flex items-center justify-center transition-all duration-300",
-                    // 默认样式：淡灰背景，深灰图标，细微边框
-                    "bg-slate-50 border border-slate-200 text-slate-600",
-
-                    // Hover样式：淡蓝背景，蓝色图标，蓝色边框
-                    "group-hover:bg-blue-50 group-hover:text-blue-600 group-hover:border-blue-200 group-hover:shadow-lg group-hover:shadow-blue-500/10",
-
-                    // 当前设备：强调边框
-                    isCurrent &&
-                      "ring-2 ring-blue-500 ring-offset-2 ring-offset-white border-blue-200 bg-blue-50 text-blue-600",
-                  )}
-                >
-                  {getPlatformIcon(
-                    download.platform,
-                    "w-8 h-8 md:w-9 md:h-9 transition-transform duration-300 group-hover:scale-110",
-                  )}
+          {catalog.logs.length > 0 ? (
+            <div className="space-y-3 text-sm text-slate-500 md:text-base">
+              {catalog.logs.map((log) => (
+                <div key={log.id} className="flex items-center justify-between px-4">
+                  <span className="font-medium text-slate-700">{log.text}</span>
+                  <span className="rounded bg-slate-50 px-2 py-0.5 font-mono text-xs text-slate-400 opacity-60 md:text-sm">
+                    {log.date}
+                  </span>
                 </div>
-
-                {/* 文字标签 */}
-                <span
-                  className={cn(
-                    "text-sm font-medium tracking-wide transition-colors",
-                    "text-slate-500 group-hover:text-blue-600",
-                    isCurrent && "text-blue-600 font-semibold",
-                  )}
-                >
-                  {platformLabel}
-                </span>
-              </a>
-            );
-          })}
+              ))}
+            </div>
+          ) : (
+            <div className="px-4 text-sm text-slate-500">
+              {language === "zh"
+                ? "当前暂无公开更新日志，发布新版本后会自动同步到这里。"
+                : "No public release notes yet. New active versions will appear here automatically."}
+            </div>
+          )}
         </div>
+
+        {loading ? (
+          <div className="pb-10 text-sm text-slate-500">
+            {language === "zh" ? "正在加载下载目录..." : "Loading downloads..."}
+          </div>
+        ) : catalog.downloads.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-8 py-10 text-center text-sm text-slate-500">
+            {language === "zh"
+              ? "当前环境还没有可公开下载的安装包。"
+              : "No public installers are available in this environment yet."}
+          </div>
+        ) : (
+          <div className="flex w-full flex-wrap justify-center gap-8 pb-10 md:gap-16">
+            {catalog.downloads.map((download) => {
+              const isCurrent = userPlatform === download.platform;
+
+              return (
+                <a
+                  key={`${download.platform}-${download.label}`}
+                  href={download.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex flex-col items-center gap-4 transition-all duration-300 hover:-translate-y-2"
+                >
+                  <div
+                    className={cn(
+                      "flex h-16 w-16 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600 transition-all duration-300 md:h-[72px] md:w-[72px]",
+                      "group-hover:border-blue-200 group-hover:bg-blue-50 group-hover:text-blue-600 group-hover:shadow-lg group-hover:shadow-blue-500/10",
+                      isCurrent && "border-blue-200 bg-blue-50 text-blue-600 ring-2 ring-blue-500 ring-offset-2 ring-offset-white",
+                    )}
+                  >
+                    {getPlatformIcon(
+                      download.platform,
+                      "h-8 w-8 transition-transform duration-300 group-hover:scale-110 md:h-9 md:w-9",
+                    )}
+                  </div>
+
+                  <div className="text-center">
+                    <span
+                      className={cn(
+                        "block text-sm font-medium tracking-wide text-slate-500 transition-colors group-hover:text-blue-600",
+                        isCurrent && "font-semibold text-blue-600",
+                      )}
+                    >
+                      {download.label}
+                    </span>
+                    {download.version ? (
+                      <span className="mt-1 block text-xs text-slate-400">
+                        v{download.version}
+                        {download.fileSize ? ` · ${formatFileSize(download.fileSize)}` : ""}
+                      </span>
+                    ) : null}
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        )}
+
+        {catalog.downloads.length > 0 ? (
+          <div className="flex items-center gap-1 text-xs text-slate-400">
+            <span>
+              {language === "zh"
+                ? "下载入口已自动连接当前启用版本"
+                : "Download entries are linked to the latest active releases"}
+            </span>
+            <ChevronRight className="h-3 w-3" />
+          </div>
+        ) : null}
       </div>
 
-      {/* 底部版权 */}
       <footer className="absolute bottom-4 text-[10px] text-slate-300">
         Copyright © {new Date().getFullYear()}
       </footer>

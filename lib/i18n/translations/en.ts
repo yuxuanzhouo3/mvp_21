@@ -807,7 +807,7 @@ export const en = {
     subtitle:
       "AI-powered intelligent contract creation, e-signature, and cross-border management platform. Bilingual support with full compliance.",
     cta: "Create Contract Now",
-    demo: "View Demo",
+    demo: "Explore Features",
     platforms: "Available on Web, iOS, Android, WeChat Mini Program, and more",
   },
 

@@ -9,27 +9,15 @@ import {
   RefreshCw,
   ShieldCheck,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
-import { adminFetch, adminFetchJson } from '@/lib/admin/client';
 import { useLanguage } from '@/components/language-provider';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { adminFetch, adminFetchJson } from '@/lib/admin/client';
 
 type AuditStatus = 'success' | 'error' | 'denied';
 type AuditSeverity = 'info' | 'warn' | 'error';
@@ -110,20 +98,22 @@ export default function AdminAuditPage() {
 
   const copy = useMemo(
     () => ({
-      title: isEn ? 'Admin Audit Log' : '后台操作审计',
+      title: isEn ? 'Admin Audit Log' : '后台审计日志',
       subtitle: isEn
-        ? 'Review access, export evidence, and track exceptions from the real admin data flow.'
-        : '查看后台访问、导出审计证据，并追踪真实管理流中的异常请求。',
+        ? 'Review access events, export evidence, and trace exceptions from the live admin workflow.'
+        : '查看后台访问事件、导出审计证据，并跟踪真实管理流程里的异常请求。',
       allStatus: isEn ? 'All Status' : '全部状态',
       refresh: isEn ? 'Refresh' : '刷新',
       exportCsv: isEn ? 'Export CSV' : '导出 CSV',
       exportJson: isEn ? 'Export JSON' : '导出 JSON',
-      loadFailed: isEn ? 'Failed to load audit logs.' : '加载审计日志失败。',
-      exportFailed: isEn ? 'Failed to export audit logs.' : '导出审计日志失败。',
+      loadFailed: isEn ? 'Failed to load audit logs.' : '加载审计日志失败，请稍后重试。',
+      exportFailed: isEn ? 'Failed to export audit logs.' : '导出审计日志失败，请稍后重试。',
+      exportSuccess: (format: 'csv' | 'json') =>
+        isEn ? `Audit logs exported as ${format.toUpperCase()}.` : `审计日志已导出为 ${format.toUpperCase()} 文件。`,
       activeAlerts: isEn ? 'Active Alerts' : '当前告警',
       activeAlertsDesc: isEn
-        ? 'These alerts are derived from the current result set and can be exported for evidence retention.'
-        : '以下告警基于当前筛选结果自动生成，可直接导出留痕。',
+        ? 'These alerts are derived from the current result set and can be exported as evidence.'
+        : '以下告警由当前筛选结果自动汇总，可直接作为审计留痕依据。',
       currentPageEvents: isEn ? 'Current Page Events' : '当前页事件数',
       successEvents: isEn ? 'Successful Events' : '成功事件',
       deniedAccess: isEn ? 'Denied Access' : '拒绝访问',
@@ -140,15 +130,15 @@ export default function AdminAuditPage() {
       actor: isEn ? 'Actor' : '操作人',
       anonymous: isEn ? 'Anonymous' : '匿名',
       tableHint: isEn
-        ? 'Includes successful access, denied requests, and API errors.'
-        : '包含成功访问、拒绝请求与后台 API 错误。',
+        ? 'Includes successful access, denied requests, and backend API errors.'
+        : '包含成功访问、拒绝请求以及后台 API 错误等事件。',
       previous: isEn ? 'Previous' : '上一页',
       next: isEn ? 'Next' : '下一页',
       topActions: isEn ? 'Top Actions' : '高频动作',
       topActionsDesc: isEn
-        ? 'Helps verify whether admin behavior matches the expected governance workflow.'
+        ? 'Use this to verify whether admin behavior matches the expected governance workflow.'
         : '用于快速核对后台操作是否符合预期治理流程。',
-      noActionStats: isEn ? 'No action statistics yet.' : '暂时没有动作统计。',
+      noActionStats: isEn ? 'No action statistics yet.' : '暂无动作统计。',
       occurrences: isEn ? 'Occurrences' : '出现次数',
       unknown: isEn ? 'Unknown' : '未知',
       success: isEn ? 'Success' : '成功',
@@ -160,18 +150,19 @@ export default function AdminAuditPage() {
       currentPageLabel: isEn
         ? `Showing page ${pagination.page} of ${pagination.totalPages}, ${pagination.total} total records.`
         : `当前第 ${pagination.page} / ${pagination.totalPages} 页，共 ${pagination.total} 条记录。`,
+      retry: isEn ? 'Retry' : '重新加载',
     }),
     [isEn, pagination.page, pagination.total, pagination.totalPages],
   );
 
   const fetchLogs = useCallback(
-    async (page = 1) => {
+    async (targetPage = 1) => {
       setLoading(true);
       setError('');
 
       try {
         const params = new URLSearchParams({
-          page: String(page),
+          page: String(targetPage),
           limit: '20',
           status,
         });
@@ -189,10 +180,12 @@ export default function AdminAuditPage() {
         setSummary(result.data.summary || EMPTY_SUMMARY);
         setPagination(result.data.pagination || EMPTY_PAGINATION);
       } catch (fetchError) {
-        setError(fetchError instanceof Error ? fetchError.message : copy.loadFailed);
+        const message = fetchError instanceof Error ? fetchError.message : copy.loadFailed;
+        setError(message);
         setItems([]);
         setSummary(EMPTY_SUMMARY);
         setPagination(EMPTY_PAGINATION);
+        toast.error(copy.loadFailed);
       } finally {
         setLoading(false);
       }
@@ -280,13 +273,16 @@ export default function AdminAuditPage() {
         link.download = `admin-audit-${status}.${format}`;
         link.click();
         window.URL.revokeObjectURL(url);
+        toast.success(copy.exportSuccess(format));
       } catch (exportError) {
-        setError(exportError instanceof Error ? exportError.message : copy.exportFailed);
+        const message = exportError instanceof Error ? exportError.message : copy.exportFailed;
+        setError(message);
+        toast.error(copy.exportFailed);
       } finally {
         setExporting(null);
       }
     },
-    [copy.exportFailed, status],
+    [copy, status],
   );
 
   return (
@@ -330,6 +326,12 @@ export default function AdminAuditPage() {
           </Button>
         </div>
       </div>
+
+      {error ? (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
 
       {summary.alerts.length > 0 ? (
         <Card className="border-amber-300 bg-amber-50/70">
@@ -426,18 +428,18 @@ export default function AdminAuditPage() {
             <CardDescription>{copy.currentPageLabel}</CardDescription>
           </CardHeader>
           <CardContent>
-            {error ? (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                {error}
-              </div>
-            ) : null}
-
             {loading ? (
-              <div className="flex items-center justify-center py-16">
+              <div className="flex min-h-[260px] items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : items.length === 0 ? (
-              <div className="py-16 text-center text-muted-foreground">{copy.noRecords}</div>
+              <div className="rounded-lg border border-dashed p-12 text-center">
+                <p className="font-medium">{copy.noRecords}</p>
+                <Button variant="outline" className="mt-4" onClick={() => void fetchLogs(1)}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  {copy.retry}
+                </Button>
+              </div>
             ) : (
               <Table>
                 <TableHeader>
@@ -466,9 +468,7 @@ export default function AdminAuditPage() {
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-xs">{item.path || '-'}</TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {item.actorUserId || copy.anonymous}
-                      </TableCell>
+                      <TableCell className="font-mono text-xs">{item.actorUserId || copy.anonymous}</TableCell>
                       <TableCell className="font-mono text-xs">{item.ip || '-'}</TableCell>
                     </TableRow>
                   ))}
@@ -476,7 +476,7 @@ export default function AdminAuditPage() {
               </Table>
             )}
 
-            <div className="mt-4 flex items-center justify-between">
+            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <p className="text-sm text-muted-foreground">{copy.tableHint}</p>
               <div className="flex gap-2">
                 <Button
@@ -516,7 +516,9 @@ export default function AdminAuditPage() {
                 </div>
               ))
             ) : (
-              <div className="py-12 text-center text-muted-foreground">{copy.noActionStats}</div>
+              <div className="flex min-h-[240px] items-center justify-center rounded-lg border border-dashed text-center text-sm text-muted-foreground">
+                {copy.noActionStats}
+              </div>
             )}
           </CardContent>
         </Card>
