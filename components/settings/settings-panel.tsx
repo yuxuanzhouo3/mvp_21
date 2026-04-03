@@ -9,17 +9,23 @@ import { Button } from "@/components/ui/button"
 import { Globe, Bell, Shield, Moon } from "lucide-react"
 import { useLanguage } from "@/components/language-provider"
 import { useTranslations, type Language } from "@/lib/i18n"
+import {
+  getDefaultLanguage,
+  isChinaDeployment,
+} from "@/lib/config/deployment.config"
 
 export function SettingsPanel() {
   const { language } = useLanguage()
   const t = useTranslations(language)
   const content = t.settingsPanel
-  const [locale, setLocale] = useState<Language>(language)
+  const deploymentLanguage = getDefaultLanguage()
+  const deploymentRegion = isChinaDeployment() ? "cn" : "us"
+  const [locale, setLocale] = useState<Language>(deploymentLanguage)
   const [darkMode, setDarkMode] = useState(false)
 
   useEffect(() => {
-    setLocale(language)
-  }, [language])
+    setLocale(deploymentLanguage)
+  }, [deploymentLanguage])
 
   return (
     <div className="space-y-6">
@@ -34,7 +40,7 @@ export function SettingsPanel() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="language">{content.displayLanguage}</Label>
-            <Select value={locale} onValueChange={(value) => setLocale(value as Language)}>
+            <Select value={locale} disabled>
               <SelectTrigger id="language">
                 <SelectValue />
               </SelectTrigger>
@@ -60,7 +66,7 @@ export function SettingsPanel() {
 
           <div className="space-y-2">
             <Label htmlFor="region">{content.primaryRegion}</Label>
-            <Select defaultValue="us">
+            <Select value={deploymentRegion} disabled>
               <SelectTrigger id="region">
                 <SelectValue />
               </SelectTrigger>

@@ -23,38 +23,40 @@ const LanguageContext = createContext<LanguageContextType | undefined>(
 );
 
 const STORAGE_KEY = "preferred-language";
-const DEFAULT_LANGUAGE: Language = getDefaultLanguage();
+const DEPLOYMENT_LANGUAGE: Language = getDefaultLanguage();
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(DEFAULT_LANGUAGE);
+  const [language, setLanguageState] = useState<Language>(DEPLOYMENT_LANGUAGE);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    localStorage.setItem(STORAGE_KEY, DEFAULT_LANGUAGE);
-    setLanguageState(DEFAULT_LANGUAGE);
+    localStorage.setItem(STORAGE_KEY, DEPLOYMENT_LANGUAGE);
+    document.documentElement.lang = DEPLOYMENT_LANGUAGE;
+    setLanguageState(DEPLOYMENT_LANGUAGE);
   }, []);
 
   const setLanguage = (lang: Language) => {
-    if (lang !== DEFAULT_LANGUAGE) {
+    if (lang !== DEPLOYMENT_LANGUAGE) {
       console.info(
-        `[LanguageProvider] Language is fixed by APP_REGION. Keeping ${DEFAULT_LANGUAGE}.`,
+        `[LanguageProvider] Language is fixed by APP_REGION. Keeping ${DEPLOYMENT_LANGUAGE}.`,
       );
     }
 
-    localStorage.setItem(STORAGE_KEY, DEFAULT_LANGUAGE);
-    setLanguageState(DEFAULT_LANGUAGE);
+    localStorage.setItem(STORAGE_KEY, DEPLOYMENT_LANGUAGE);
+    document.documentElement.lang = DEPLOYMENT_LANGUAGE;
+    setLanguageState(DEPLOYMENT_LANGUAGE);
   };
 
   const toggleLanguage = () => {
-    setLanguage(DEFAULT_LANGUAGE);
+    setLanguage(DEPLOYMENT_LANGUAGE);
   };
 
   if (!mounted) {
     return (
       <LanguageContext.Provider
         value={{
-          language: DEFAULT_LANGUAGE,
+          language: DEPLOYMENT_LANGUAGE,
           setLanguage: () => {},
           toggleLanguage: () => {},
         }}

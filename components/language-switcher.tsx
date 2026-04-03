@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Globe } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -13,6 +13,10 @@ interface LanguageSwitcherProps {
 
 export function LanguageSwitcher({ currentLocale = "en", onLocaleChange }: LanguageSwitcherProps) {
   const [locale, setLocale] = useState<Locale>(currentLocale)
+
+  useEffect(() => {
+    setLocale(currentLocale)
+  }, [currentLocale])
 
   const handleLocaleChange = (newLocale: Locale) => {
     setLocale(newLocale)

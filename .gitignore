@@ -1,12 +1,12 @@
-.next/ 
-node_modules/ 
-.env 
-.DS_Store 
-.next/ 
-node_modules/ 
-.env 
-".env" 
-".env.local" 
-".env.*" 
-".env.local" 
-".env.local" 
+.next/
+node_modules/
+.pnpm-store/
+.DS_Store
+
+# Environment files with real secrets must never be committed.
+.env*
+
+# Allow safe, placeholder-based templates to be versioned.
+!.env.example
+!.env.cn.example
+!.env.intl.example

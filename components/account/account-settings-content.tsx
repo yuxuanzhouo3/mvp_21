@@ -294,8 +294,7 @@ export function AccountSettingsContent({
   }
 
   const isStandalone = mode === "standalone";
-  const languageLabel =
-    profile.preferences.language === "zh" ? content.languageZh : content.languageEn;
+  const languageLabel = language === "zh" ? content.languageZh : content.languageEn;
 
   return (
     <div className="space-y-6">
