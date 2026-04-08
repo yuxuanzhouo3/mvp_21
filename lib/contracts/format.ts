@@ -1,5 +1,6 @@
-import { CONTRACT_TYPE_NAMES } from "@/lib/ai/prompts/generate";
+﻿import { getContractTypeDisplayName } from "@/lib/ai/prompts/generate";
 import type { AIAnalysisResult, ContractContent, ContractSection } from "@/lib/ai/types";
+import { isChinaRegion } from "@/lib/config/region";
 
 type SupportedLanguage = "zh" | "en";
 export type ContractVersionAction = "draft_created" | "analysis_generated" | "draft_saved";
@@ -18,7 +19,7 @@ function escapeHtml(value: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
+    .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
 
@@ -70,9 +71,12 @@ export function normalizeContractContent(value: unknown): ContractContent | null
   }
 
   return {
-    title: typeof data.title === "string" && data.title.trim()
-      ? data.title.trim()
-      : "合同草稿",
+    title:
+      typeof data.title === "string" && data.title.trim()
+        ? data.title.trim()
+        : isChinaRegion()
+          ? "合同草稿"
+          : "Contract Draft",
     contractType: typeof data.contractType === "string" ? data.contractType : undefined,
     legalBasis: typeof data.legalBasis === "string" ? data.legalBasis : undefined,
     generatedBy:
@@ -122,8 +126,8 @@ export function buildContractParties(analysis: AIAnalysisResult): Array<Record<s
 }
 
 export function deriveDraftTitle(analysis: AIAnalysisResult): string {
-  const contractTypeName =
-    CONTRACT_TYPE_NAMES[analysis.contractType] || String(analysis.contractType || "合同");
+  const language: SupportedLanguage = isChinaRegion() ? "zh" : "en";
+  const contractTypeName = getContractTypeDisplayName(analysis.contractType, language);
   const partyNames = [analysis.partyA?.name, analysis.partyB?.name]
     .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
     .slice(0, 2);
@@ -132,12 +136,12 @@ export function deriveDraftTitle(analysis: AIAnalysisResult): string {
     return `${contractTypeName} - ${partyNames.join(" / ")}`;
   }
 
-  return `${contractTypeName}草稿`;
+  return language === "zh" ? `${contractTypeName}草稿` : `${contractTypeName} Draft`;
 }
 
 export function sanitizeDownloadFileName(value: string): string {
   const trimmed = value.trim() || "contract";
-  return trimmed.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_").slice(0, 80);
+  return trimmed.replace(/[<>:\"/\\|?*\u0000-\u001F]/g, "_").slice(0, 80);
 }
 
 function isVersionEntry(value: unknown): value is ContractVersionEntry {
@@ -178,15 +182,23 @@ export function createVersionEntry(input: {
   createdAt?: string;
 }): ContractVersionEntry {
   const createdAt = input.createdAt || new Date().toISOString();
+  const isZh = isChinaRegion();
+
   return {
     id: `${createdAt}-${Math.random().toString(36).slice(2, 8)}`,
     action: input.action,
     label:
       input.action === "draft_created"
-        ? "创建草稿"
+        ? isZh
+          ? "创建草稿"
+          : "Create Draft"
         : input.action === "analysis_generated"
-          ? "重新生成合同"
-          : "保存编辑",
+          ? isZh
+            ? "重新生成合同"
+            : "Regenerate Contract"
+          : isZh
+            ? "保存编辑"
+            : "Save Edits",
     createdAt,
     title: input.title,
     summary: input.summary,
@@ -218,8 +230,8 @@ export function buildContractHtml(
   const language = options?.language || "zh";
   const labels = {
     disclaimer: language === "en" ? "Disclaimer" : "声明",
-    partyASign: language === "en" ? "Party A (Signature)" : "甲方（签字）",
-    partyBSign: language === "en" ? "Party B (Signature)" : "乙方（签字）",
+    partyASign: language === "en" ? "Party A (Signature)" : "甲方（签字/盖章）",
+    partyBSign: language === "en" ? "Party B (Signature)" : "乙方（签字/盖章）",
     date: language === "en" ? "Date" : "日期",
     emptyDate: language === "en" ? "_______ / _____ / _____" : "_______年___月___日",
   };
@@ -297,8 +309,7 @@ function buildPdfTextLines(contract: ContractContent, language: SupportedLanguag
     partyA: language === "en" ? "Party A" : "甲方",
     partyB: language === "en" ? "Party B" : "乙方",
     signDate: language === "en" ? "Date" : "日期",
-    blankDate:
-      language === "en" ? "_______ / _____ / _____" : "_______年___月___日",
+    blankDate: language === "en" ? "_______ / _____ / _____" : "_______年___月___日",
   };
   const lines: string[] = [];
 
@@ -347,7 +358,7 @@ function buildPdfTextLines(contract: ContractContent, language: SupportedLanguag
 
 function getDisplayWidth(value: string) {
   return Array.from(value).reduce((width, char) => {
-    return width + (/[\u0000-\u00FF]/.test(char) ? 1 : 2);
+    return width + (/[^\u0000-\u00FF]/.test(char) ? 2 : 1);
   }, 0);
 }
 
@@ -403,12 +414,7 @@ function buildPdfContentStreams(lines: string[]) {
   pages.push(currentPage);
 
   return pages.map((pageLines) => {
-    const commands = [
-      "BT",
-      "/F1 12 Tf",
-      "50 786 Td",
-      "18 TL",
-    ];
+    const commands = ["BT", "/F1 12 Tf", "50 786 Td", "18 TL"];
 
     pageLines.forEach((line, index) => {
       if (index > 0) {
@@ -458,9 +464,7 @@ export function buildContractPdfBuffer(
     objects.push(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontObjectId} 0 R >> >> /Contents ${contentObjectId} 0 R >>`,
     );
-    objects.push(
-      `<< /Length ${Buffer.byteLength(stream, "utf8")} >>\nstream\n${stream}\nendstream`,
-    );
+    objects.push(`<< /Length ${Buffer.byteLength(stream, "utf8")} >>\nstream\n${stream}\nendstream`);
   });
 
   objects.push(

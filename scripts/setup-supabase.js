@@ -1,10 +1,20 @@
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
+const dotenv = require('dotenv');
+
+dotenv.config({ path: path.join(__dirname, '..', '.env.local') });
+dotenv.config({ path: path.join(__dirname, '..', '.env.intl') });
 
 // Supabase 配置
-const supabaseUrl = 'https://qwtdbswpenugyyfhbeaj.supabase.co';
-const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF3dGRic3dwZW51Z3l5ZmhiZWFqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2OTcyNzQxNSwiZXhwIjoyMDg1MzAzNDE1fQ.zc53_sxWtJLAtVDy-XtGfPs5xWIilfP-VKsQbneaQwE';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error('❌ 缺少 Supabase 环境变量');
+  console.error('需要: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY');
+  process.exit(1);
+}
 
 // 创建 Supabase 客户端（使用 service role key 以获得完整权限）
 const supabase = createClient(supabaseUrl, supabaseServiceKey);

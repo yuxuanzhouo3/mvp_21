@@ -4,29 +4,13 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { SignJWT } from "jose";
 
 import {
   verifyVerificationCode,
 } from "@/lib/auth/verification-code-store";
-import { getDb, TABLES } from "@/lib/db";
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "morncontract-secret-key-change-in-production",
-);
-
-async function generateToken(user: any): Promise<string> {
-  return new SignJWT({
-    sub: user.id,
-    phone: user.phone,
-    role: user.role || "user",
-    plan: user.plan || "free",
-  })
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime(user.plan === "free" ? "30d" : "90d")
-    .sign(JWT_SECRET);
-}
+import { loadChinaAccountProfile } from "@/lib/account/server-profile";
+import { loginOrCreatePhoneUser } from "@/lib/cloudbase/cloudbase-service";
+import { isChinaRegion } from "@/lib/config/region";
 
 function verifyCode(phone: string, code: string) {
   return verifyVerificationCode(phone, code, { allowAnyInDevelopment: true });
@@ -34,6 +18,13 @@ function verifyCode(phone: string, code: string) {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!isChinaRegion()) {
+      return NextResponse.json(
+        { success: false, error: { message: "国际站暂不支持手机号验证码登录" } },
+        { status: 400 },
+      );
+    }
+
     const body = await request.json();
     const { phone, code } = body;
 
@@ -59,58 +50,73 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const db = getDb();
-    let user = await db.findOne<any>(TABLES.USERS, { phone });
+    const clientIP =
+      request.headers.get("x-forwarded-for") ||
+      request.headers.get("x-real-ip") ||
+      "unknown";
+    const userAgent = request.headers.get("user-agent") || undefined;
 
-    if (!user) {
-      user = await db.create(TABLES.USERS, {
-        phone,
-        name: `用户${phone.slice(-4)}`,
-        role: "user",
-        plan: "free",
-        status: "active",
-        contracts_count: 0,
-        contracts_this_month: 0,
-      });
-      console.log(`手机号用户自动注册: ${phone}`);
-    }
+    const result = await loginOrCreatePhoneUser(phone, {
+      deviceInfo: "phone-login",
+      ipAddress: clientIP !== "unknown" ? clientIP : undefined,
+      userAgent,
+    });
 
-    if (user.status !== "active") {
+    if (!result.success || !result.userId || !result.accessToken) {
       return NextResponse.json(
-        { success: false, error: { message: "账号已被禁用" } },
-        { status: 403 },
+        {
+          success: false,
+          error: { message: result.error || "登录失败，请稍后重试" },
+        },
+        { status: result.error === "账号已被禁用" ? 403 : 500 },
       );
     }
 
-    await db.update(TABLES.USERS, user.id, {
-      last_login_at: new Date().toISOString(),
-    });
-
-    const token = await generateToken(user);
-
-    await db.create(TABLES.USER_SESSIONS, {
-      user_id: user.id,
-      token,
-      expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      ip_address: request.headers.get("x-forwarded-for") || "unknown",
-      user_agent: request.headers.get("user-agent") || "unknown",
-    });
-
-    const { password_hash, ...safeUser } = user;
+    const profile =
+      (await loadChinaAccountProfile(result.userId)) ||
+      {
+        id: result.userId,
+        email: result.email || `phone_${phone}@local.phone`,
+        name: result.name || `用户${phone.slice(-4)}`,
+        phone,
+        role: "user",
+        subscription_plan: "free",
+        subscription_status: "inactive",
+      };
 
     const response = NextResponse.json({
       success: true,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      tokenMeta: result.tokenMeta,
+      user: profile,
+      token: result.accessToken,
+      session: {
+        access_token: result.accessToken,
+        refresh_token: result.refreshToken,
+        user: profile,
+      },
       data: {
-        user: safeUser,
-        token,
+        user: profile,
+        token: result.accessToken,
+        refreshToken: result.refreshToken,
       },
     });
 
-    response.cookies.set("auth_token", token, {
+    const maxAge = result.tokenMeta?.accessTokenExpiresIn || 3600;
+
+    response.cookies.set("auth-token", result.accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 30 * 24 * 60 * 60,
+      maxAge,
+      path: "/",
+    });
+    response.cookies.set("auth_token", result.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge,
       path: "/",
     });
 

@@ -1,9 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 
 import { generateContract } from "@/lib/ai";
 import { type AIAnalysisResult } from "@/lib/ai/types";
 import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
+import { isChinaRegion } from "@/lib/config/region";
 import { getDashboardTemplateById } from "@/lib/data/dashboard-store";
+
+function t(zh: string, en: string) {
+  return isChinaRegion() ? zh : en;
+}
 
 async function resolveCurrentUserId(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -42,7 +47,7 @@ export async function POST(request: NextRequest) {
           success: false,
           error: {
             code: "INVALID_INPUT",
-            message: "请提供有效的分析结果。",
+            message: t("请提供有效的分析结果。", "Please provide a valid analysis result."),
           },
         },
         { status: 400 },
@@ -55,7 +60,10 @@ export async function POST(request: NextRequest) {
           success: false,
           error: {
             code: "NO_KEY_TERMS",
-            message: "未提取到关键条款，请先补充合同事实后再生成。",
+            message: t(
+              "尚未提取到关键条款，请先补充合同事实后再生成。",
+              "No key terms were extracted. Please add more contract facts before generating.",
+            ),
           },
         },
         { status: 400 },
@@ -92,7 +100,7 @@ export async function POST(request: NextRequest) {
       data: contract,
     });
   } catch (error) {
-    console.error("生成合同失败:", error);
+    console.error("Generate contract failed:", error);
 
     if (error instanceof Error && error.message.includes("API")) {
       return NextResponse.json(
@@ -100,7 +108,10 @@ export async function POST(request: NextRequest) {
           success: false,
           error: {
             code: "AI_SERVICE_ERROR",
-            message: "AI 服务暂时不可用，请稍后重试。",
+            message: t(
+              "AI 服务暂时不可用，请稍后重试。",
+              "AI service is temporarily unavailable. Please try again later.",
+            ),
           },
         },
         { status: 503 },
@@ -112,7 +123,7 @@ export async function POST(request: NextRequest) {
         success: false,
         error: {
           code: "GENERATE_FAILED",
-          message: "生成失败，请稍后重试。",
+          message: t("生成失败，请稍后重试。", "Generation failed. Please try again."),
         },
       },
       { status: 500 },

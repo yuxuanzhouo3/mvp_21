@@ -1,16 +1,6 @@
-/**
- * 支付服务适配器
- *
- * 根据 DEPLOY_REGION 环境变量选择使用哪个支付服务提供商：
- * - CN（中国）：使用支付宝
- * - INTL（国际）：使用 PayPal
- */
-
+import { getPayPalEnvironment } from "@/lib/config/runtime-env";
 import { isChinaRegion, RegionConfig } from "@/lib/config/region";
 
-/**
- * 订单接口（统一数据结构）
- */
 export interface PaymentOrder {
   id: string;
   amount: number;
@@ -19,12 +9,9 @@ export interface PaymentOrder {
   userId: string;
   createdAt: Date;
   completedAt?: Date;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
-/**
- * 支付结果接口
- */
 export interface PaymentResult {
   success: boolean;
   orderId: string;
@@ -32,68 +19,25 @@ export interface PaymentResult {
   error?: string;
 }
 
-/**
- * 支付适配器接口
- */
 export interface PaymentAdapter {
-  /**
-   * 创建支付订单
-   * @param amount 支付金额（单位：元）
-   * @param userId 用户 ID
-   * @returns 支付订单信息（包含支付链接或表单）
-   */
   createOrder(
     amount: number,
-    userId: string
+    userId: string,
   ): Promise<{
     orderId: string;
     paymentUrl?: string;
     formHtml?: string;
   }>;
-
-  /**
-   * 验证支付回调
-   * @param params 支付回调参数
-   * @returns 支付结果
-   */
-  verifyPayment(params: any): Promise<PaymentResult>;
-
-  /**
-   * 查询订单状态
-   * @param orderId 订单 ID
-   * @returns 订单信息
-   */
+  verifyPayment(params: Record<string, unknown>): Promise<PaymentResult>;
   queryOrder(orderId: string): Promise<PaymentOrder>;
-
-  /**
-   * 取消订单
-   * @param orderId 订单 ID
-   */
   cancelOrder(orderId: string): Promise<void>;
 }
 
-/**
- * PayPal 支付适配器（国际版）
- */
 class PayPalAdapter implements PaymentAdapter {
-  private clientId: string;
-  private clientSecret: string;
-  private environment: string;
-
-  constructor() {
-    this.clientId = process.env.PAYPAL_CLIENT_ID || "";
-    this.clientSecret = process.env.PAYPAL_CLIENT_SECRET || "";
-    this.environment = process.env.PAYPAL_ENVIRONMENT || "sandbox";
-  }
-
   async createOrder(
     amount: number,
-    userId: string
-  ): Promise<{
-    orderId: string;
-    paymentUrl?: string;
-  }> {
-    // 调用 PayPal API 创建订单
+    userId: string,
+  ): Promise<{ orderId: string; paymentUrl?: string }> {
     const response = await fetch("/api/payment/paypal/create", {
       method: "POST",
       headers: {
@@ -107,19 +51,17 @@ class PayPalAdapter implements PaymentAdapter {
     });
 
     if (!response.ok) {
-      throw new Error("创建 PayPal 订单失败");
+      throw new Error("Failed to create PayPal order");
     }
 
     const data = await response.json();
-
     return {
       orderId: data.orderId,
       paymentUrl: data.approvalUrl,
     };
   }
 
-  async verifyPayment(params: any): Promise<PaymentResult> {
-    // 验证 PayPal 回调
+  async verifyPayment(params: Record<string, unknown>): Promise<PaymentResult> {
     const response = await fetch("/api/payment/paypal/verify", {
       method: "POST",
       headers: {
@@ -131,13 +73,12 @@ class PayPalAdapter implements PaymentAdapter {
     if (!response.ok) {
       return {
         success: false,
-        orderId: params.orderId || "",
-        error: "验证失败",
+        orderId: String(params.orderId || ""),
+        error: "Failed to verify PayPal payment",
       };
     }
 
     const data = await response.json();
-
     return {
       success: data.verified,
       orderId: data.orderId,
@@ -146,19 +87,16 @@ class PayPalAdapter implements PaymentAdapter {
   }
 
   async queryOrder(orderId: string): Promise<PaymentOrder> {
-    const response = await fetch(
-      `/api/payment/paypal/query?orderId=${orderId}`
-    );
-
+    const response = await fetch(`/api/payment/paypal/query?orderId=${orderId}`);
     if (!response.ok) {
-      throw new Error("查询订单失败");
+      throw new Error("Failed to query PayPal order");
     }
 
-    return await response.json();
+    return response.json();
   }
 
   async cancelOrder(orderId: string): Promise<void> {
-    await fetch(`/api/payment/paypal/cancel`, {
+    await fetch("/api/payment/paypal/cancel", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -168,29 +106,11 @@ class PayPalAdapter implements PaymentAdapter {
   }
 }
 
-/**
- * 支付宝适配器（中国版）
- */
 class AlipayAdapter implements PaymentAdapter {
-  private appId: string;
-  private gatewayUrl: string;
-  private isSandbox: boolean;
-
-  constructor() {
-    this.appId = process.env.ALIPAY_APP_ID || "";
-    this.gatewayUrl =
-      process.env.ALIPAY_GATEWAY_URL || "https://openapi.alipay.com/gateway.do";
-    this.isSandbox = process.env.ALIPAY_SANDBOX === "true";
-  }
-
   async createOrder(
     amount: number,
-    userId: string
-  ): Promise<{
-    orderId: string;
-    formHtml?: string;
-  }> {
-    // 调用支付宝 API 创建订单
+    userId: string,
+  ): Promise<{ orderId: string; formHtml?: string }> {
     const response = await fetch("/api/payment/alipay/create", {
       method: "POST",
       headers: {
@@ -204,19 +124,17 @@ class AlipayAdapter implements PaymentAdapter {
     });
 
     if (!response.ok) {
-      throw new Error("创建支付宝订单失败");
+      throw new Error("Failed to create Alipay order");
     }
 
     const data = await response.json();
-
     return {
       orderId: data.orderId,
-      formHtml: data.formHtml, // 支付宝返回 HTML 表单
+      formHtml: data.formHtml,
     };
   }
 
-  async verifyPayment(params: any): Promise<PaymentResult> {
-    // 验证支付宝回调签名
+  async verifyPayment(params: Record<string, unknown>): Promise<PaymentResult> {
     const response = await fetch("/api/payment/alipay/verify", {
       method: "POST",
       headers: {
@@ -228,13 +146,12 @@ class AlipayAdapter implements PaymentAdapter {
     if (!response.ok) {
       return {
         success: false,
-        orderId: params.out_trade_no || "",
-        error: "验证失败",
+        orderId: String(params.out_trade_no || ""),
+        error: "Failed to verify Alipay payment",
       };
     }
 
     const data = await response.json();
-
     return {
       success: data.verified,
       orderId: data.orderId,
@@ -243,19 +160,16 @@ class AlipayAdapter implements PaymentAdapter {
   }
 
   async queryOrder(orderId: string): Promise<PaymentOrder> {
-    const response = await fetch(
-      `/api/payment/alipay/query?orderId=${orderId}`
-    );
-
+    const response = await fetch(`/api/payment/alipay/query?orderId=${orderId}`);
     if (!response.ok) {
-      throw new Error("查询订单失败");
+      throw new Error("Failed to query Alipay order");
     }
 
-    return await response.json();
+    return response.json();
   }
 
   async cancelOrder(orderId: string): Promise<void> {
-    await fetch(`/api/payment/alipay/cancel`, {
+    await fetch("/api/payment/alipay/cancel", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -265,58 +179,42 @@ class AlipayAdapter implements PaymentAdapter {
   }
 }
 
-/**
- * 创建支付适配器实例
- * 根据 DEPLOY_REGION 环境变量自动选择
- */
 export function createPaymentAdapter(): PaymentAdapter {
   if (isChinaRegion()) {
-    console.log("💰 使用支付宝支付（中国版）");
     return new AlipayAdapter();
-  } else {
-    console.log("💰 使用 PayPal 支付（国际版）");
-    return new PayPalAdapter();
   }
+
+  return new PayPalAdapter();
 }
 
-/**
- * 全局支付实例（单例模式）
- */
 let paymentInstance: PaymentAdapter | null = null;
 
-/**
- * 获取支付实例
- */
 export function getPayment(): PaymentAdapter {
   if (!paymentInstance) {
     paymentInstance = createPaymentAdapter();
   }
+
   return paymentInstance;
 }
 
-/**
- * 获取支付提供商名称
- */
 export function getPaymentProviderName(): string {
   return RegionConfig.payment.primary;
 }
 
-/**
- * 获取支付货币
- */
 export function getPaymentCurrency(): string {
   return isChinaRegion() ? "CNY" : "USD";
 }
 
-/**
- * 格式化金额显示
- */
-export function formatAmount(amount: number): string {
-  const currency = getPaymentCurrency();
+export function getPayPalCheckoutBaseUrl(): string {
+  return getPayPalEnvironment() === "production"
+    ? "https://www.paypal.com"
+    : "https://www.sandbox.paypal.com";
+}
 
-  if (currency === "CNY") {
-    return `¥${amount.toFixed(2)}`;
-  } else {
-    return `$${amount.toFixed(2)}`;
+export function formatAmount(amount: number, currency = getPaymentCurrency()): string {
+  if (currency.toUpperCase() === "CNY") {
+    return `CNY ${amount.toFixed(2)}`;
   }
+
+  return `$${amount.toFixed(2)}`;
 }

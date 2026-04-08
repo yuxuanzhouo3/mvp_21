@@ -8,11 +8,14 @@ import { AppProvider } from "@/components/app-context";
 import { LanguageProvider } from "@/components/language-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { UserProvider } from "@/components/user-context";
+import { assertProductionJwtConfiguration } from "@/lib/auth/jwt";
 import {
   getAppDisplayName,
   getDefaultLanguage,
 } from "@/lib/config/deployment.config";
 import "./globals.css";
+
+assertProductionJwtConfiguration();
 
 const appName = getAppDisplayName();
 const defaultLanguage = getDefaultLanguage();

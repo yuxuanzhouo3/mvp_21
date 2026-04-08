@@ -9,12 +9,21 @@ const envSchema = z.object({
   APP_NAME: z.string().min(1).default("MornContract"),
   APP_REGION: z.enum(["CN", "INTL"]).optional(),
   NEXT_PUBLIC_APP_REGION: z.enum(["CN", "INTL"]).optional(),
+  NEXT_PUBLIC_DEPLOYMENT_REGION: z.enum(["CN", "INTL"]).optional(),
   APP_URL: z.string().url().optional(),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
+  JWT_SECRET: z.string().min(1).optional(),
+  NEXT_PUBLIC_WECHAT_CLOUDBASE_ID: z.string().min(1).optional(),
+  CLOUDBASE_SECRET_ID: z.string().min(1).optional(),
+  CLOUDBASE_SECRET_KEY: z.string().min(1).optional(),
+  NEXT_PUBLIC_WECHAT_APP_ID: z.string().min(1).optional(),
+  WECHAT_APP_ID: z.string().min(1).optional(),
+  WECHAT_APP_SECRET: z.string().min(1).optional(),
 
   // Supabase配置
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1).optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
 
   // Stripe配置
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z
@@ -38,12 +47,26 @@ const envSchema = z.object({
   PAYPAL_CLIENT_SECRET: z.string().optional(),
   PAYPAL_WEBHOOK_ID: z.string().optional(),
   PAYPAL_MODE: z.enum(["sandbox", "live"]).default("sandbox"),
+  PAYPAL_ENVIRONMENT: z.enum(["sandbox", "live", "production"]).optional(),
 
   // PayPal计划ID
   PAYPAL_PRO_MONTHLY_PLAN_ID: z.string().optional(),
   PAYPAL_PRO_ANNUAL_PLAN_ID: z.string().optional(),
   PAYPAL_TEAM_MONTHLY_PLAN_ID: z.string().optional(),
   PAYPAL_TEAM_ANNUAL_PLAN_ID: z.string().optional(),
+  ALIPAY_APP_ID: z.string().optional(),
+  ALIPAY_PRIVATE_KEY: z.string().optional(),
+  ALIPAY_PUBLIC_KEY: z.string().optional(),
+  ALIPAY_ALIPAY_PUBLIC_KEY: z.string().optional(),
+  ALIPAY_APP_CERT: z.string().optional(),
+  ALIPAY_ALIPAY_PUBLIC_CERT: z.string().optional(),
+  ALIPAY_ALIPAY_ROOT_CERT: z.string().optional(),
+  ALIPAY_CERT_MODE: z.string().optional(),
+  WECHAT_PAY_MCH_ID: z.string().optional(),
+  WECHAT_PAY_API_V3_KEY: z.string().optional(),
+  WECHAT_PAY_API_KEY_V3: z.string().optional(),
+  WECHAT_PAY_SERIAL_NO: z.string().optional(),
+  WECHAT_PAY_PRIVATE_KEY: z.string().optional(),
 
   // AI提供商配置
   OPENAI_API_KEY: z.string().regex(/^sk-/).optional(),
@@ -120,6 +143,50 @@ export function validateEnvironment():
           "NEXT_PUBLIC_SUPABASE_ANON_KEY: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is INTL"
         );
       }
+
+      if (!envData.SUPABASE_SERVICE_ROLE_KEY) {
+        conditionalErrors.push(
+          "SUPABASE_SERVICE_ROLE_KEY: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is INTL"
+        );
+      }
+    }
+
+    if (region === "CN") {
+      if (!envData.NEXT_PUBLIC_WECHAT_CLOUDBASE_ID) {
+        conditionalErrors.push(
+          "NEXT_PUBLIC_WECHAT_CLOUDBASE_ID: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+        );
+      }
+
+      if (!envData.CLOUDBASE_SECRET_ID) {
+        conditionalErrors.push(
+          "CLOUDBASE_SECRET_ID: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+        );
+      }
+
+      if (!envData.CLOUDBASE_SECRET_KEY) {
+        conditionalErrors.push(
+          "CLOUDBASE_SECRET_KEY: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+        );
+      }
+    }
+
+    if (
+      region === "CN" &&
+      envData.NODE_ENV === "production" &&
+      !envData.JWT_SECRET?.trim()
+    ) {
+      conditionalErrors.push(
+        "JWT_SECRET: Required in production when APP_REGION/NEXT_PUBLIC_APP_REGION resolves to CN"
+      );
+    }
+
+    const wechatPayKey =
+      envData.WECHAT_PAY_API_V3_KEY || envData.WECHAT_PAY_API_KEY_V3;
+    if (wechatPayKey && wechatPayKey.trim().length !== 32) {
+      conditionalErrors.push(
+        "WECHAT_PAY_API_V3_KEY: When provided, it must contain exactly 32 characters"
+      );
     }
 
     if (conditionalErrors.length > 0) {

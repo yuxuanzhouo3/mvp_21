@@ -1,361 +1,564 @@
-/**
- * ContractHub AI 合同服务 - 专家版
- * 核心功能：专家角色分析、专业合同生成
- * 支持：OpenAI (国际) / 通义千问 (国内)
- */
-/* eslint-disable react-hooks/rules-of-hooks */
 
-import OpenAI from 'openai';
+import OpenAI from "openai";
+
+import { isChinaRegion } from "@/lib/config/region";
 import {
+  getDashScopeBaseUrl,
+  getOpenAIModel,
+  getQwenModel,
+} from "@/lib/config/runtime-env";
+import type {
   AIAnalysisResult,
-  ContractContent,
   AnalyzeConversationRequest,
-  GenerateContractRequest,
+  ContractContent,
   ContractType,
-} from './types';
+  GenerateContractRequest,
+  KeyTerm,
+  MissingInfo,
+  PartyInfo,
+  RiskAlert,
+  RiskLevel,
+} from "./types";
 import {
-  ANALYZE_CONVERSATION_PROMPT,
-  ANALYZE_CONVERSATION_SYSTEM,
   generateAnalyzePrompt,
   generateAnalyzeSystemPrompt,
-  PRE_ANALYZE_PROMPT,
-} from './prompts/analyze';
+  generatePreAnalyzePrompt,
+  generatePreAnalyzeSystemPrompt,
+  type PromptLanguage as AnalyzePromptLanguage,
+} from "./prompts/analyze";
 import {
-  GENERATE_CONTRACT_PROMPT,
-  GENERATE_CONTRACT_SYSTEM,
-  CONTRACT_TYPE_NAMES,
   generateContractPrompt,
   generateContractSystemPrompt,
-} from './prompts/generate';
+  getContractTypeDisplayName,
+  type PromptLanguage as GeneratePromptLanguage,
+} from "./prompts/generate";
 import {
-  getExpertByContractType,
   ALL_EXPERTS,
-  ExpertRole,
-  LABOR_LAW_EXPERT,
   BUSINESS_CONTRACT_EXPERT,
   FREELANCE_EXPERT,
+  getExpertByContractType,
+  LABOR_LAW_EXPERT,
   TECH_CONTRACT_EXPERT,
-} from './prompts/experts';
+} from "./prompts/experts";
 
-// 判断是否使用通义千问
-function useQwen(): boolean {
-  return !!process.env.DASHSCOPE_API_KEY;
+type AILanguage = AnalyzePromptLanguage & GeneratePromptLanguage;
+type AIProvider = "dashscope" | "openai";
+
+function getDefaultLanguage(): AILanguage {
+  return isChinaRegion() ? "zh" : "en";
 }
 
-// 获取 AI 客户端（兼容 OpenAI 和通义千问）
+function resolveLanguage(input?: "zh" | "en"): AILanguage {
+  return input === "zh" || input === "en" ? input : getDefaultLanguage();
+}
+
+function hasDashScope() {
+  return Boolean(process.env.DASHSCOPE_API_KEY);
+}
+
+function hasOpenAI() {
+  return Boolean(process.env.OPENAI_API_KEY);
+}
+
+function getPreferredProvider(): AIProvider {
+  if (isChinaRegion()) {
+    if (hasDashScope()) return "dashscope";
+    if (hasOpenAI()) return "openai";
+  } else {
+    if (hasOpenAI()) return "openai";
+    if (hasDashScope()) return "dashscope";
+  }
+
+  throw new Error("AI_PROVIDER_NOT_CONFIGURED");
+}
+
 function getAIClient(): OpenAI {
-  if (useQwen()) {
-    const apiKey = process.env.DASHSCOPE_API_KEY;
-    if (!apiKey) {
-      throw new Error('DASHSCOPE_API_KEY is not configured');
-    }
+  const provider = getPreferredProvider();
+
+  if (provider === "dashscope") {
     return new OpenAI({
-      apiKey,
-      baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      apiKey: process.env.DASHSCOPE_API_KEY,
+      baseURL: getDashScopeBaseUrl(),
     });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY is not configured');
-  }
-  return new OpenAI({ apiKey });
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
-// 获取使用的模型
 function getModel(): string {
-  if (useQwen()) {
-    return process.env.QWEN_MODEL || 'qwen-plus'; // 使用更强的模型以获得更专业的输出
-  }
-  return process.env.OPENAI_MODEL || 'gpt-4';
+  return getPreferredProvider() === "dashscope" ? getQwenModel() : getOpenAIModel();
 }
 
-/**
- * 预分析：快速判断合同类型以选择正确的专家
- */
-async function preAnalyze(content: string): Promise<{
-  contractType: string;
-  scenario: string;
-}> {
-  const client = getAIClient();
-  const model = getModel();
+function normalizeContractType(contractType: unknown): ContractType | "custom" {
+  const raw = typeof contractType === "string" ? contractType.trim().toLowerCase() : "";
 
-  const prompt = PRE_ANALYZE_PROMPT.replace('{conversation}', content);
+  switch (raw) {
+    case "labor":
+    case "service":
+    case "cooperation":
+    case "nda":
+    case "freelance":
+    case "tech":
+    case "software":
+    case "custom":
+      return raw;
+    case "development":
+    case "outsourcing":
+      return "tech";
+    default:
+      return "custom";
+  }
+}
 
-  try {
-    const response = await client.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: '你是一位经验丰富的法律顾问，请快速判断对话内容。输出JSON格式。' },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.2,
-      response_format: { type: 'json_object' },
-      max_tokens: 500,
+function normalizeRiskLevel(value: unknown): RiskLevel {
+  return value === "high" || value === "medium" || value === "low" ? value : "medium";
+}
+
+function normalizeString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeBoolean(value: unknown) {
+  return value === true;
+}
+
+function normalizeNumber(value: unknown, fallback = 0) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function normalizeParty(value: unknown): PartyInfo {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { name: "", role: "", company: "", position: "", contact: "", identified: false };
+  }
+
+  const record = value as Record<string, unknown>;
+  return {
+    name: normalizeString(record.name),
+    role: normalizeString(record.role),
+    company: normalizeString(record.company),
+    position: normalizeString(record.position),
+    contact: normalizeString(record.contact),
+    idNumber: normalizeString(record.idNumber),
+    identified: normalizeBoolean(record.identified) || Boolean(record.name || record.company),
+  };
+}
+
+function normalizeKeyTerms(value: unknown): KeyTerm[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return null;
+      }
+
+      const record = item as Record<string, unknown>;
+      const label = normalizeString(record.label) || normalizeString(record.type) || "Key Term";
+      const normalized: KeyTerm = {
+        type: normalizeString(record.type) || "other",
+        label,
+        value: normalizeString(record.value),
+        source: normalizeString(record.source),
+        confidence: Math.max(0, Math.min(1, normalizeNumber(record.confidence, 0.75))),
+      };
+
+      const riskLevel = normalizeString(record.riskLevel);
+      if (riskLevel) {
+        normalized.riskLevel = normalizeRiskLevel(riskLevel);
+      }
+
+      const riskNote = normalizeString(record.riskNote);
+      if (riskNote) {
+        normalized.riskNote = riskNote;
+      }
+
+      const suggestion = normalizeString(record.suggestion);
+      if (suggestion) {
+        normalized.suggestion = suggestion;
+      }
+
+      return normalized;
+    })
+    .filter((item): item is KeyTerm => Boolean(item && (item.label || item.value)));
+}
+
+function normalizeRiskAlerts(value: unknown): RiskAlert[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const alerts = value.map((item): RiskAlert | null => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return null;
+      }
+
+      const record = item as Record<string, unknown>;
+      const issue = normalizeString(record.issue);
+      const suggestion = normalizeString(record.suggestion);
+      if (!issue && !suggestion) {
+        return null;
+      }
+
+      return {
+        severity: normalizeRiskLevel(record.severity),
+        issue,
+        impact: normalizeString(record.impact) || undefined,
+        suggestion,
+      } satisfies RiskAlert;
     });
 
-    const result = JSON.parse(response.choices[0]?.message?.content || '{}');
-    return {
-      contractType: result.contractType || 'custom',
-      scenario: result.scenario || '未知场景',
-    };
-  } catch {
-    return { contractType: 'custom', scenario: '未知场景' };
-  }
+  return alerts.filter((item): item is RiskAlert => item !== null);
 }
 
-/**
- * 分析对话内容 - 专家版
- * 使用专业法律顾问角色进行深度分析
- */
-export async function analyzeConversation(
-  request: AnalyzeConversationRequest
-): Promise<AIAnalysisResult> {
-  const client = getAIClient();
-  const model = getModel();
+function normalizeMissingInfo(value: unknown): MissingInfo[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
 
-  // 第一步：预分析确定合同类型
-  const { contractType } = await preAnalyze(request.content);
-  console.log(`📋 识别合同类型: ${contractType}`);
+  const missingInfo = value.map((item): MissingInfo | null => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return null;
+      }
 
-  // 第二步：获取对应专家
-  const expert = getExpertByContractType(contractType);
-  console.log(`👨‍💼 分配专家: ${expert.name}（${expert.title}）`);
+      const record = item as Record<string, unknown>;
+      const name = normalizeString(record.item);
+      if (!name) {
+        return null;
+      }
 
-  // 第三步：使用专家进行深度分析
-  const userPrompt = generateAnalyzePrompt(expert, request.content);
-  const systemPrompt = generateAnalyzeSystemPrompt(expert);
-
-  try {
-    const response = await client.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.3,
-      response_format: { type: 'json_object' },
-      max_tokens: 3000,
+      return {
+        item: name,
+        importance: normalizeRiskLevel(record.importance),
+        defaultSuggestion: normalizeString(record.defaultSuggestion) || undefined,
+      } satisfies MissingInfo;
     });
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('AI 返回内容为空');
-    }
-
-    // 解析 JSON 响应
-    const result = JSON.parse(content);
-
-    // 转换为标准格式（兼容新旧格式）
-    const analysisResult: AIAnalysisResult = {
-      contractType: result.contractType || contractType,
-      confidence: result.confidence || 0.8,
-      partyA: result.partyA || { name: '', role: '' },
-      partyB: result.partyB || { name: '', role: '' },
-      keyTerms: (result.keyTerms || []).map((term: any) => ({
-        type: term.category || term.type || 'other',
-        label: term.label,
-        value: term.value,
-        source: term.source,
-        confidence: term.confidence || 0.8,
-        riskLevel: term.riskLevel,
-        suggestion: term.suggestion,
-      })),
-      suggestedTemplate: result.suggestedTemplate,
-      summary: result.summary,
-      // 新增专家分析字段
-      expertAnalysis: result.expertAnalysis,
-      scenario: result.scenario,
-      riskAlerts: result.riskAlerts || [],
-      missingInfo: result.missingInfo || [],
-      professionalAdvice: result.professionalAdvice || [],
-    };
-
-    return analysisResult;
-  } catch (error) {
-    console.error('专家分析失败，降级到基础分析:', error);
-    // 降级到基础分析
-    return analyzeConversationBasic(request);
-  }
+  return missingInfo.filter((item): item is MissingInfo => item !== null);
 }
 
-/**
- * 基础分析（降级方案）
- */
-async function analyzeConversationBasic(
-  request: AnalyzeConversationRequest
-): Promise<AIAnalysisResult> {
-  const client = getAIClient();
-  const model = getModel();
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
 
-  const userPrompt = ANALYZE_CONVERSATION_PROMPT.replace(
-    '{conversation}',
-    request.content
-  );
+  return value
+    .map((item) => normalizeString(item))
+    .filter(Boolean)
+    .slice(0, 10);
+}
 
+function normalizeJsonResponse(content: string) {
+  const trimmed = content.trim();
+  const fenced = trimmed.replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
+  const match = fenced.match(/\{[\s\S]*\}/);
+  return JSON.parse(match ? match[0] : fenced) as Record<string, any>;
+}
+
+async function requestJsonCompletion(
+  client: OpenAI,
+  model: string,
+  systemPrompt: string,
+  userPrompt: string,
+  temperature: number,
+  maxTokens: number,
+) {
   const response = await client.chat.completions.create({
     model,
+    temperature,
+    response_format: { type: "json_object" },
+    max_tokens: maxTokens,
     messages: [
-      { role: 'system', content: ANALYZE_CONVERSATION_SYSTEM },
-      { role: 'user', content: userPrompt },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
     ],
-    temperature: 0.3,
-    response_format: { type: 'json_object' },
   });
 
   const content = response.choices[0]?.message?.content;
   if (!content) {
-    throw new Error('AI 返回内容为空');
+    throw new Error("AI_EMPTY_RESPONSE");
   }
 
-  return JSON.parse(content) as AIAnalysisResult;
+  return normalizeJsonResponse(content);
 }
 
-/**
- * 根据分析结果生成合同 - 专家版
- */
-export async function generateContract(
-  request: GenerateContractRequest
-): Promise<ContractContent> {
+async function preAnalyze(content: string, language: AILanguage) {
+  const client = getAIClient();
+  const model = getModel();
+  const result = await requestJsonCompletion(
+    client,
+    model,
+    generatePreAnalyzeSystemPrompt(language),
+    generatePreAnalyzePrompt(content, language),
+    0.1,
+    800,
+  );
+
+  return {
+    contractType: normalizeContractType(result.contractType),
+    scenario: normalizeString(result.scenario),
+  };
+}
+
+function buildFallbackSummary(language: AILanguage, contractType: string, keyTerms: KeyTerm[]) {
+  const contractLabel = getContractTypeDisplayName(contractType, language);
+  const snippets = keyTerms
+    .slice(0, 3)
+    .map((item) => `${item.label}: ${item.value}`)
+    .filter(Boolean)
+    .join(language === "zh" ? "；" : "; ");
+
+  if (!snippets) {
+    return language === "zh"
+      ? `已识别合同类型：${contractLabel}。`
+      : `Detected contract type: ${contractLabel}.`;
+  }
+
+  return language === "zh"
+    ? `已识别合同类型：${contractLabel}；${snippets}`
+    : `Detected contract type: ${contractLabel}; ${snippets}`;
+}
+
+function getFallbackDisclaimer(language: AILanguage) {
+  return language === "zh"
+    ? "本合同由 MornContract 基于 AI 辅助生成，签署前请结合实际业务与法律要求进一步审核。"
+    : "This contract was generated with AI assistance by MornContract. Please review it against your actual transaction and legal requirements before signing.";
+}
+
+export async function analyzeConversation(
+  request: AnalyzeConversationRequest,
+): Promise<AIAnalysisResult> {
+  const language = resolveLanguage(request.language);
   const client = getAIClient();
   const model = getModel();
 
-  // 获取合同类型
-  const contractType = request.analysisResult.contractType || 'custom';
-  const contractTypeName = CONTRACT_TYPE_NAMES[contractType] || '合同';
-
-  // 获取对应专家
+  const { contractType } = await preAnalyze(request.content, language);
   const expert = getExpertByContractType(contractType);
-  console.log(`📝 ${expert.name} 正在生成 ${contractTypeName}...`);
 
-  // 使用专家生成合同
-  const basePrompt = generateContractPrompt(
+  const parsed = await requestJsonCompletion(
+    client,
+    model,
+    generateAnalyzeSystemPrompt(expert, language),
+    generateAnalyzePrompt(expert, request.content, language),
+    0.2,
+    3200,
+  );
+
+  const normalizedType = normalizeContractType(parsed.contractType || contractType);
+  const keyTerms = normalizeKeyTerms(parsed.keyTerms);
+
+  return {
+    contractType: normalizedType,
+    confidence: Math.max(0, Math.min(1, normalizeNumber(parsed.confidence, 0.8))),
+    partyA: normalizeParty(parsed.partyA),
+    partyB: normalizeParty(parsed.partyB),
+    keyTerms,
+    suggestedTemplate: normalizeString(parsed.suggestedTemplate) || undefined,
+    summary:
+      normalizeString(parsed.summary) || buildFallbackSummary(language, normalizedType, keyTerms),
+    expertAnalysis:
+      parsed.expertAnalysis && typeof parsed.expertAnalysis === "object"
+        ? {
+            expertName: normalizeString(parsed.expertAnalysis.expertName) || expert.name,
+            expertTitle: normalizeString(parsed.expertAnalysis.expertTitle) || expert.title,
+            analysisDate:
+              normalizeString(parsed.expertAnalysis.analysisDate) || new Date().toISOString(),
+            overallAssessment:
+              normalizeString(parsed.expertAnalysis.overallAssessment) ||
+              (language === "zh" ? "已完成合同事实与风险分析。" : "Contract facts and risks analyzed."),
+          }
+        : {
+            expertName: expert.name,
+            expertTitle: expert.title,
+            analysisDate: new Date().toISOString(),
+            overallAssessment:
+              language === "zh" ? "已完成合同事实与风险分析。" : "Contract facts and risks analyzed.",
+          },
+    scenario:
+      parsed.scenario && typeof parsed.scenario === "object"
+        ? {
+            type: normalizeString(parsed.scenario.type),
+            description: normalizeString(parsed.scenario.description),
+            negotiationStatus: normalizeString(parsed.scenario.negotiationStatus) || undefined,
+            powerBalance: normalizeString(parsed.scenario.powerBalance) || undefined,
+          }
+        : undefined,
+    riskAlerts: normalizeRiskAlerts(parsed.riskAlerts),
+    missingInfo: normalizeMissingInfo(parsed.missingInfo),
+    professionalAdvice: normalizeStringArray(parsed.professionalAdvice),
+  };
+}
+
+function buildDefaultSections(language: AILanguage, contractType: string) {
+  const title = getContractTypeDisplayName(contractType, language);
+
+  if (language === "zh") {
+    return [
+      {
+        id: "section-1",
+        title: `第一条 ${title}双方信息`,
+        content: "甲乙双方的名称、地址、联系人等基础信息见合同首页或待补充信息。",
+        order: 1,
+        editable: true,
+      },
+      {
+        id: "section-2",
+        title: "第二条 合作内容",
+        content: "双方应按已确认的业务安排履行各自义务，具体服务范围与交付要求以本合同约定为准。",
+        order: 2,
+        editable: true,
+      },
+      {
+        id: "section-3",
+        title: "第三条 价款与支付",
+        content: "合同价款、支付节点、开票与付款条件以双方确认的商务条款为准。",
+        order: 3,
+        editable: true,
+      },
+    ];
+  }
+
+  return [
+    {
+      id: "section-1",
+      title: "1. Parties",
+      content: "The parties' legal names, addresses, and contact details should be completed in the final agreement.",
+      order: 1,
+      editable: true,
+    },
+    {
+      id: "section-2",
+      title: "2. Scope",
+      content: "Each party shall perform its obligations in accordance with the agreed business arrangement and the scope stated in this agreement.",
+      order: 2,
+      editable: true,
+    },
+    {
+      id: "section-3",
+      title: "3. Fees and Payment",
+      content: "Fees, payment milestones, invoicing requirements, and payment conditions shall follow the commercial terms agreed by the parties.",
+      order: 3,
+      editable: true,
+    },
+  ];
+}
+
+export async function generateContract(
+  request: GenerateContractRequest,
+): Promise<ContractContent> {
+  const language = resolveLanguage(request.language);
+  const client = getAIClient();
+  const model = getModel();
+
+  const contractType = normalizeContractType(request.analysisResult.contractType);
+  const expert = getExpertByContractType(contractType);
+  const prompt = generateContractPrompt(
     expert,
     JSON.stringify(request.analysisResult, null, 2),
-    contractType
+    contractType,
+    language,
   );
-  const templatePrompt =
-    request.templateContent && request.templateContent.trim()
-      ? `\n\n## 模板库参考\n当前用户选择了模板库中的模板，请在生成结果时优先吸收它的结构、条款和表述方式，并与分析结果保持一致。\n模板名称：${request.templateName || contractTypeName}\n模板版本：${request.templateVersion || 1}\n模板正文：\n${request.templateContent}\n\n如果模板内容与分析结果冲突，以分析结果中的真实交易事实为准。`
-      : "";
-  const userPrompt = `${basePrompt}${templatePrompt}`;
-  const systemPrompt = generateContractSystemPrompt(expert);
 
-  try {
-    const response = await client.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.4,
-      response_format: { type: 'json_object' },
-      max_tokens: 6000, // 专业合同内容较长
-    });
+  const templatePrompt = request.templateContent?.trim()
+    ? language === "zh"
+      ? `\n\n补充要求：请优先参考以下模板的结构与表述，但不得违背分析结果中的真实交易事实。\n模板名称：${request.templateName || getContractTypeDisplayName(contractType, language)}\n模板版本：${request.templateVersion || 1}\n模板正文：\n${request.templateContent}`
+      : `\n\nAdditional instruction: Prefer the structure and drafting style of the template below, but do not contradict the actual transaction facts in the analysis result.\nTemplate name: ${request.templateName || getContractTypeDisplayName(contractType, language)}\nTemplate version: ${request.templateVersion || 1}\nTemplate body:\n${request.templateContent}`
+    : "";
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('AI 返回内容为空');
-    }
-
-    // 解析 JSON 响应
-    const result = JSON.parse(content);
-
-    // 转换为标准格式
-    const contractContent: ContractContent = {
-      title: result.title || contractTypeName,
-      contractType: contractType as ContractType,
-      legalBasis: result.legalBasis,
-      generatedBy: result.generatedBy || {
-        expertName: expert.name,
-        expertTitle: expert.title,
-        generatedAt: new Date().toISOString(),
-      },
-      sections: (result.sections || []).map((section: any, index: number) => ({
-        id: section.id || `section-${index + 1}`,
-        title: section.title,
-        content: section.content,
-        order: section.order || index + 1,
-        editable: section.editable !== false,
-        tips: section.tips,
-      })),
-      disclaimer: result.disclaimer ||
-        '**重要声明**\n\n本合同由ContractHub平台基于AI技术辅助生成，仅供参考。签署前请仔细审核所有条款，如有必要请咨询专业律师。合同双方应在充分理解条款内容后签署。平台不对合同内容的法律效力及执行后果承担责任。',
-      signature: result.signature || {
-        partyA: { name: '【待填写】', title: '甲方（盖章）', date: '【待填写】' },
-        partyB: { name: '【待填写】', title: '乙方（签字）', date: '【待填写】' },
-      },
-      appendices: result.appendices,
-    };
-
-    return contractContent;
-  } catch (error) {
-    console.error('专家生成合同失败，降级到基础生成:', error);
-    return generateContractBasic(request);
-  }
-}
-
-/**
- * 基础合同生成（降级方案）
- */
-async function generateContractBasic(
-  request: GenerateContractRequest
-): Promise<ContractContent> {
-  const client = getAIClient();
-  const model = getModel();
-
-  const contractTypeName =
-    CONTRACT_TYPE_NAMES[request.analysisResult.contractType] || '合同';
-
-  const userPrompt = GENERATE_CONTRACT_PROMPT
-    .replace('{contractType}', contractTypeName)
-    .replace('{analysisResult}', JSON.stringify(request.analysisResult, null, 2));
-
-  const response = await client.chat.completions.create({
+  const parsed = await requestJsonCompletion(
+    client,
     model,
-    messages: [
-      { role: 'system', content: GENERATE_CONTRACT_SYSTEM },
-      { role: 'user', content: userPrompt },
-    ],
-    temperature: 0.5,
-    response_format: { type: 'json_object' },
-    max_tokens: 4000,
-  });
+    generateContractSystemPrompt(expert, language),
+    `${prompt}${templatePrompt}`,
+    0.35,
+    6500,
+  );
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error('AI 返回内容为空');
-  }
+  const title =
+    normalizeString(parsed.title) || getContractTypeDisplayName(contractType, language);
 
-  const result = JSON.parse(content) as ContractContent;
-  result.contractType = request.analysisResult.contractType as ContractType;
+  const sections = Array.isArray(parsed.sections)
+    ? parsed.sections
+        .map((section: any, index: number) => ({
+          id: normalizeString(section?.id) || `section-${index + 1}`,
+          title:
+            normalizeString(section?.title) ||
+            (language === "zh" ? `第${index + 1}条 条款` : `${index + 1}. Clause`),
+          content: normalizeString(section?.content),
+          order:
+            typeof section?.order === "number" && Number.isFinite(section.order)
+              ? section.order
+              : index + 1,
+          editable: section?.editable !== false,
+          tips: normalizeString(section?.tips) || undefined,
+        }))
+        .filter((section) => section.content || section.title)
+    : [];
 
-  return result;
+  return {
+    title,
+    contractType,
+    legalBasis: normalizeString(parsed.legalBasis) || undefined,
+    generatedBy: {
+      expertName: normalizeString(parsed.generatedBy?.expertName) || expert.name,
+      expertTitle: normalizeString(parsed.generatedBy?.expertTitle) || expert.title,
+      generatedAt:
+        normalizeString(parsed.generatedBy?.generatedAt) || new Date().toISOString(),
+    },
+    contractNumber: normalizeString(parsed.contractNumber) || undefined,
+    sections: sections.length > 0 ? sections : buildDefaultSections(language, contractType),
+    disclaimer: normalizeString(parsed.disclaimer) || getFallbackDisclaimer(language),
+    signature: {
+      partyA: {
+        name:
+          normalizeString(parsed.signature?.partyA?.name) ||
+          (language === "zh" ? "【待补充：甲方名称】" : "[To be completed: Party A name]"),
+        title:
+          normalizeString(parsed.signature?.partyA?.title) ||
+          (language === "zh" ? "甲方（盖章）" : "Party A (Signature / Seal)"),
+        representative: normalizeString(parsed.signature?.partyA?.representative) || undefined,
+        idNumber: normalizeString(parsed.signature?.partyA?.idNumber) || undefined,
+        date: normalizeString(parsed.signature?.partyA?.date) || undefined,
+      },
+      partyB: {
+        name:
+          normalizeString(parsed.signature?.partyB?.name) ||
+          (language === "zh" ? "【待补充：乙方名称】" : "[To be completed: Party B name]"),
+        title:
+          normalizeString(parsed.signature?.partyB?.title) ||
+          (language === "zh" ? "乙方（签字/盖章）" : "Party B (Signature / Seal)"),
+        representative: normalizeString(parsed.signature?.partyB?.representative) || undefined,
+        idNumber: normalizeString(parsed.signature?.partyB?.idNumber) || undefined,
+        date: normalizeString(parsed.signature?.partyB?.date) || undefined,
+      },
+    },
+    appendices: Array.isArray(parsed.appendices)
+      ? parsed.appendices
+          .map((item: any) => ({
+            name: normalizeString(item?.name),
+            description: normalizeString(item?.description) || undefined,
+          }))
+          .filter((item) => item.name)
+      : undefined,
+  };
 }
 
-/**
- * 一站式服务：分析对话并生成合同
- */
 export async function analyzeAndGenerateContract(
   conversationContent: string,
-  sourceType: 'text' | 'screenshot' | 'wechat' | 'feishu' = 'text'
-): Promise<{
-  analysis: AIAnalysisResult;
-  contract: ContractContent;
-  expert: { name: string; title: string };
-}> {
-  // 第一步：专家分析对话
+  sourceType: "text" | "screenshot" | "wechat" | "feishu" = "text",
+) {
+  const language = getDefaultLanguage();
   const analysis = await analyzeConversation({
     content: conversationContent,
     sourceType,
+    language,
   });
 
-  // 获取专家信息
   const expert = getExpertByContractType(analysis.contractType);
-
-  // 第二步：专家生成合同
   const contract = await generateContract({
     analysisResult: analysis,
+    language,
   });
 
   return {
@@ -368,71 +571,78 @@ export async function analyzeAndGenerateContract(
   };
 }
 
-/**
- * 获取支持的合同类型列表
- */
-export function getSupportedContractTypes(): Array<{
-  value: ContractType;
-  label: string;
-  description: string;
-  expert: string;
-}> {
+export function getSupportedContractTypes() {
+  const language = getDefaultLanguage();
+
   return [
     {
-      value: 'labor',
-      label: '劳动合同',
-      description: '用于正式员工入职签署的劳动合同',
+      value: "labor" as ContractType,
+      label: getContractTypeDisplayName("labor", language),
+      description:
+        language === "zh"
+          ? "适用于正式劳动用工关系。"
+          : "Suitable for formal employment relationships.",
       expert: LABOR_LAW_EXPERT.name,
     },
     {
-      value: 'freelance',
-      label: '劳务协议',
-      description: '用于自由职业者、兼职人员的劳务协议',
+      value: "freelance" as ContractType,
+      label: getContractTypeDisplayName("freelance", language),
+      description:
+        language === "zh"
+          ? "适用于自由职业、顾问或独立承包合作。"
+          : "Suitable for freelance, consulting, or independent contractor engagements.",
       expert: FREELANCE_EXPERT.name,
     },
     {
-      value: 'tech',
-      label: '技术开发合同',
-      description: '用于软件开发、技术外包等项目',
+      value: "tech" as ContractType,
+      label: getContractTypeDisplayName("tech", language),
+      description:
+        language === "zh"
+          ? "适用于软件开发、技术实施和外包项目。"
+          : "Suitable for software development, implementation, and outsourcing projects.",
       expert: TECH_CONTRACT_EXPERT.name,
     },
     {
-      value: 'cooperation',
-      label: '合作协议',
-      description: '用于商务合作、项目合作的协议',
+      value: "cooperation" as ContractType,
+      label: getContractTypeDisplayName("cooperation", language),
+      description:
+        language === "zh"
+          ? "适用于项目合作或商业协作安排。"
+          : "Suitable for project cooperation and business collaboration.",
       expert: BUSINESS_CONTRACT_EXPERT.name,
     },
     {
-      value: 'nda',
-      label: '保密协议',
-      description: '用于保护商业机密的保密协议（NDA）',
+      value: "nda" as ContractType,
+      label: getContractTypeDisplayName("nda", language),
+      description:
+        language === "zh"
+          ? "适用于保密义务和信息保护场景。"
+          : "Suitable for confidentiality and information protection scenarios.",
       expert: BUSINESS_CONTRACT_EXPERT.name,
     },
     {
-      value: 'service',
-      label: '服务协议',
-      description: '用于提供各类服务的通用协议',
+      value: "service" as ContractType,
+      label: getContractTypeDisplayName("service", language),
+      description:
+        language === "zh"
+          ? "适用于一般服务提供和项目交付。"
+          : "Suitable for general service delivery and project-based work.",
       expert: BUSINESS_CONTRACT_EXPERT.name,
     },
     {
-      value: 'custom',
-      label: '自定义合同',
-      description: '其他类型的自定义合同',
+      value: "custom" as ContractType,
+      label: getContractTypeDisplayName("custom", language),
+      description:
+        language === "zh"
+          ? "适用于其他自定义合同场景。"
+          : "Suitable for other custom contract scenarios.",
       expert: BUSINESS_CONTRACT_EXPERT.name,
     },
   ];
 }
 
-/**
- * 获取所有专家列表
- */
-export function getAllExperts(): Array<{
-  id: string;
-  name: string;
-  title: string;
-  expertise: string[];
-}> {
-  return ALL_EXPERTS.map(expert => ({
+export function getAllExperts() {
+  return ALL_EXPERTS.map((expert) => ({
     id: expert.id,
     name: expert.name,
     title: expert.title,
@@ -440,14 +650,7 @@ export function getAllExperts(): Array<{
   }));
 }
 
-/**
- * 根据合同类型获取专家信息
- */
-export function getExpertInfo(contractType: string): {
-  name: string;
-  title: string;
-  expertise: string[];
-} {
+export function getExpertInfo(contractType: string) {
   const expert = getExpertByContractType(contractType);
   return {
     name: expert.name,

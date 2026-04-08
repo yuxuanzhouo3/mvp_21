@@ -1,5 +1,4 @@
 import { createClient } from "@supabase/supabase-js";
-import * as jwt from "jsonwebtoken";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -11,6 +10,7 @@ import {
   createRefreshToken,
   verifyRefreshToken,
 } from "@/lib/auth/refresh-token-manager";
+import { signJwt } from "@/lib/auth/jwt";
 import { isChinaRegion } from "@/lib/config/region";
 import { logSecurityEvent } from "@/lib/utils/logger";
 
@@ -49,13 +49,12 @@ async function refreshTokenForChina(
     }
 
     const { userId, email } = tokenResult;
-    const newAccessToken = jwt.sign(
+    const newAccessToken = signJwt(
       {
         userId,
         email,
         region: "CN",
       },
-      process.env.JWT_SECRET || "fallback-secret-key-for-development-only",
       {
         expiresIn: "1h",
       },

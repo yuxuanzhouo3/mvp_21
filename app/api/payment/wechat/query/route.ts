@@ -4,6 +4,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WechatProviderV3 } from '@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3';
 import { getDatabase } from '@/lib/cloudbase/cloudbase-service';
+import {
+  getAppUrl,
+  getWechatPayApiV3Key,
+  getWechatPayAppId,
+} from '@/lib/config/runtime-env';
 import { z } from 'zod';
 
 export const runtime = 'nodejs';
@@ -40,12 +45,12 @@ export async function GET(request: NextRequest) {
 
     // 2. 初始化微信支付提供商
     const wechatProvider = new WechatProviderV3({
-      appId: process.env.WECHAT_APP_ID!,
+      appId: getWechatPayAppId(),
       mchId: process.env.WECHAT_PAY_MCH_ID!,
-      apiV3Key: process.env.WECHAT_PAY_API_V3_KEY!,
+      apiV3Key: getWechatPayApiV3Key(),
       privateKey: process.env.WECHAT_PAY_PRIVATE_KEY!,
       serialNo: process.env.WECHAT_PAY_SERIAL_NO!,
-      notifyUrl: `${process.env.APP_URL}/api/payment/webhook/wechat`,
+      notifyUrl: `${getAppUrl()}/api/payment/webhook/wechat`,
     });
 
     // 3. 查询微信支付订单状态

@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
 import { NextRequest } from "next/server";
 
-const mockWebhookProcess = jest.fn();
-const mockWebhookRateLimit = jest.fn();
-const mockConstructEvent = jest.fn();
-const mockLogBusinessEvent = jest.fn();
-const mockLogError = jest.fn();
-const mockLogSecurityEvent = jest.fn();
+const mockWebhookProcess: any = jest.fn();
+const mockWebhookRateLimit: any = jest.fn();
+const mockConstructEvent: any = jest.fn();
+const mockLogBusinessEvent: any = jest.fn();
+const mockLogError: any = jest.fn();
+const mockLogSecurityEvent: any = jest.fn();
 
 jest.mock("@/lib/payment/webhook-handler", () => ({
   WebhookHandler: {

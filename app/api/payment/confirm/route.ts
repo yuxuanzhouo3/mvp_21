@@ -6,6 +6,11 @@ import { StripeProvider } from "@/lib/architecture-modules/layers/third-party/pa
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
 import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
 import {
+  getAppUrl,
+  getWechatPayApiV3Key,
+  getWechatPayAppId,
+} from "@/lib/config/runtime-env";
+import {
   applySubscriptionPaymentSuccess,
   getPaymentRecordById,
   getPaymentRecordForUserByReference,
@@ -76,12 +81,12 @@ async function confirmPaymentWithProvider(
 
   if (method === "wechat") {
     const provider = new WechatProviderV3({
-      appId: process.env.WECHAT_APP_ID!,
+      appId: getWechatPayAppId(),
       mchId: process.env.WECHAT_PAY_MCH_ID!,
-      apiV3Key: process.env.WECHAT_PAY_API_V3_KEY!,
+      apiV3Key: getWechatPayApiV3Key(),
       privateKey: process.env.WECHAT_PAY_PRIVATE_KEY!,
       serialNo: process.env.WECHAT_PAY_SERIAL_NO!,
-      notifyUrl: `${process.env.APP_URL}/api/payment/webhook/wechat`,
+      notifyUrl: `${getAppUrl()}/api/payment/webhook/wechat`,
     });
     const result = await provider.queryOrderByOutTradeNo(reference);
 
@@ -166,6 +171,33 @@ async function handlePaymentConfirm(request: NextRequest) {
         { success: false, error: "Forbidden" },
         { status: 403 },
       );
+    }
+
+    if (payment.status === "completed" && payment.subscription_id) {
+      logBusinessEvent("payment_confirm_idempotent_replay", user.id, {
+        operationId,
+        paymentId: payment.id || payment._id,
+        subscriptionId: payment.subscription_id,
+        transactionId:
+          payment.transaction_id || payment.order_id || payment.out_trade_no,
+      });
+
+      return NextResponse.json({
+        success: true,
+        transactionId:
+          payment.transaction_id || payment.order_id || payment.out_trade_no,
+        amount: payment.amount,
+        currency: payment.currency,
+        subscription: {
+          id: payment.subscription_id,
+          planId:
+            payment.metadata?.planType ||
+            payment.plan_id ||
+            (payment.product_type !== "subscription" ? payment.product_type : undefined),
+          status: "active",
+          billingCycle: payment.billing_cycle || payment.metadata?.billingCycle,
+        },
+      });
     }
 
     const reference =

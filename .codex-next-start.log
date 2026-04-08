@@ -1,0 +1,31 @@
+
+> morncontract@0.1.0 start
+> next start --port 3000
+
+   ▲ Next.js 15.2.4
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.198.1:3000
+
+ ✓ Starting...
+ ✓ Ready in 974ms
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[Auth Client] Using CloudBase auth client
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+📨 [/api/auth] 收到请求，action: signup email: codex.smoke.20260408143949@example.com
+📝 [/api/auth] 处理注册请求
+ [CloudBase Service] 开始注册，邮箱: codex.smoke.20260408143949@example.com
+ [CloudBase Service] 注册成功
+[CloudBase Service] AccessToken generated for signup
+✅ [CloudBase] 初始化环境: contracthub-2go0kvke215f83c1
+✅ [Refresh Token Manager] Refresh token 已保存，tokenId: 1a5f5cee-6a75-49ec-955f-1260e7387e21, userId: 8d2e20b369d5f8360361a5452c5b941d
+[2026-04-08T06:39:50.473Z] WARN: Security Event: register_successful {"type":"security","event":"register_successful","userId":"8d2e20b369d5f8360361a5452c5b941d","ip":"::ffff:127.0.0.1","timestamp":"2026-04-08T06:39:50.473Z","email":"codex.smoke.20260408143949@example.com","fullName":"Codex Smoke","passwordStrength":0,"profileSaved":true}
+无法获取客户端IP，使用默认处理
+ [CloudBase Service] 开始登录，邮箱: codex.smoke.20260408143949@example.com
+ [CloudBase Service] 登录成功
+✅ [Refresh Token Manager] Refresh token 已保存，tokenId: a9957636-f002-4c4b-866c-a0867b6222d7, userId: 8d2e20b369d5f8360361a5452c5b941d
+[2026-04-08T06:39:51.087Z] WARN: Security Event: login_success {"type":"security","event":"login_success","userId":"8d2e20b369d5f8360361a5452c5b941d","ip":"::ffff:127.0.0.1","timestamp":"2026-04-08T06:39:51.087Z","email":"codex.smoke.20260408143949@example.com"}
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理

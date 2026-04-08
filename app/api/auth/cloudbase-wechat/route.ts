@@ -13,6 +13,7 @@ import {
   mergeUserProfile,
   UserProfile,
 } from "@/lib/models/user";
+import { getAppUrl, getWechatOAuthAppId } from "@/lib/config/runtime-env";
 import { z } from "zod";
 
 // 微信登录请求验证schema
@@ -232,8 +233,8 @@ export async function GET(request: NextRequest) {
 
     // 服务端读取：这些变量在编译时被嵌入到 API 路由代码中
     // 客户端需要这些变量时必须调用这个 API 获取
-    const wechatAppId = process.env.NEXT_PUBLIC_WECHAT_APP_ID;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const wechatAppId = getWechatOAuthAppId();
+    const appUrl = getAppUrl();
     const redirectUri = `${appUrl}/auth/callback`;
 
     if (!wechatAppId) {

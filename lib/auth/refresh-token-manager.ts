@@ -5,7 +5,7 @@
  */
 
 import * as crypto from "crypto";
-import * as jwt from "jsonwebtoken";
+import { signJwt, verifyJwt } from "@/lib/auth/jwt";
 import { getCloudBaseApp } from "@/lib/cloudbase/init";
 import { RefreshTokenRecord } from "@/lib/database/cloudbase-schema";
 import { CLOUDBASE_COLLECTIONS } from "@/lib/database/cloudbase-schema";
@@ -44,9 +44,8 @@ export async function createRefreshToken(
     const tokenId = generateUUID();
 
     // 生成 refresh token JWT
-    const refreshToken = jwt.sign(
+    const refreshToken = signJwt(
       { userId, tokenId },
-      process.env.JWT_SECRET || "fallback-secret-key-for-development-only",
       { expiresIn: "7d" }
     );
 
@@ -109,10 +108,7 @@ export async function verifyRefreshToken(
     // 1. 验证 JWT 签名和过期时间
     let payload: any;
     try {
-      payload = jwt.verify(
-        token,
-        process.env.JWT_SECRET || "fallback-secret-key-for-development-only"
-      );
+      payload = verifyJwt(token);
     } catch (error) {
       console.warn("[Refresh Token Manager] JWT 验证失败:", error);
       return {

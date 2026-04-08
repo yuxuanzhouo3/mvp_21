@@ -1,6 +1,7 @@
 ﻿import cloudbase from "@cloudbase/node-sdk";
 import bcrypt from "bcryptjs";
-import * as jwt from "jsonwebtoken";
+import * as crypto from "crypto";
+import { signJwt } from "@/lib/auth/jwt";
 import { createRefreshToken } from "@/lib/auth/refresh-token-manager";
 
 let cachedApp: any = null;
@@ -102,13 +103,12 @@ export async function loginUser(
     const tokenPayload = {
       userId: user._id,
       email: user.email,
-      region: "china",
+      region: "CN",
     };
 
     // ✅ 生成短期 Access Token (1小时)
-    const accessToken = jwt.sign(
+    const accessToken = signJwt(
       tokenPayload,
-      process.env.JWT_SECRET || "fallback-secret-key-for-development-only",
       { expiresIn: "1h" }
     );
 
@@ -198,13 +198,12 @@ export async function signupUser(
     const tokenPayload = {
       userId: result.id,
       email,
-      region: "china",
+      region: "CN",
     };
 
     // ✅ 生成短期 accessToken (1小时)
-    const accessToken = jwt.sign(
+    const accessToken = signJwt(
       tokenPayload,
-      process.env.JWT_SECRET || "fallback-secret-key-for-development-only",
       { expiresIn: "1h" }
     );
 
@@ -260,6 +259,128 @@ export async function signupUser(
 export function getDatabase() {
   const app = initCloudBase();
   return app.database();
+}
+
+export async function loginOrCreatePhoneUser(
+  phone: string,
+  options?: { deviceInfo?: string; ipAddress?: string; userAgent?: string }
+): Promise<{
+  success: boolean;
+  userId?: string;
+  email?: string;
+  name?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  tokenMeta?: { accessTokenExpiresIn: number; refreshTokenExpiresIn: number };
+  error?: string;
+}> {
+  try {
+    const app = initCloudBase();
+    const db = app.database();
+    const usersCollection = db.collection("web_users");
+    const now = new Date().toISOString();
+    const syntheticEmail = `phone_${phone}@local.phone`;
+
+    const existingUserResult = await usersCollection.where({ phone }).limit(1).get();
+    let user = existingUserResult.data?.[0];
+
+    if (!user) {
+      const created = await usersCollection.add({
+        email: syntheticEmail,
+        password: await bcrypt.hash(crypto.randomUUID(), 10),
+        name: `用户${phone.slice(-4)}`,
+        phone,
+        pro: false,
+        subscription_plan: "free",
+        subscription_status: "inactive",
+        region: "china",
+        login_count: 1,
+        last_login_at: now,
+        last_login_ip: options?.ipAddress,
+        created_at: now,
+        updated_at: now,
+      });
+
+      const createdUserResult = await usersCollection.doc(created.id).get();
+      user = createdUserResult.data?.[0] || {
+        _id: created.id,
+        email: syntheticEmail,
+        name: `用户${phone.slice(-4)}`,
+        phone,
+      };
+    } else {
+      if (user.status && user.status !== "active") {
+        return {
+          success: false,
+          error: "账号已被禁用",
+        };
+      }
+
+      await usersCollection.doc(user._id).update({
+        email: user.email || syntheticEmail,
+        last_login_at: now,
+        last_login_ip: options?.ipAddress,
+        login_count: (user.login_count || 0) + 1,
+        updated_at: now,
+      });
+
+      const refreshedUserResult = await usersCollection.doc(user._id).get();
+      user = refreshedUserResult.data?.[0] || {
+        ...user,
+        email: user.email || syntheticEmail,
+        last_login_at: now,
+        last_login_ip: options?.ipAddress,
+        login_count: (user.login_count || 0) + 1,
+        updated_at: now,
+      };
+    }
+
+    const userId = user._id;
+    const email = user.email || syntheticEmail;
+    const accessToken = signJwt(
+      {
+        userId,
+        email,
+        phone,
+        region: "CN",
+      },
+      { expiresIn: "1h" }
+    );
+
+    const refreshTokenRecord = await createRefreshToken({
+      userId,
+      email,
+      deviceInfo: options?.deviceInfo || "phone-login",
+      ipAddress: options?.ipAddress,
+      userAgent: options?.userAgent,
+    });
+
+    if (!refreshTokenRecord) {
+      return {
+        success: false,
+        error: "无法生成 refresh token",
+      };
+    }
+
+    return {
+      success: true,
+      userId,
+      email,
+      name: user.name,
+      accessToken,
+      refreshToken: refreshTokenRecord.refreshToken,
+      tokenMeta: {
+        accessTokenExpiresIn: 3600,
+        refreshTokenExpiresIn: 604800,
+      },
+    };
+  } catch (error: any) {
+    console.error(" [CloudBase Service] 手机号登录失败:", error);
+    return {
+      success: false,
+      error: error.message || "手机号登录失败",
+    };
+  }
 }
 
 export function getCloudBaseApp() {

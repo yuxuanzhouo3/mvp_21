@@ -4,6 +4,11 @@ import { z } from "zod";
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
 import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
 import { isChinaRegion } from "@/lib/config/region";
+import {
+  getAppUrl,
+  getWechatPayApiV3Key,
+  getWechatPayAppId,
+} from "@/lib/config/runtime-env";
 import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
 import {
   applySubscriptionPaymentSuccess,
@@ -80,12 +85,12 @@ export async function GET(request: NextRequest) {
 
     if (paymentRecord.payment_method === "wechat") {
       const wechatProvider = new WechatProviderV3({
-        appId: process.env.WECHAT_APP_ID!,
+        appId: getWechatPayAppId(),
         mchId: process.env.WECHAT_PAY_MCH_ID!,
-        apiV3Key: process.env.WECHAT_PAY_API_V3_KEY!,
+        apiV3Key: getWechatPayApiV3Key(),
         privateKey: process.env.WECHAT_PAY_PRIVATE_KEY!,
         serialNo: process.env.WECHAT_PAY_SERIAL_NO!,
-        notifyUrl: `${process.env.APP_URL}/api/payment/webhook/wechat`,
+        notifyUrl: `${getAppUrl()}/api/payment/webhook/wechat`,
       });
 
       const outTradeNo =

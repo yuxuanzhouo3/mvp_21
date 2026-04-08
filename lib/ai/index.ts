@@ -4,4 +4,4 @@
 
 export * from './types';
 export * from './contract-ai';
-export { CONTRACT_TYPE_NAMES } from './prompts/generate';
+export { CONTRACT_TYPE_NAMES, getContractTypeDisplayName } from './prompts/generate';

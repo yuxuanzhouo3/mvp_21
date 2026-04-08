@@ -14,6 +14,7 @@ import {
 
 import { useLanguage } from "@/components/language-provider";
 import { CreateFlowShell } from "@/components/create/flow-shell";
+import { MobileActionBar } from "@/components/create/mobile-action-bar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -137,7 +138,7 @@ export function CreateContractScreen({
       }
       showSidebarTrigger={showSidebarTrigger}
     >
-      <div className="grid gap-6 xl:grid-cols-[2.2fr_1fr]">
+      <div className="grid gap-4 min-[390px]:gap-5 min-[430px]:gap-6 xl:grid-cols-[2.2fr_1fr]">
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {importMethods.map((method) => {
             const Icon = method.icon;
@@ -170,11 +171,11 @@ export function CreateContractScreen({
                 )}
               >
                 {method.badge && (
-                  <span className="absolute right-3 top-3 rounded-full border border-border bg-background px-2 py-0.5 text-xs text-muted-foreground">
+                  <span className="absolute right-2 top-2 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground min-[390px]:right-3 min-[390px]:top-3 min-[390px]:text-xs">
                     {method.badge}
                   </span>
                 )}
-                <CardHeader>
+                <CardHeader className="p-4 min-[390px]:p-5 min-[430px]:p-6">
                   <div
                     className={cn(
                       "mb-4 flex h-11 w-11 items-center justify-center rounded-lg",
@@ -183,10 +184,12 @@ export function CreateContractScreen({
                   >
                     <Icon className="h-5 w-5" />
                   </div>
-                  <CardTitle className="text-base">{method.title}</CardTitle>
-                  <CardDescription>{method.description}</CardDescription>
+                  <CardTitle className="text-sm min-[390px]:text-base">{method.title}</CardTitle>
+                  <CardDescription className="text-xs min-[390px]:text-sm">
+                    {method.description}
+                  </CardDescription>
                 </CardHeader>
-                <CardContent className="pt-0 text-xs text-muted-foreground">
+                <CardContent className="px-4 pb-4 pt-0 text-[11px] text-muted-foreground min-[390px]:px-5 min-[390px]:pb-5 min-[390px]:text-xs min-[430px]:px-6 min-[430px]:pb-6">
                   {method.available
                     ? isEn
                       ? "Available now"
@@ -202,18 +205,18 @@ export function CreateContractScreen({
 
         <aside>
           <Card className="border-border/70 bg-card/95 xl:sticky xl:top-20">
-            <CardHeader>
-              <CardTitle className="text-base">{isEn ? "Current Selection" : "当前选择"}</CardTitle>
-              <CardDescription>
+            <CardHeader className="p-4 min-[390px]:p-5 min-[430px]:p-6">
+              <CardTitle className="text-sm min-[390px]:text-base">{isEn ? "Current Selection" : "当前选择"}</CardTitle>
+              <CardDescription className="text-xs min-[390px]:text-sm">
                 {isEn ? "Confirm and proceed to the next step." : "确认后进入下一步。"}
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
-                <p className="text-sm font-medium text-foreground">
+            <CardContent className="space-y-4 px-4 pb-4 pt-0 min-[390px]:px-5 min-[390px]:pb-5 min-[430px]:px-6 min-[430px]:pb-6">
+              <div className="rounded-lg border border-border/70 bg-muted/20 p-3 min-[430px]:p-4">
+                <p className="text-sm font-medium text-foreground min-[430px]:text-base">
                   {selectedMethodInfo?.title}
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-1 text-xs text-muted-foreground min-[430px]:text-sm">
                   {selectedMethodInfo?.description}
                 </p>
               </div>
@@ -249,7 +252,7 @@ export function CreateContractScreen({
         </aside>
       </div>
 
-      <div className="mt-6 flex flex-col-reverse gap-3 rounded-xl border border-border/70 bg-card/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-6 hidden flex-col-reverse gap-3 rounded-xl border border-border/70 bg-card/80 p-4 md:flex md:flex-row md:items-center md:justify-between">
         <p className="text-sm text-muted-foreground">
           {isEn ? "Selected:" : "已选择:"}
           <span className="ml-1 font-medium text-foreground">
@@ -266,6 +269,23 @@ export function CreateContractScreen({
           <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
       </div>
+
+      <MobileActionBar innerClassName="justify-between">
+        <p className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground min-[390px]:text-xs min-[430px]:text-sm">
+          {isEn ? "Selected:" : "已选择:"}
+          <span className="ml-1 font-medium text-foreground">
+            {selectedMethodInfo?.title}
+          </span>
+        </p>
+        <Button
+          onClick={handleNext}
+          disabled={!selectedMethodInfo?.available}
+          className="h-10 min-w-24 px-3 text-xs min-[390px]:min-w-28 min-[390px]:text-sm"
+        >
+          {isEn ? "Next" : "下一步"}
+          <ArrowRight className="ml-2 h-4 w-4" />
+        </Button>
+      </MobileActionBar>
     </CreateFlowShell>
   );
 }

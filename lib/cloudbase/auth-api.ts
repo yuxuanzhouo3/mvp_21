@@ -6,7 +6,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import cloudbase from '@cloudbase/node-sdk'
 import bcrypt from 'bcryptjs'
-import * as jwt from 'jsonwebtoken'
+
+import { signJwt } from "@/lib/auth/jwt";
 
 /**
  * 国内用户邮箱注册/登录 API
@@ -105,9 +106,8 @@ export default async function authCnHandler(
         // ✅ 动态设置 Token 有效期：普通用户 30 天，高级会员 90 天
         const expiresIn = newUser.pro ? '90d' : '30d'
 
-        const token = jwt.sign(
+        const token = signJwt(
           tokenPayload,
-          process.env.JWT_SECRET || 'fallback-secret-key-for-development-only',
           { expiresIn: expiresIn }
         )
 
@@ -186,9 +186,8 @@ export default async function authCnHandler(
 
         const expiresIn = user.pro ? '90d' : '30d'
 
-        const token = jwt.sign(
+        const token = signJwt(
           tokenPayload,
-          process.env.JWT_SECRET || 'fallback-secret-key-for-development-only',
           { expiresIn: expiresIn }
         )
 
@@ -258,9 +257,8 @@ export default async function authCnHandler(
 
         const expiresIn = user.pro ? '90d' : '30d'
 
-        const newToken = jwt.sign(
+        const newToken = signJwt(
           tokenPayload,
-          process.env.JWT_SECRET || 'fallback-secret-key-for-development-only',
           { expiresIn: expiresIn }
         )
 

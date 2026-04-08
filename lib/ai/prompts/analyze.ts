@@ -1,220 +1,266 @@
-/**
- * 对话分析 Prompt 模板 - 专家版
- * 由专业法律顾问角色分析用户对话，提取合同关键信息
- */
+﻿import { BUSINESS_CONTRACT_EXPERT, type ExpertRole } from "./experts";
 
-import { getExpertByContractType, ExpertRole } from './experts';
+export type PromptLanguage = "zh" | "en";
 
-// 初步分析：识别合同类型和场景
-export const PRE_ANALYZE_PROMPT = `
-你是一位经验丰富的法律顾问。请快速浏览以下对话内容，判断这可能涉及什么类型的合同。
+const CONTRACT_TYPE_VALUES = "labor|service|cooperation|nda|freelance|tech|software|custom";
 
-## 对话内容
-{conversation}
-
-## 请判断
-1. 这是什么场景？（求职面试/商务洽谈/项目合作/咨询服务等）
-2. 可能需要什么类型的合同？
-3. 对话双方的身份是什么？
-
-只需返回JSON格式：
-\`\`\`json
-{
-  "scenario": "场景描述",
-  "contractType": "labor|service|cooperation|nda|freelance|tech|custom",
-  "partyARole": "甲方角色",
-  "partyBRole": "乙方角色",
-  "keyIssues": ["需要关注的关键问题1", "问题2"]
+function isChinese(language: PromptLanguage) {
+  return language === "zh";
 }
-\`\`\`
-`;
 
-// 专家分析提示词生成器
-export function generateAnalyzePrompt(expert: ExpertRole, conversation: string): string {
-  return `
-${expert.systemPrompt}
+export function generatePreAnalyzePrompt(
+  conversation: string,
+  language: PromptLanguage,
+): string {
+  if (isChinese(language)) {
+    return `请快速判断下面这段对话最可能对应的合同场景与合同类型。
 
----
-
-## 行业知识库
-${expert.industryKnowledge}
-
-## 相关法律依据
-${expert.legalBasis.map(law => `- ${law}`).join('\n')}
-
-## 常见陷阱（务必警惕）
-${expert.commonPitfalls.map(pitfall => `⚠️ ${pitfall}`).join('\n')}
-
----
-
-# 你的任务
-
-请以 ${expert.name}（${expert.title}）的专业视角，分析以下对话内容，提取可用于生成合同的关键信息。
-
-## 对话内容
+对话内容：
 ${conversation}
 
-## 分析要求
+输出要求：
+1. 识别最可能的场景。
+2. 识别最可能的合同类型。
+3. 识别甲乙双方的角色。
+4. 如果是软件开发、外包、系统建设、交付、验收、里程碑付款、源码或部署文档场景，优先判断为 service、tech 或 cooperation，而不是 labor。
+5. 只返回 JSON。
 
-### 1. 场景判断
-首先判断这个对话的真实场景：
-- 这是正式的商务洽谈还是初步意向？
-- 双方的谈判地位如何？
-- 是否存在信息不对称？
-
-### 2. 风险识别
-根据你的专业经验，识别对话中的潜在风险：
-- 有没有明显不合理的条款？
-- 有没有重要信息缺失？
-- 有没有可能引发争议的模糊表述？
-
-### 3. 信息提取
-提取所有可用于合同的关键信息，并标注可信度。
-
-### 4. 专业建议
-基于行业最佳实践，给出具体建议。
-
-## 输出格式
-
-请严格按照以下JSON格式输出：
-
-\`\`\`json
+JSON Schema:
 {
-  "expertAnalysis": {
-    "expertName": "${expert.name}",
-    "expertTitle": "${expert.title}",
-    "analysisDate": "分析日期",
-    "overallAssessment": "整体评估（一句话概括）"
-  },
-  "scenario": {
-    "type": "场景类型",
-    "description": "场景描述",
-    "negotiationStatus": "谈判阶段（初步接触/深入洽谈/基本达成一致）",
-    "powerBalance": "双方地位（平等/甲方强势/乙方强势）"
-  },
-  "contractType": "labor|service|cooperation|nda|freelance|tech|custom",
-  "confidence": 0.0-1.0,
+  "scenario": "场景描述",
+  "contractType": "${CONTRACT_TYPE_VALUES}",
+  "partyARole": "甲方角色",
+  "partyBRole": "乙方角色",
+  "keyIssues": ["关键问题1", "关键问题2"]
+}`;
+  }
+
+  return `Quickly classify the likely contract scenario and contract type for the conversation below.
+
+Conversation:
+${conversation}
+
+Requirements:
+1. Identify the most likely scenario.
+2. Identify the most likely contract type.
+3. Identify Party A and Party B roles.
+4. If this is about outsourcing, software development, implementation, delivery, acceptance, milestones, source code, or deployment documentation, prefer service, tech, or cooperation instead of labor.
+5. Return JSON only.
+
+JSON Schema:
+{
+  "scenario": "scenario summary",
+  "contractType": "${CONTRACT_TYPE_VALUES}",
+  "partyARole": "role of party A",
+  "partyBRole": "role of party B",
+  "keyIssues": ["issue 1", "issue 2"]
+}`;
+}
+
+export function generatePreAnalyzeSystemPrompt(language: PromptLanguage): string {
+  return isChinese(language)
+    ? "你是一名资深合同分析律师。请根据用户对话准确判断合同类型，只输出合法 JSON。"
+    : "You are a senior contracts lawyer. Classify the likely contract type from the conversation and return valid JSON only.";
+}
+
+export function generateAnalyzePrompt(
+  expert: ExpertRole,
+  conversation: string,
+  language: PromptLanguage,
+): string {
+  if (isChinese(language)) {
+    return `请以 ${expert.name}（${expert.title}）的专业视角分析下面的合同相关对话，并提取可用于生成合同草稿的结构化信息。
+
+专家特点：${expert.personality}
+专业方向：${expert.expertise.join("、")}
+关注重点：${expert.industryKnowledge}
+最佳实践：
+${expert.bestPractices.map((item) => `- ${item}`).join("\n")}
+常见风险：
+${expert.commonPitfalls.map((item) => `- ${item}`).join("\n")}
+法律依据：
+${expert.legalBasis.map((item) => `- ${item}`).join("\n")}
+
+对话内容：
+${conversation}
+
+分析要求：
+1. 所有面向用户展示的文本字段必须使用简体中文。
+2. 只提取对话中已经明确出现或可以高度确定的信息，不要臆造事实。
+3. 如果信息不足，请放入 missingInfo，而不是虚构。
+4. keyTerms 的 source 应尽量保留原始表述。
+5. 如果是国内软件开发、外包、实施、交付类项目，优先识别为服务/技术开发类合同。
+6. 返回 JSON，不要使用 Markdown。
+
+JSON Schema:
+{
+  "contractType": "${CONTRACT_TYPE_VALUES}",
+  "confidence": 0.0,
   "partyA": {
-    "name": "甲方姓名或公司名",
-    "role": "具体角色",
-    "company": "公司名称",
-    "position": "职位",
+    "name": "甲方名称",
+    "role": "甲方角色",
+    "company": "甲方公司",
+    "position": "甲方职位",
     "contact": "联系方式",
-    "identified": true/false
+    "identified": true
   },
   "partyB": {
-    "name": "乙方姓名",
-    "role": "具体角色",
-    "company": "公司名称",
-    "position": "职位",
+    "name": "乙方名称",
+    "role": "乙方角色",
+    "company": "乙方公司",
+    "position": "乙方职位",
     "contact": "联系方式",
-    "identified": true/false
+    "identified": true
   },
   "keyTerms": [
     {
-      "category": "compensation|duration|workContent|benefits|ip|confidentiality|termination|other",
-      "label": "条款名称",
-      "value": "提取的具体值",
-      "source": "原文引用",
-      "confidence": 0.0-1.0,
-      "riskLevel": "low|medium|high",
-      "riskNote": "风险说明（如有）",
-      "suggestion": "专业建议（如有）"
+      "type": "payment",
+      "label": "合同总价",
+      "value": "人民币 80000 元",
+      "source": "合同总价 80000 元",
+      "confidence": 0.95,
+      "riskLevel": "low",
+      "riskNote": "",
+      "suggestion": ""
     }
   ],
   "riskAlerts": [
     {
-      "severity": "high|medium|low",
-      "issue": "问题描述",
-      "impact": "可能影响",
-      "suggestion": "建议措施"
+      "severity": "medium",
+      "issue": "缺少验收标准",
+      "impact": "可能影响付款与交付争议处理",
+      "suggestion": "建议补充明确的验收标准和验收期限"
     }
   ],
   "missingInfo": [
     {
-      "item": "缺失信息项",
-      "importance": "high|medium|low",
-      "defaultSuggestion": "建议默认值或处理方式"
+      "item": "验收流程",
+      "importance": "medium",
+      "defaultSuggestion": "约定收到交付物后 5-7 日内完成验收"
     }
   ],
-  "professionalAdvice": [
-    "建议1：具体的专业建议",
-    "建议2：...",
-    "建议3：..."
-  ],
-  "suggestedTemplate": "推荐的合同模板类型",
-  "summary": "专业分析总结（2-3句话）"
-}
-\`\`\`
+  "professionalAdvice": ["建议 1", "建议 2"],
+  "suggestedTemplate": "推荐合同模板",
+  "summary": "当前已识别的合同事实摘要",
+  "scenario": {
+    "type": "场景类型",
+    "description": "场景描述",
+    "negotiationStatus": "初步沟通/已基本达成一致",
+    "powerBalance": "平衡/甲方主导/乙方主导"
+  },
+  "expertAnalysis": {
+    "expertName": "${expert.name}",
+    "expertTitle": "${expert.title}",
+    "analysisDate": "${new Date().toISOString()}",
+    "overallAssessment": "一句话总结"
+  }
+}`;
+  }
 
-## 重要提醒
-- 只提取对话中明确提到的信息，不要编造
-- 对不确定的信息，confidence 设为较低值
-- 必须保留原文引用（source字段）
-- 风险提示要具体、可操作
-- 建议要基于行业最佳实践
-`;
-}
+  return `Analyze the contract-related conversation below from the perspective of ${expert.name} (${expert.title}) and extract structured information that can be used to draft a contract.
 
-// 分析系统提示
-export function generateAnalyzeSystemPrompt(expert: ExpertRole): string {
-  return `你是 ${expert.name}，${expert.title}。
+Expert profile: ${expert.personality}
+Expertise: ${expert.expertise.join(", ")}
+Focus areas: ${expert.industryKnowledge}
+Best practices:
+${expert.bestPractices.map((item) => `- ${item}`).join("\n")}
+Common pitfalls:
+${expert.commonPitfalls.map((item) => `- ${item}`).join("\n")}
+Legal basis:
+${expert.legalBasis.map((item) => `- ${item}`).join("\n")}
 
-你的专业领域：${expert.expertise.join('、')}
+Conversation:
+${conversation}
 
-你的分析风格：${expert.personality}
+Requirements:
+1. All user-facing string fields must be written in English.
+2. Only extract facts that are explicit or strongly supported by the conversation.
+3. If information is missing, put it in missingInfo instead of inventing it.
+4. Preserve original wording in keyTerms.source when possible.
+5. If the conversation describes software outsourcing, implementation, delivery, acceptance, milestones, source code, or deployment docs, prefer service/tech/cooperation rather than labor.
+6. Return JSON only, without markdown.
 
-你正在为 ContractHub 平台的用户提供专业的合同分析服务。你需要：
-1. 以专业法律顾问的视角分析用户提供的对话
-2. 识别潜在的法律风险和合规问题
-3. 提取可用于生成合同的关键信息
-4. 给出专业、可操作的建议
-
-你的分析必须：
-- 准确、客观，不添加对话中没有的内容
-- 风险提示要明确、具体
-- 建议要实用、可执行
-- 输出必须是有效的JSON格式`;
-}
-
-// 兼容旧版本的导出
-export const ANALYZE_CONVERSATION_PROMPT = `
-你是一位资深法律顾问。请分析以下对话内容，提取可能用于生成合同的关键信息。
-
-## 任务
-1. 识别对话双方的身份和角色
-2. 判断合同类型
-3. 提取关键条款信息
-4. 识别潜在风险
-
-## 对话内容
-{conversation}
-
-## 输出格式（JSON）
-\`\`\`json
+JSON Schema:
 {
-  "contractType": "labor|service|cooperation|nda|freelance|tech|custom",
-  "confidence": 0.0-1.0,
-  "partyA": { "name": "", "role": "", "company": "", "contact": "" },
-  "partyB": { "name": "", "role": "", "company": "", "contact": "" },
+  "contractType": "${CONTRACT_TYPE_VALUES}",
+  "confidence": 0.0,
+  "partyA": {
+    "name": "Party A name",
+    "role": "Party A role",
+    "company": "Party A company",
+    "position": "Party A position",
+    "contact": "contact details",
+    "identified": true
+  },
+  "partyB": {
+    "name": "Party B name",
+    "role": "Party B role",
+    "company": "Party B company",
+    "position": "Party B position",
+    "contact": "contact details",
+    "identified": true
+  },
   "keyTerms": [
     {
-      "type": "salary|duration|payment|workContent|benefit|other",
-      "label": "条款名称",
-      "value": "具体值",
-      "source": "原文引用",
-      "confidence": 0.0-1.0
+      "type": "payment",
+      "label": "Total contract price",
+      "value": "CNY 80,000",
+      "source": "total price 80,000 CNY",
+      "confidence": 0.95,
+      "riskLevel": "low",
+      "riskNote": "",
+      "suggestion": ""
     }
   ],
-  "riskAlerts": [{ "severity": "high|medium|low", "issue": "", "suggestion": "" }],
-  "suggestedTemplate": "推荐模板",
-  "summary": "分析总结"
+  "riskAlerts": [
+    {
+      "severity": "medium",
+      "issue": "Acceptance criteria are missing",
+      "impact": "This may create delivery and payment disputes",
+      "suggestion": "Add clear acceptance standards and review timing"
+    }
+  ],
+  "missingInfo": [
+    {
+      "item": "Acceptance workflow",
+      "importance": "medium",
+      "defaultSuggestion": "State that review must finish within 5-7 days after delivery"
+    }
+  ],
+  "professionalAdvice": ["Advice 1", "Advice 2"],
+  "suggestedTemplate": "Recommended template",
+  "summary": "Short factual summary of the contract context",
+  "scenario": {
+    "type": "scenario type",
+    "description": "scenario description",
+    "negotiationStatus": "early discussion / near agreement",
+    "powerBalance": "balanced / party A led / party B led"
+  },
+  "expertAnalysis": {
+    "expertName": "${expert.name}",
+    "expertTitle": "${expert.title}",
+    "analysisDate": "${new Date().toISOString()}",
+    "overallAssessment": "one-line assessment"
+  }
+}`;
 }
-\`\`\`
-`;
 
-export const ANALYZE_CONVERSATION_SYSTEM = `
-你是ContractHub的资深法律顾问，拥有丰富的合同分析经验。
-你需要准确、专业地分析用户提供的商务对话，提取关键信息并识别潜在风险。
-输出必须是有效的JSON格式。
-`;
+export function generateAnalyzeSystemPrompt(
+  expert: ExpertRole,
+  language: PromptLanguage,
+): string {
+  return isChinese(language)
+    ? `你是 ${expert.name}（${expert.title}）。请提供严谨、可执行、适合生成合同草稿的结构化分析。输出必须是合法 JSON。`
+    : `You are ${expert.name} (${expert.title}). Provide rigorous, practical structured analysis suitable for drafting a contract. Output must be valid JSON.`;
+}
+
+export const PRE_ANALYZE_PROMPT = generatePreAnalyzePrompt("{conversation}", "zh");
+export const ANALYZE_CONVERSATION_PROMPT = generateAnalyzePrompt(
+  BUSINESS_CONTRACT_EXPERT,
+  "{conversation}",
+  "zh",
+);
+export const ANALYZE_CONVERSATION_SYSTEM = generateAnalyzeSystemPrompt(
+  BUSINESS_CONTRACT_EXPERT,
+  "zh",
+);

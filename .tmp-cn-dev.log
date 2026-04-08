@@ -1,0 +1,5 @@
+
+> morncontract@0.1.0 dev:cn
+> node scripts/use-env.mjs cn && next dev -p 3000
+
+Active env switched to .env.cn -> .env.local

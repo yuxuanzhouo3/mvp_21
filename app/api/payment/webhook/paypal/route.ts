@@ -1,6 +1,7 @@
 // app/api/payment/webhook/paypal/route.ts - PayPal webhook处理
 import { NextRequest, NextResponse } from "next/server";
 import { WebhookHandler } from "../../../../../lib/payment/webhook-handler";
+import { getPayPalMode } from "@/lib/config/runtime-env";
 
 // PayPal Webhook 必须在 Node.js Runtime 下运行
 export const runtime = "nodejs";
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
         hasTimestamp: !!timestamp,
         hasAuthAlgo: !!authAlgo,
         webhookId: process.env.PAYPAL_WEBHOOK_ID,
-        environment: process.env.PAYPAL_ENVIRONMENT,
+        environment: getPayPalMode(),
         webhookUrl: `${
           process.env.APP_URL || "https://mvp-24-main.vercel.app"
         }/api/payment/webhook/paypal`,
@@ -155,7 +156,7 @@ async function verifyPayPalSignature(args: {
 
     const baseUrl =
       process.env.PAYPAL_API_BASE ||
-      (process.env.PAYPAL_ENVIRONMENT === "sandbox"
+      (getPayPalMode() === "sandbox"
         ? "https://api-m.sandbox.paypal.com"
         : "https://api-m.paypal.com");
 
@@ -217,7 +218,7 @@ async function verifyPayPalSignature(args: {
         verificationStatus: verifyData.verification_status,
         fullResponse: verifyData,
         webhookId: process.env.PAYPAL_WEBHOOK_ID,
-        environment: process.env.PAYPAL_ENVIRONMENT,
+        environment: getPayPalMode(),
         baseUrl,
         transmissionId,
         webhookEvent: JSON.parse(body),

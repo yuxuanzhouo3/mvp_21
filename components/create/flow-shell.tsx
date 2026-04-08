@@ -82,7 +82,7 @@ export function CreateFlowShell({
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_0%_0%,hsl(var(--primary)/0.08),transparent_40%),radial-gradient(circle_at_100%_0%,hsl(var(--accent)/0.1),transparent_35%)]">
       <header className="sticky top-0 z-30 border-b border-border/70 bg-background/90 backdrop-blur">
-        <div className="container mx-auto flex h-14 items-center justify-between px-3 sm:h-16 sm:px-4">
+        <div className="container mx-auto flex h-14 items-center justify-between px-2.5 min-[390px]:px-3 min-[430px]:px-4 sm:h-16">
           <div className="flex items-center gap-2">
             {showSidebarTrigger ? <SidebarTrigger className="size-8" /> : null}
             <Link
@@ -90,7 +90,9 @@ export function CreateFlowShell({
               className="flex items-center gap-2 text-foreground transition-opacity hover:opacity-80"
             >
               <FileText className="h-5 w-5 text-primary" />
-              <span className="text-sm font-semibold sm:text-base">{appName}</span>
+              <span className="max-w-[10rem] truncate text-sm font-semibold min-[430px]:max-w-none min-[430px]:text-base">
+                {appName}
+              </span>
             </Link>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2">
@@ -106,20 +108,20 @@ export function CreateFlowShell({
         </div>
       </header>
 
-      <main className="container mx-auto px-3 py-6 sm:px-4 sm:py-8 md:py-10">
-        <section className="mb-6 rounded-2xl border border-border/70 bg-card/90 p-4 shadow-sm md:p-6">
-          <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <main className="container mx-auto px-2.5 py-5 min-[390px]:px-3 min-[390px]:py-6 min-[430px]:px-4 sm:py-8 md:py-10">
+        <section className="mb-5 rounded-2xl border border-border/70 bg-card/90 p-3 shadow-sm min-[390px]:mb-6 min-[390px]:p-4 min-[430px]:p-5 md:p-6">
+          <ol className="grid grid-cols-1 gap-3 min-[430px]:grid-cols-2 lg:grid-cols-4">
             {steps.map((item, index) => {
               const isActive = item.id === step;
               const isCompleted = item.id < step;
 
               return (
-                <li key={item.id} className="relative flex items-center gap-3">
+                <li key={item.id} className="relative flex items-start gap-3">
                   <StepCircle stepId={item.id} currentStep={step} />
-                  <div className="min-w-0">
+                  <div className="min-w-0 pt-0.5">
                     <p
                       className={cn(
-                        "truncate text-sm font-medium",
+                        "text-sm font-medium leading-snug break-words",
                         isActive || isCompleted
                           ? "text-foreground"
                           : "text-muted-foreground",
@@ -127,7 +129,9 @@ export function CreateFlowShell({
                     >
                       {item.title}
                     </p>
-                    <p className="text-xs text-muted-foreground">{item.subtitle}</p>
+                    <p className="text-[11px] text-muted-foreground min-[390px]:text-xs">
+                      {item.subtitle}
+                    </p>
                   </div>
                   {index < steps.length - 1 ? (
                     <span className="pointer-events-none absolute -right-2 top-4 hidden h-px w-4 bg-border lg:block" />
@@ -138,9 +142,11 @@ export function CreateFlowShell({
           </ol>
         </section>
 
-        <section className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{title}</h1>
-          <p className="mt-2 max-w-3xl text-sm text-muted-foreground md:text-base">
+        <section className="mb-5 min-[390px]:mb-6">
+          <h1 className="text-xl font-semibold tracking-tight min-[390px]:text-2xl md:text-3xl">
+            {title}
+          </h1>
+          <p className="mt-2 max-w-3xl text-xs text-muted-foreground min-[390px]:text-sm md:text-base">
             {description}
           </p>
         </section>

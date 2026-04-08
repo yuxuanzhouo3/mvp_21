@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -14,11 +14,13 @@ import {
 } from "lucide-react";
 
 import { Header } from "@/components/header";
+import { MobileActionBar } from "@/components/create/mobile-action-bar";
 import { useLanguage } from "@/components/language-provider";
 import { useUser } from "@/components/user-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useFocusScrollIntoView } from "@/hooks/use-mobile-keyboard";
 import { createContractForCurrentUser } from "@/lib/contracts/client";
 import { prepareDraftAnalysisForCurrentUser } from "@/lib/contracts/draft-context";
 import {
@@ -63,6 +65,7 @@ export function AIContractIntakeScreen() {
   const [chatLoading, setChatLoading] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
   const [chatResult, setChatResult] = useState<ChatResult | null>(null);
+  const handleFocusCapture = useFocusScrollIntoView();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -84,7 +87,7 @@ export function AIContractIntakeScreen() {
         role: "assistant",
         content: isEn
           ? "Describe the contract you want to create. For example: hire a frontend engineer, monthly salary 20k, Shanghai office."
-          : "告诉我你想生成什么合同。例如：招聘前端工程师，月薪 20k，工作地点上海。",
+          : "告诉我你想生成什么合同。例如：签一份软件开发服务合同，预算 20 万，项目地点上海。",
       },
     ]);
   }, [isEn, messages.length, user]);
@@ -258,24 +261,24 @@ export function AIContractIntakeScreen() {
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-blue-50">
       <Header />
 
-      <main className="container mx-auto max-w-6xl px-4 py-10">
-        <div className="mb-8 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+      <main className="container mx-auto max-w-6xl px-3 py-6 min-[390px]:px-4 min-[390px]:py-8 min-[430px]:py-10" onFocusCapture={handleFocusCapture}>
+        <div className="mb-6 flex flex-col gap-3 min-[430px]:mb-8 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
               <Sparkles className="h-3.5 w-3.5" />
               {isEn ? "Canonical Create Flow" : "统一创建主线"}
             </p>
-            <h1 className="text-3xl font-bold tracking-tight">
+            <h1 className="text-2xl font-bold tracking-tight min-[430px]:text-3xl">
               {isEn ? "AI Contract Intake" : "AI 对话生成入口"}
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
               {isEn
                 ? "Use conversation to collect contract facts, then create a standard draft and continue through analyze and edit."
-                : "通过对话采集合同比要，生成标准草稿后继续进入 analyze 和 edit 主流程。"}
+                : "通过对话采集合同行为事实，生成标准草稿后继续进入 analyze 和 edit 主流程。"}
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => router.push(backToCreateHref)}>
               {isEn ? "Back to Create" : "返回创建入口"}
             </Button>
@@ -286,8 +289,8 @@ export function AIContractIntakeScreen() {
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
-          <Card className="min-h-[680px] border-border/70 bg-card/95">
-            <CardHeader>
+          <Card className="min-h-[560px] border-border/70 bg-card/95 md:min-h-[680px]">
+            <CardHeader className="p-4 min-[390px]:p-5 min-[430px]:p-6">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <MessageSquareText className="h-5 w-5 text-primary" />
                 {isEn ? "Conversation" : "对话采集"}
@@ -298,8 +301,8 @@ export function AIContractIntakeScreen() {
                   : "先描述业务背景，助手会逐步追问缺失信息。"}
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex h-[600px] flex-col">
-              <div className="flex-1 space-y-4 overflow-y-auto rounded-xl border border-border/70 bg-muted/15 p-4">
+            <CardContent className="flex h-[calc(100svh-18rem)] min-h-[400px] max-h-[640px] flex-col px-3 pb-3 pt-0 min-[390px]:px-4 min-[390px]:pb-4 md:h-[600px] md:max-h-none md:px-6 md:pb-6">
+              <div className="flex-1 space-y-3 overflow-y-auto rounded-xl border border-border/70 bg-muted/15 p-3 min-[390px]:space-y-4 min-[390px]:p-4">
                 {messages.map((message, index) => (
                   <div
                     key={`${message.role}-${index}`}
@@ -315,7 +318,7 @@ export function AIContractIntakeScreen() {
                       {message.role === "user" ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                     </div>
                     <div
-                      className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-6 ${
+                      className={`max-w-[88%] rounded-2xl px-3 py-2.5 text-[13px] leading-6 min-[390px]:px-4 min-[390px]:py-3 min-[390px]:text-sm sm:max-w-[80%] ${
                         message.role === "user"
                           ? "bg-primary text-primary-foreground"
                           : "bg-background text-foreground shadow-sm"
@@ -353,20 +356,25 @@ export function AIContractIntakeScreen() {
                   placeholder={
                     isEn
                       ? "For example: we want to hire a product designer in Hangzhou, salary 18k..."
-                      : "例如：我们要招聘产品设计师，工作地点杭州，月薪 18k..."
+                      : "例如：我们要签一份产品设计服务合同，项目地点杭州，预算 18 万..."
                   }
                   disabled={chatLoading || draftLoading}
+                  className="h-10 text-[13px] min-[390px]:text-sm"
                 />
-                <Button onClick={() => void handleSend()} disabled={!input.trim() || chatLoading || draftLoading}>
+                <Button
+                  onClick={() => void handleSend()}
+                  disabled={!input.trim() || chatLoading || draftLoading}
+                  className="h-10 min-w-10 px-3 text-xs min-[390px]:text-sm"
+                >
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </div>
             </CardContent>
           </Card>
 
-          <div className="space-y-6">
+          <div className="space-y-5 min-[430px]:space-y-6">
             <Card className="border-border/70 bg-card/95">
-              <CardHeader>
+              <CardHeader className="p-4 min-[390px]:p-5 min-[430px]:p-6">
                 <CardTitle className="text-lg">{isEn ? "Intake Status" : "采集状态"}</CardTitle>
                 <CardDescription>
                   {isEn
@@ -416,7 +424,7 @@ export function AIContractIntakeScreen() {
             </Card>
 
             <Card className={chatResult?.ready ? "border-primary/30 bg-primary/5" : "border-border/70 bg-card/95"}>
-              <CardHeader>
+              <CardHeader className="p-4 min-[390px]:p-5 min-[430px]:p-6">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <CheckCircle2 className={`h-5 w-5 ${chatResult?.ready ? "text-primary" : "text-muted-foreground"}`} />
                   {isEn ? "Create Draft" : "创建草稿"}
@@ -464,6 +472,29 @@ export function AIContractIntakeScreen() {
             </Card>
           </div>
         </div>
+
+        <MobileActionBar>
+          <Button variant="outline" onClick={() => router.push(backToCreateHref)} className="h-10 flex-1 text-xs min-[390px]:text-sm">
+            {isEn ? "Back" : "返回"}
+          </Button>
+          <Button
+            disabled={!chatResult?.ready || draftLoading}
+            onClick={() => void createDraftFromChat()}
+            className="h-10 flex-[1.2] text-xs min-[390px]:text-sm"
+          >
+            {draftLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {isEn ? "Creating..." : "创建中..."}
+              </>
+            ) : (
+              <>
+                <FileText className="mr-2 h-4 w-4" />
+                {isEn ? "Create Draft" : "创建草稿"}
+              </>
+            )}
+          </Button>
+        </MobileActionBar>
       </main>
     </div>
   );

@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
 import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
+import {
+  getAppUrl,
+  getWechatPayApiV3Key,
+  getWechatPayAppId,
+} from "@/lib/config/runtime-env";
 import { applySubscriptionPaymentSuccess } from "@/lib/payment/subscription-payment-sync";
 
 export const runtime = "nodejs";
@@ -14,12 +19,12 @@ export async function POST(request: NextRequest) {
     const body = await request.text();
 
     const provider = new WechatProviderV3({
-      appId: process.env.WECHAT_APP_ID!,
+      appId: getWechatPayAppId(),
       mchId: process.env.WECHAT_PAY_MCH_ID!,
-      apiV3Key: process.env.WECHAT_PAY_API_V3_KEY!,
+      apiV3Key: getWechatPayApiV3Key(),
       privateKey: process.env.WECHAT_PAY_PRIVATE_KEY!,
       serialNo: process.env.WECHAT_PAY_SERIAL_NO!,
-      notifyUrl: `${process.env.APP_URL}/api/payment/webhook/wechat`,
+      notifyUrl: `${getAppUrl()}/api/payment/webhook/wechat`,
     });
 
     if (!provider.verifyWebhookSignature(body, signature, timestamp, nonce)) {
@@ -44,11 +49,11 @@ export async function POST(request: NextRequest) {
 
     const existingEvent = await db
       .collection("webhook_events")
-      .where({ id: webhookEventId, processed: true })
+      .where({ id: webhookEventId })
       .limit(1)
       .get();
 
-    if (existingEvent.data?.length) {
+    if (existingEvent.data?.[0]?.processed) {
       return NextResponse.json({ code: "SUCCESS", message: "Ok" }, { status: 200 });
     }
 
@@ -66,14 +71,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await db.collection("webhook_events").add({
-      id: webhookEventId,
-      provider: "wechat",
-      event_type: "TRANSACTION.SUCCESS",
-      event_data: paymentData,
-      processed: false,
-      created_at: new Date().toISOString(),
-    });
+    if (!existingEvent.data?.length) {
+      await db.collection("webhook_events").add({
+        id: webhookEventId,
+        provider: "wechat",
+        event_type: "TRANSACTION.SUCCESS",
+        event_data: paymentData,
+        processed: false,
+        created_at: new Date().toISOString(),
+      });
+    }
 
     await applySubscriptionPaymentSuccess({
       payment: paymentRecord,
@@ -84,13 +91,10 @@ export async function POST(request: NextRequest) {
       paymentMethod: "wechat",
     });
 
-    await db
-      .collection("webhook_events")
-      .where({ id: webhookEventId })
-      .update({
-        processed: true,
-        processed_at: new Date().toISOString(),
-      });
+    await db.collection("webhook_events").where({ id: webhookEventId }).update({
+      processed: true,
+      processed_at: new Date().toISOString(),
+    });
 
     return NextResponse.json(
       {

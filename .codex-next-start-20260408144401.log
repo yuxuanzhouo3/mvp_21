@@ -1,0 +1,45 @@
+
+> morncontract@0.1.0 start
+> next start --port 3000
+
+   ▲ Next.js 15.2.4
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.198.1:3000
+
+ ✓ Starting...
+ ✓ Ready in 843ms
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[Auth Client] Using CloudBase auth client
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+📨 [/api/auth] 收到请求，action: signup email: codex.smoke.20260408144445@example.com
+📝 [/api/auth] 处理注册请求
+ [CloudBase Service] 开始注册，邮箱: codex.smoke.20260408144445@example.com
+ [CloudBase Service] 注册成功
+[CloudBase Service] AccessToken generated for signup
+✅ [CloudBase] 初始化环境: contracthub-2go0kvke215f83c1
+✅ [Refresh Token Manager] Refresh token 已保存，tokenId: ad309b40-61d9-4abe-b0ec-71e765b0f660, userId: b3c6c3d569d5f95d03633996154e48a8
+[2026-04-08T06:44:46.086Z] WARN: Security Event: register_successful {"type":"security","event":"register_successful","userId":"b3c6c3d569d5f95d03633996154e48a8","ip":"::ffff:127.0.0.1","timestamp":"2026-04-08T06:44:46.086Z","email":"codex.smoke.20260408144445@example.com","fullName":"Codex Smoke","passwordStrength":0,"profileSaved":true}
+无法获取客户端IP，使用默认处理
+ [CloudBase Service] 开始登录，邮箱: codex.smoke.20260408144445@example.com
+ [CloudBase Service] 登录成功
+✅ [Refresh Token Manager] Refresh token 已保存，tokenId: 0507ff06-5245-4068-9ca8-a61ee31d07ef, userId: b3c6c3d569d5f95d03633996154e48a8
+[2026-04-08T06:44:46.615Z] WARN: Security Event: login_success {"type":"security","event":"login_success","userId":"b3c6c3d569d5f95d03633996154e48a8","ip":"::ffff:127.0.0.1","timestamp":"2026-04-08T06:44:46.615Z","email":"codex.smoke.20260408144445@example.com"}
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+📨 [/api/auth] 收到请求，action: signup email: codex.smoke.20260408064531@example.com
+📝 [/api/auth] 处理注册请求
+ [CloudBase Service] 开始注册，邮箱: codex.smoke.20260408064531@example.com
+ [CloudBase Service] 注册成功
+[CloudBase Service] AccessToken generated for signup
+✅ [Refresh Token Manager] Refresh token 已保存，tokenId: 098ad21a-e1c4-440c-80a5-976f9b69ba53, userId: 6a0a1fb669d5f98b0364c1bf18f68b5a
+[2026-04-08T06:45:32.077Z] WARN: Security Event: register_successful {"type":"security","event":"register_successful","userId":"6a0a1fb669d5f98b0364c1bf18f68b5a","ip":"::ffff:127.0.0.1","timestamp":"2026-04-08T06:45:32.077Z","email":"codex.smoke.20260408064531@example.com","fullName":"Codex Smoke","passwordStrength":0,"profileSaved":true}
+无法获取客户端IP，使用默认处理
+ [CloudBase Service] 开始登录，邮箱: codex.smoke.20260408064531@example.com
+ [CloudBase Service] 登录成功
+✅ [Refresh Token Manager] Refresh token 已保存，tokenId: 22bd3668-65c4-4ea0-83bd-1120c5742faa, userId: 6a0a1fb669d5f98b0364c1bf18f68b5a
+[2026-04-08T06:45:32.589Z] WARN: Security Event: login_success {"type":"security","event":"login_success","userId":"6a0a1fb669d5f98b0364c1bf18f68b5a","ip":"::ffff:127.0.0.1","timestamp":"2026-04-08T06:45:32.589Z","email":"codex.smoke.20260408064531@example.com"}
+无法获取客户端IP，使用默认处理

@@ -1,75 +1,88 @@
-const { createClient } = require('@supabase/supabase-js');
+const { createClient } = require("@supabase/supabase-js");
+const path = require("path");
+const dotenv = require("dotenv");
 
-const supabaseUrl = 'https://qwtdbswpenugyyfhbeaj.supabase.co';
-const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF3dGRic3dwZW51Z3l5ZmhiZWFqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2OTcyNzQxNSwiZXhwIjoyMDg1MzAzNDE1fQ.zc53_sxWtJLAtVDy-XtGfPs5xWIilfP-VKsQbneaQwE';
+dotenv.config({ path: path.join(__dirname, "..", ".env.local") });
+dotenv.config({ path: path.join(__dirname, "..", ".env.intl") });
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const enableWriteTest = process.env.SUPABASE_VERIFY_WRITE_TEST === "true";
+
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  console.error("Missing Supabase environment variables.");
+  console.error(
+    "Required: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY",
+  );
+  process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 async function verifyDatabase() {
-  console.log('🔍 验证 Supabase 数据库结构...\n');
-
   const tables = [
-    'users',
-    'user_sessions', 
-    'contracts',
-    'contract_templates',
-    'subscriptions',
-    'payments',
-    'ads',
-    'ad_stats'
+    "users",
+    "user_sessions",
+    "contracts",
+    "contract_templates",
+    "subscriptions",
+    "payments",
+    "ads",
+    "ad_stats",
+    "company_profiles",
+    "workspace_members",
+    "admin_audit_logs",
   ];
+
+  console.log("Verifying Supabase table access...\n");
 
   for (const table of tables) {
     try {
-      const { data, error, count } = await supabase
+      const { error, count } = await supabase
         .from(table)
-        .select('*', { count: 'exact', head: false })
-        .limit(1);
+        .select("*", { count: "exact", head: true });
 
-      if (error) throw error;
-
-      console.log(`✅ 表 "${table}" - 记录数: ${count || 0}`);
-      if (data && data.length > 0) {
-        console.log(`   示例数据: ${JSON.stringify(data[0], null, 2).substring(0, 200)}...\n`);
+      if (error) {
+        console.log(`- ${table}: ERROR (${error.message})`);
+      } else {
+        console.log(`- ${table}: OK (rows: ${count ?? 0})`);
       }
     } catch (error) {
-      console.log(`❌ 表 "${table}" 验证失败: ${error.message}\n`);
+      console.log(`- ${table}: EXCEPTION (${error.message})`);
     }
   }
 
-  // 测试插入一条用户记录
-  console.log('\n📝 测试插入测试用户...');
+  if (!enableWriteTest) {
+    console.log(
+      "\nWrite test skipped. Set SUPABASE_VERIFY_WRITE_TEST=true to enable.",
+    );
+    return;
+  }
+
+  console.log("\nRunning write test on users table...");
+
   try {
-    const { data, error } = await supabase
-      .from('users')
-      .insert({
-        email: 'test@contracthub.com',
-        name: 'Test User',
-        role: 'user',
-        plan: 'free',
-        status: 'active'
-      })
-      .select()
-      .single();
+    const uniqueEmail = `verify-${Date.now()}@example.local`;
+    const { error } = await supabase.from("users").insert({
+      email: uniqueEmail,
+      name: "Supabase Verify Script",
+      role: "user",
+      plan: "free",
+      status: "active",
+    });
 
     if (error) {
-      if (error.code === '23505') {
-        console.log('⚠️  测试用户已存在（这是正常的）');
-      } else {
-        throw error;
-      }
-    } else {
-      console.log('✅ 成功插入测试用户:');
-      console.log(JSON.stringify(data, null, 2));
+      console.log(`Write test failed: ${error.message}`);
+      return;
     }
-  } catch (error) {
-    console.error('❌ 插入测试用户失败:', error.message);
-  }
 
-  console.log('\n✨ 数据库验证完成！');
+    console.log("Write test passed.");
+  } catch (error) {
+    console.log(`Write test exception: ${error.message}`);
+  }
 }
 
-verifyDatabase().catch(error => {
-  console.error('\n❌ 验证失败:', error);
+verifyDatabase().catch((error) => {
+  console.error("Supabase verification failed:", error);
   process.exit(1);
 });

@@ -3,6 +3,7 @@ import { describe, expect, test } from "@jest/globals";
 import {
   buildSubscriptionPaymentFields,
   extractSubscriptionOrderMetadata,
+  hasProcessedSubscriptionPaymentSuccess,
 } from "@/lib/payment/subscription-payment-sync";
 
 describe("payment governance mainline coverage", () => {
@@ -52,5 +53,35 @@ describe("payment governance mainline coverage", () => {
         metadata: {},
       }),
     ).toThrow("Missing subscription order metadata");
+  });
+
+  test("duplicate success callbacks are detected from stored subscription references", () => {
+    expect(
+      hasProcessedSubscriptionPaymentSuccess(
+        {
+          transaction_id: "txn_123",
+          provider_subscription_id: "order_123",
+          metadata: {
+            lastSuccessfulTransactionId: "txn_123",
+          },
+        },
+        ["order_123", "txn_123"],
+      ),
+    ).toBe(true);
+  });
+
+  test("new subscription renewals are not mistaken for duplicate callbacks", () => {
+    expect(
+      hasProcessedSubscriptionPaymentSuccess(
+        {
+          transaction_id: "txn_old",
+          provider_subscription_id: "order_old",
+          metadata: {
+            lastSuccessfulTransactionId: "txn_old",
+          },
+        },
+        ["order_new", "txn_new"],
+      ),
+    ).toBe(false);
   });
 });

@@ -1,335 +1,351 @@
-/**
- * 合同生成 Prompt 模板 - 专业版
- * 根据行业规范和法律要求生成专业合同文本
- */
+﻿import type { ContractType } from "../types";
+import type { ExpertRole } from "./experts";
 
-import { getExpertByContractType, ExpertRole } from "./experts";
+export type PromptLanguage = "zh" | "en";
 
-// 合同类型名称映射
-export const CONTRACT_TYPE_NAMES: Record<string, string> = {
-  labor: "劳动合同",
-  service: "服务协议",
-  cooperation: "合作协议",
-  nda: "保密协议",
-  freelance: "劳务协议",
-  tech: "技术开发合同",
-  software: "软件开发合同",
-  custom: "合同",
+export const CONTRACT_TYPE_LABELS: Record<PromptLanguage, Record<string, string>> = {
+  zh: {
+    labor: "劳动合同",
+    service: "服务合同",
+    cooperation: "合作协议",
+    nda: "保密协议",
+    freelance: "劳务协议",
+    tech: "技术开发合同",
+    software: "软件开发合同",
+    custom: "合同",
+  },
+  en: {
+    labor: "Employment Contract",
+    service: "Service Agreement",
+    cooperation: "Cooperation Agreement",
+    nda: "Non-Disclosure Agreement",
+    freelance: "Freelance Agreement",
+    tech: "Technology Development Agreement",
+    software: "Software Development Agreement",
+    custom: "Contract",
+  },
 };
 
-// 行业合同模板配置
-export const CONTRACT_TEMPLATES: Record<string, ContractTemplate> = {
-  // 劳动合同模板
+export const CONTRACT_TYPE_NAMES: Record<string, string> = CONTRACT_TYPE_LABELS.zh;
+
+const SECTION_GUIDANCE: Record<string, Record<PromptLanguage, string[]>> = {
   labor: {
-    name: "劳动合同",
-    sections: [
-      { id: "parties", title: "第一条 双方基本信息", required: true },
-      { id: "term", title: "第二条 合同期限", required: true },
-      { id: "work", title: "第三条 工作内容和工作地点", required: true },
-      { id: "hours", title: "第四条 工作时间和休息休假", required: true },
-      { id: "compensation", title: "第五条 劳动报酬", required: true },
-      { id: "insurance", title: "第六条 社会保险和福利待遇", required: true },
-      { id: "protection", title: "第七条 劳动保护和劳动条件", required: true },
-      { id: "discipline", title: "第八条 劳动纪律", required: false },
-      {
-        id: "termination",
-        title: "第九条 合同的变更、解除和终止",
-        required: true,
-      },
-      { id: "breach", title: "第十条 违约责任", required: true },
-      { id: "dispute", title: "第十一条 争议解决", required: true },
-      { id: "other", title: "第十二条 其他约定", required: false },
+    zh: [
+      "合同双方信息",
+      "合同期限与试用期",
+      "岗位职责与工作地点",
+      "工作时间、休息休假",
+      "劳动报酬",
+      "社会保险与福利",
+      "保密与知识产权",
+      "合同变更、解除与终止",
+      "违约责任",
+      "争议解决",
     ],
-    legalBasis: "依据《中华人民共和国劳动合同法》及相关法律法规",
-  },
-
-  // 劳务协议模板（自由职业）
-  freelance: {
-    name: "劳务协议",
-    sections: [
-      { id: "parties", title: "第一条 双方信息", required: true },
-      { id: "scope", title: "第二条 服务内容", required: true },
-      { id: "term", title: "第三条 服务期限", required: true },
-      { id: "deliverables", title: "第四条 工作成果与验收", required: true },
-      { id: "payment", title: "第五条 劳务报酬", required: true },
-      { id: "tax", title: "第六条 税务处理", required: true },
-      { id: "ip", title: "第七条 知识产权", required: true },
-      { id: "confidentiality", title: "第八条 保密义务", required: true },
-      { id: "liability", title: "第九条 责任与免责", required: true },
-      { id: "termination", title: "第十条 协议终止", required: true },
-      { id: "dispute", title: "第十一条 争议解决", required: true },
+    en: [
+      "Parties",
+      "Term and probation",
+      "Role and workplace",
+      "Working hours and leave",
+      "Compensation",
+      "Social insurance and benefits",
+      "Confidentiality and IP",
+      "Amendment, termination, and exit",
+      "Breach liability",
+      "Dispute resolution",
     ],
-    legalBasis: "依据《中华人民共和国民法典》合同编",
   },
-
-  // 技术开发合同模板
   tech: {
-    name: "技术开发合同",
-    sections: [
-      { id: "parties", title: "第一条 合同双方", required: true },
-      { id: "project", title: "第二条 项目概述", required: true },
-      { id: "requirements", title: "第三条 技术需求与规格", required: true },
-      { id: "schedule", title: "第四条 开发计划与里程碑", required: true },
-      { id: "acceptance", title: "第五条 验收标准与流程", required: true },
-      { id: "payment", title: "第六条 合同价款与支付", required: true },
-      { id: "ip", title: "第七条 知识产权归属", required: true },
-      { id: "source", title: "第八条 源代码与技术文档", required: true },
-      { id: "maintenance", title: "第九条 维护与技术支持", required: true },
-      { id: "confidentiality", title: "第十条 保密条款", required: true },
-      { id: "warranty", title: "第十一条 质量保证", required: true },
-      { id: "breach", title: "第十二条 违约责任", required: true },
-      { id: "dispute", title: "第十三条 争议解决", required: true },
+    zh: [
+      "合同双方信息",
+      "项目背景与目标",
+      "服务范围与开发内容",
+      "项目周期与里程碑",
+      "交付成果",
+      "验收标准与流程",
+      "合同价款与支付安排",
+      "知识产权与源码交付",
+      "维护与技术支持",
+      "保密与数据安全",
+      "违约责任",
+      "争议解决",
     ],
-    legalBasis: "依据《中华人民共和国民法典》及《计算机软件保护条例》",
+    en: [
+      "Parties",
+      "Project background and goals",
+      "Scope of services and development work",
+      "Timeline and milestones",
+      "Deliverables",
+      "Acceptance standards and process",
+      "Fees and payment schedule",
+      "IP ownership and source code delivery",
+      "Maintenance and support",
+      "Confidentiality and data security",
+      "Breach liability",
+      "Dispute resolution",
+    ],
   },
-
-  // 合作协议模板
-  cooperation: {
-    name: "合作协议",
-    sections: [
-      { id: "parties", title: "第一条 合作各方", required: true },
-      { id: "background", title: "第二条 合作背景与目的", required: true },
-      { id: "scope", title: "第三条 合作范围与内容", required: true },
-      { id: "term", title: "第四条 合作期限", required: true },
-      {
-        id: "responsibilities",
-        title: "第五条 各方权利与义务",
-        required: true,
-      },
-      { id: "investment", title: "第六条 投入与资源", required: true },
-      { id: "profit", title: "第七条 利益分配", required: true },
-      { id: "ip", title: "第八条 知识产权", required: true },
-      { id: "confidentiality", title: "第九条 保密条款", required: true },
-      { id: "governance", title: "第十条 合作管理", required: false },
-      { id: "exit", title: "第十一条 退出机制", required: true },
-      { id: "breach", title: "第十二条 违约责任", required: true },
-      { id: "dispute", title: "第十三条 争议解决", required: true },
+  software: {
+    zh: [
+      "合同双方信息",
+      "项目背景与目标",
+      "服务范围与开发内容",
+      "项目周期与里程碑",
+      "交付成果",
+      "验收标准与流程",
+      "合同价款与支付安排",
+      "知识产权与源码交付",
+      "维护与技术支持",
+      "保密与数据安全",
+      "违约责任",
+      "争议解决",
     ],
-    legalBasis: "依据《中华人民共和国民法典》合同编",
+    en: [
+      "Parties",
+      "Project background and goals",
+      "Scope of services and development work",
+      "Timeline and milestones",
+      "Deliverables",
+      "Acceptance standards and process",
+      "Fees and payment schedule",
+      "IP ownership and source code delivery",
+      "Maintenance and support",
+      "Confidentiality and data security",
+      "Breach liability",
+      "Dispute resolution",
+    ],
   },
-
-  // 保密协议模板
-  nda: {
-    name: "保密协议",
-    sections: [
-      { id: "parties", title: "第一条 协议双方", required: true },
-      { id: "background", title: "第二条 签署背景", required: true },
-      { id: "definition", title: "第三条 保密信息的定义", required: true },
-      { id: "scope", title: "第四条 保密信息的范围", required: true },
-      { id: "obligations", title: "第五条 保密义务", required: true },
-      { id: "exceptions", title: "第六条 例外情形", required: true },
-      { id: "term", title: "第七条 保密期限", required: true },
-      { id: "return", title: "第八条 信息返还与销毁", required: true },
-      { id: "breach", title: "第九条 违约责任", required: true },
-      { id: "dispute", title: "第十条 争议解决", required: true },
+  default: {
+    zh: [
+      "合同双方信息",
+      "合作/服务内容",
+      "期限安排",
+      "价款与支付方式",
+      "交付与验收",
+      "双方权利义务",
+      "保密条款",
+      "违约责任",
+      "争议解决",
+      "其他约定",
     ],
-    legalBasis: "依据《中华人民共和国反不正当竞争法》及相关法律法规",
-  },
-
-  // 服务协议模板
-  service: {
-    name: "服务协议",
-    sections: [
-      { id: "parties", title: "第一条 双方信息", required: true },
-      { id: "scope", title: "第二条 服务内容与范围", required: true },
-      { id: "standard", title: "第三条 服务标准与要求", required: true },
-      { id: "term", title: "第四条 服务期限", required: true },
-      { id: "payment", title: "第五条 服务费用与支付", required: true },
-      { id: "rights", title: "第六条 双方权利与义务", required: true },
-      { id: "acceptance", title: "第七条 验收与确认", required: true },
-      { id: "confidentiality", title: "第八条 保密条款", required: true },
-      { id: "breach", title: "第九条 违约责任", required: true },
-      { id: "termination", title: "第十条 合同终止", required: true },
-      { id: "dispute", title: "第十一条 争议解决", required: true },
+    en: [
+      "Parties",
+      "Scope of cooperation or services",
+      "Term",
+      "Fees and payment method",
+      "Delivery and acceptance",
+      "Rights and obligations",
+      "Confidentiality",
+      "Breach liability",
+      "Dispute resolution",
+      "Miscellaneous",
     ],
-    legalBasis: "依据《中华人民共和国民法典》合同编",
   },
 };
 
-interface ContractTemplate {
-  name: string;
-  sections: { id: string; title: string; required: boolean }[];
-  legalBasis: string;
+function isChinese(language: PromptLanguage) {
+  return language === "zh";
 }
 
-// 专业合同生成提示词
+function getSectionGuidance(contractType: string, language: PromptLanguage) {
+  return (SECTION_GUIDANCE[contractType] || SECTION_GUIDANCE.default)[language];
+}
+
+export function getContractTypeDisplayName(
+  contractType: string | undefined,
+  language: PromptLanguage = "zh",
+) {
+  if (!contractType) {
+    return language === "zh" ? "合同" : "Contract";
+  }
+
+  return (
+    CONTRACT_TYPE_LABELS[language][contractType] ||
+    CONTRACT_TYPE_LABELS[language].custom
+  );
+}
+
 export function generateContractPrompt(
   expert: ExpertRole,
   analysisResult: string,
   contractType: string,
+  language: PromptLanguage,
 ): string {
-  const template =
-    CONTRACT_TEMPLATES[contractType] || CONTRACT_TEMPLATES.service;
+  const contractTypeName = getContractTypeDisplayName(contractType, language);
+  const sections = getSectionGuidance(contractType, language);
 
-  return `
-${expert.systemPrompt}
+  if (isChinese(language)) {
+    return `请以 ${expert.name}（${expert.title}）的专业视角，根据下面的结构化分析结果生成一份可直接进入编辑页的《${contractTypeName}》草稿。
 
----
+专家特点：${expert.personality}
+专业方向：${expert.expertise.join("、")}
+最佳实践：
+${expert.bestPractices.map((item) => `- ${item}`).join("\n")}
+常见风险：
+${expert.commonPitfalls.map((item) => `- ${item}`).join("\n")}
 
-## 你现在的任务
-根据分析结果，生成一份专业、规范、可执行的【${template.name}】。
-
-## 分析结果
+分析结果：
 ${analysisResult}
 
-## 合同模板结构
-${template.legalBasis}
+生成要求：
+1. 所有面向用户展示的文本必须使用简体中文。
+2. 合同要专业、清晰、可执行，适合中国用户使用。
+3. 不要虚构已确定的主体信息；缺失处可用【待补充：...】。
+4. 需要覆盖以下章节（可根据场景微调）：
+${sections.map((item, index) => `${index + 1}. ${item}`).join("\n")}
+5. 如果分析结果包含付款、交付、验收、知识产权、保密、违约责任、争议解决等信息，必须体现在合同正文中。
+6. 返回 JSON，不要输出 Markdown。
 
-本合同应包含以下章节：
-${template.sections.map((s, i) => `${i + 1}. ${s.title}${s.required ? "（必填）" : "（选填）"}`).join("\n")}
-
-## 行业规范要求
-${expert.industryKnowledge}
-
-## 最佳实践
-${expert.bestPractices.map((bp) => `✓ ${bp}`).join("\n")}
-
-## 必须避免的问题
-${expert.commonPitfalls.map((cp) => `✗ ${cp}`).join("\n")}
-
----
-
-## 生成要求
-
-### 1. 格式规范
-- 使用正式法律文书语言
-- 章节编号清晰（第一条、第二条...）
-- 条款层级分明（一、二、三... 或 1、2、3...）
-- 内容必须是纯文本格式，不使用加粗、斜体、代码块等Markdown格式符号
-- 通过缩进和换行实现层次结构
-- 重要内容使用全角符号标注，如【重要】或「注意」
-
-### 2. 内容专业
-- 准确使用法律术语
-- 条款完整，不留漏洞
-- 权利义务对等
-- 违约责任明确
-
-### 3. 实用性
-- 对于分析结果中已有的信息，直接填入
-- 对于缺失的必要信息，使用【待填写：xxx】标注
-- 给出合理的默认值建议
-
-### 4. 风险防范
-- 根据分析中的风险提示，在相关条款中做好防范
-- 加入必要的免责条款
-- 设置合理的违约金
-
-## 输出格式
-
-请严格按照以下JSON格式输出：
-
-\`\`\`json
+JSON Schema:
 {
-  "title": "${template.name}",
+  "title": "${contractTypeName}",
   "contractType": "${contractType}",
-  "legalBasis": "${template.legalBasis}",
+  "legalBasis": "适用法律依据说明",
   "generatedBy": {
     "expertName": "${expert.name}",
     "expertTitle": "${expert.title}",
-    "generatedAt": "生成时间"
+    "generatedAt": "${new Date().toISOString()}"
   },
-  "contractNumber": "合同编号（建议格式）",
+  "contractNumber": "建议的合同编号",
   "sections": [
     {
       "id": "section-1",
-      "title": "第一条 标题",
-      "content": "条款内容（纯文本格式，不使用Markdown符号，通过换行和缩进实现层次结构）",
+      "title": "第一条 合同双方",
+      "content": "条款正文",
       "order": 1,
       "editable": true,
-      "tips": "该条款的填写提示或注意事项"
+      "tips": "可选填写提示"
     }
   ],
   "signature": {
     "partyA": {
       "title": "甲方（盖章）",
-      "name": "【待填写：甲方名称】",
-      "representative": "【待填写：法定代表人/授权代表】",
-      "date": "【待填写：签署日期】"
+      "name": "甲方名称",
+      "representative": "法定代表人/授权代表",
+      "date": "签署日期"
     },
     "partyB": {
       "title": "乙方（签字/盖章）",
-      "name": "【待填写：乙方名称】",
-      "idNumber": "【待填写：身份证号/统一社会信用代码】",
-      "date": "【待填写：签署日期】"
+      "name": "乙方名称",
+      "idNumber": "身份证号/统一社会信用代码",
+      "date": "签署日期"
     }
   },
-  "disclaimer": "【重要声明】\\n\\n本合同由ContractHub平台基于AI技术辅助生成，仅供参考。签署前请仔细审核所有条款，如有必要请咨询专业律师。合同双方应在充分理解条款内容后签署。平台不对合同内容的法律效力及执行后果承担责任。",
+  "disclaimer": "简短免责声明",
   "appendices": [
     {
-      "name": "附件名称（如有）",
+      "name": "附件名称",
       "description": "附件说明"
     }
   ]
-}
-\`\`\`
+}`;
+  }
 
-## 特别提醒
-1. 每个条款内容要具体、可操作，避免空泛表述
-2. 金额、日期、比例等关键数字要明确标注
-3. 需要用户填写的地方用【待填写：xxx】格式
-4. 法律专业术语使用准确
-5. 整体风格要正式、严谨
-`;
-}
+  return `Generate a draft ${contractTypeName} from the structured analysis below, from the professional perspective of ${expert.name} (${expert.title}).
 
-// 系统提示
-export function generateContractSystemPrompt(expert: ExpertRole): string {
-  return `你是 ${expert.name}，${expert.title}。
+Expert profile: ${expert.personality}
+Expertise: ${expert.expertise.join(", ")}
+Best practices:
+${expert.bestPractices.map((item) => `- ${item}`).join("\n")}
+Common pitfalls:
+${expert.commonPitfalls.map((item) => `- ${item}`).join("\n")}
 
-你正在为 ContractHub 平台的用户生成专业合同。
+Analysis result:
+${analysisResult}
 
-你的职责：
-1. 根据分析结果生成规范、专业的合同文本
-2. 确保合同符合相关法律法规要求
-3. 条款清晰、权责分明、可操作性强
-4. 对重要条款给出填写提示
+Requirements:
+1. All user-facing text must be written in English.
+2. The contract must be clear, professional, and directly editable.
+3. Do not invent confirmed party details; use placeholders like [To be completed: ...] when needed.
+4. Cover these sections, adjusting when the scenario requires it:
+${sections.map((item, index) => `${index + 1}. ${item}`).join("\n")}
+5. If the analysis contains payment, delivery, acceptance, IP, confidentiality, breach, or dispute terms, reflect them explicitly in the contract body.
+6. Return JSON only, without markdown.
 
-你必须：
-- 使用正式的法律文书语言
-- 条款完整，不留法律漏洞
-- 对需要用户补充的信息明确标注
-- 输出有效的JSON格式
-
-法律依据：${expert.legalBasis.join("、")}`;
-}
-
-// 兼容旧版本
-export const GENERATE_CONTRACT_PROMPT = `
-你是一位资深法律顾问。请根据以下分析结果，生成一份规范的{contractType}。
-
-## 分析结果
-{analysisResult}
-
-## 要求
-1. 合同格式规范，包含所有必要的法律条款
-2. 语言正式、专业，符合法律文书规范
-3. 对于未提供的信息，使用【待填写】标记
-
-## 输出格式（JSON）
-\`\`\`json
+JSON Schema:
 {
-  "title": "合同标题",
+  "title": "${contractTypeName}",
+  "contractType": "${contractType}",
+  "legalBasis": "short legal basis note",
+  "generatedBy": {
+    "expertName": "${expert.name}",
+    "expertTitle": "${expert.title}",
+    "generatedAt": "${new Date().toISOString()}"
+  },
+  "contractNumber": "suggested contract number",
   "sections": [
     {
       "id": "section-1",
-      "title": "第一条 标题",
-      "content": "内容",
+      "title": "1. Parties",
+      "content": "clause body",
       "order": 1,
-      "editable": true
+      "editable": true,
+      "tips": "optional drafting note"
     }
   ],
-  "disclaimer": "免责声明",
   "signature": {
-    "partyA": { "name": "", "title": "", "date": "" },
-    "partyB": { "name": "", "title": "", "date": "" }
-  }
+    "partyA": {
+      "title": "Party A (Signature / Seal)",
+      "name": "Party A name",
+      "representative": "Authorized representative",
+      "date": "Signing date"
+    },
+    "partyB": {
+      "title": "Party B (Signature / Seal)",
+      "name": "Party B name",
+      "idNumber": "ID / registration number",
+      "date": "Signing date"
+    }
+  },
+  "disclaimer": "short disclaimer",
+  "appendices": [
+    {
+      "name": "Appendix name",
+      "description": "Appendix description"
+    }
+  ]
+}`;
 }
-\`\`\`
-`;
 
-export const GENERATE_CONTRACT_SYSTEM = `
-你是ContractHub的资深法律顾问，负责生成专业的合同文本。
-合同应符合中国法律规范，语言正式、条款完整。
-输出必须是有效的JSON格式。
-`;
+export function generateContractSystemPrompt(
+  expert: ExpertRole,
+  language: PromptLanguage,
+): string {
+  return isChinese(language)
+    ? `你是 ${expert.name}（${expert.title}）。请生成适合法律和商业场景使用的合同草稿。输出必须是合法 JSON。`
+    : `You are ${expert.name} (${expert.title}). Draft a professional contract suitable for legal and business use. Output must be valid JSON.`;
+}
+
+export const GENERATE_CONTRACT_PROMPT = generateContractPrompt(
+  {
+    id: "default",
+    name: "Default Counsel",
+    title: "Contracts Counsel",
+    expertise: ["contracts"],
+    personality: "practical",
+    systemPrompt: "",
+    industryKnowledge: "",
+    legalBasis: [],
+    commonPitfalls: [],
+    bestPractices: [],
+  },
+  "{analysisResult}",
+  "custom",
+  "zh",
+);
+
+export const GENERATE_CONTRACT_SYSTEM = generateContractSystemPrompt(
+  {
+    id: "default",
+    name: "Default Counsel",
+    title: "Contracts Counsel",
+    expertise: ["contracts"],
+    personality: "practical",
+    systemPrompt: "",
+    industryKnowledge: "",
+    legalBasis: [],
+    commonPitfalls: [],
+    bestPractices: [],
+  },
+  "zh",
+);

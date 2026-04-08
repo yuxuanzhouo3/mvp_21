@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
 import { runContractIntakeChat } from "@/lib/ai/contract-intake-chat";
+import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
+import { isChinaRegion } from "@/lib/config/region";
+
+function t(zh: string, en: string) {
+  return isChinaRegion() ? zh : en;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,7 +23,10 @@ export async function POST(request: NextRequest) {
     const authResult = await verifyAuthToken(token);
     if (!authResult.success || !authResult.userId) {
       return NextResponse.json(
-        { success: false, error: authResult.error || "Invalid token" },
+        {
+          success: false,
+          error: authResult.error || t("登录状态无效。", "Invalid token."),
+        },
         { status: 401 },
       );
     }
@@ -27,7 +35,10 @@ export async function POST(request: NextRequest) {
     const rawMessages = Array.isArray(body?.messages) ? body.messages : null;
     if (!rawMessages) {
       return NextResponse.json(
-        { success: false, error: "Missing conversation messages." },
+        {
+          success: false,
+          error: t("缺少对话消息。", "Missing conversation messages."),
+        },
         { status: 400 },
       );
     }
@@ -37,12 +48,17 @@ export async function POST(request: NextRequest) {
         role: item?.role === "assistant" ? "assistant" : "user",
         content: typeof item?.content === "string" ? item.content.trim() : "",
       }))
-      .filter((item: { role: "user" | "assistant"; content: string }) => item.content.length > 0)
+      .filter(
+        (item: { role: "user" | "assistant"; content: string }) => item.content.length > 0,
+      )
       .slice(-20);
 
     if (messages.length === 0) {
       return NextResponse.json(
-        { success: false, error: "Conversation cannot be empty." },
+        {
+          success: false,
+          error: t("对话内容不能为空。", "Conversation cannot be empty."),
+        },
         { status: 400 },
       );
     }
@@ -58,8 +74,8 @@ export async function POST(request: NextRequest) {
 
     const message =
       error instanceof Error && error.message === "AI_CHAT_NOT_CONFIGURED"
-        ? "AI chat service is not configured."
-        : "AI chat request failed.";
+        ? t("AI 对话服务未配置。", "AI chat service is not configured.")
+        : t("AI 对话请求失败。", "AI chat request failed.");
 
     return NextResponse.json(
       {

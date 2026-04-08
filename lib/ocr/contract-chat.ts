@@ -24,7 +24,7 @@ export class ContractChatOcrError extends Error {
   }
 }
 
-const OCR_PROMPT = `You are extracting chat content from a contract negotiation screenshot.
+const OCR_PROMPT_EN = `You are extracting chat content from a contract negotiation screenshot.
 
 Tasks:
 1. Identify the sourceType as one of "wechat", "feishu", or "screenshot".
@@ -41,6 +41,28 @@ Schema:
   "conversationText": "Alice: ...\\nBob: ...",
   "summary": "Short summary"
 }`;
+
+const OCR_PROMPT_ZH = `你正在从一张合同协商聊天截图中提取可读内容。
+
+任务：
+1. 将 sourceType 识别为 "wechat"、"feishu" 或 "screenshot"。
+2. 按阅读顺序提取所有可识别的聊天文本。
+3. 如果能看到说话人名称，请尽量保留。
+4. 使用简洁纯文本输出，每条消息一行。
+5. 用简体中文输出一段简短摘要，总结截图中可见的合同事实。
+
+只返回 JSON，不要包裹 Markdown。
+
+Schema:
+{
+  "sourceType": "wechat",
+  "conversationText": "甲：...\\n乙：...",
+  "summary": "简短摘要"
+}`;
+
+function getOcrPrompt() {
+  return isChinaRegion() ? OCR_PROMPT_ZH : OCR_PROMPT_EN;
+}
 
 function stripMarkdownFence(value: string) {
   return value.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
@@ -160,7 +182,7 @@ async function callDashScope(imageBase64: string): Promise<string> {
               role: "user",
               content: [
                 { image: imageBase64 },
-                { text: OCR_PROMPT },
+                { text: getOcrPrompt() },
               ],
             },
           ],
@@ -222,7 +244,7 @@ async function callOpenAI(imageBase64: string): Promise<string> {
         {
           role: "user",
           content: [
-            { type: "text", text: OCR_PROMPT },
+            { type: "text", text: getOcrPrompt() },
             {
               type: "image_url",
               image_url: {

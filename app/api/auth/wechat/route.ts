@@ -8,9 +8,10 @@ import {
 } from "@/lib/models/user";
 import { getWechatUserByCode } from "@/lib/wechat/token-exchange";
 import { isAuthFeatureSupported } from "@/lib/config";
+import { getWechatOAuthAppId } from "@/lib/config/runtime-env";
 import { createRefreshToken } from "@/lib/auth/refresh-token-manager";
+import { signJwt } from "@/lib/auth/jwt";
 import { getCloudBaseApp } from "@/lib/cloudbase/init";
-import * as jwt from "jsonwebtoken";
 import { z } from "zod";
 
 // 微信登录请求验证schema
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
     // ✅ 第2步：用 code 换 access_token
     logInfo("WeChat OAuth: exchanging code for access_token", { code });
 
-    const appId = process.env.NEXT_PUBLIC_WECHAT_APP_ID;
+    const appId = getWechatOAuthAppId();
     const appSecret = process.env.WECHAT_APP_SECRET;
 
     if (!appId || !appSecret) {
@@ -191,9 +192,8 @@ export async function POST(request: NextRequest) {
       region: "CN",
     };
 
-    const accessToken = jwt.sign(
+    const accessToken = signJwt(
       accessPayload,
-      process.env.JWT_SECRET || "fallback-secret-key-for-development-only",
       {
         expiresIn: "1h",
       }
@@ -280,7 +280,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 服务端读取：这个变量在编译时被嵌入到 API 路由代码中
-    const appId = process.env.NEXT_PUBLIC_WECHAT_APP_ID;
+    const appId = getWechatOAuthAppId();
 
     // 返回微信登录配置
     return NextResponse.json({

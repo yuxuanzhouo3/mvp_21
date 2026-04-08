@@ -1,21 +1,21 @@
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 import { NextRequest, NextResponse } from "next/server";
 
-const mockRequireAuth = jest.fn();
-const mockCreateAuthErrorResponse = jest.fn();
-const mockGetPaymentRecordById = jest.fn();
-const mockGetPaymentRecordForUserByReference = jest.fn();
-const mockApplySubscriptionPaymentSuccess = jest.fn();
-const mockPaymentRateLimit = jest.fn();
-const mockLogBusinessEvent = jest.fn();
-const mockLogError = jest.fn();
-const mockLogSecurityEvent = jest.fn();
+const mockRequireAuth: any = jest.fn();
+const mockCreateAuthErrorResponse: any = jest.fn();
+const mockGetPaymentRecordById: any = jest.fn();
+const mockGetPaymentRecordForUserByReference: any = jest.fn();
+const mockApplySubscriptionPaymentSuccess: any = jest.fn();
+const mockPaymentRateLimit: any = jest.fn();
+const mockLogBusinessEvent: any = jest.fn();
+const mockLogError: any = jest.fn();
+const mockLogSecurityEvent: any = jest.fn();
 
-const mockPayPalConfirmPayment = jest.fn();
-const mockStripeConfirmPayment = jest.fn();
-const mockAlipayConfirmPayment = jest.fn();
-const mockAlipayQueryPayment = jest.fn();
-const mockWechatQueryOrderByOutTradeNo = jest.fn();
+const mockPayPalConfirmPayment: any = jest.fn();
+const mockStripeConfirmPayment: any = jest.fn();
+const mockAlipayConfirmPayment: any = jest.fn();
+const mockAlipayQueryPayment: any = jest.fn();
+const mockWechatQueryOrderByOutTradeNo: any = jest.fn();
 
 jest.mock("@/lib/auth/auth", () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
@@ -158,6 +158,46 @@ describe("payment confirm route coverage", () => {
     expect(response.status).toBe(400);
     expect(payload).toEqual({ success: false, error: "Payment confirmation failed" });
     expect(mockApplySubscriptionPaymentSuccess).not.toHaveBeenCalled();
+  });
+
+  test("returns the stored result for already completed payments without re-confirming upstream", async () => {
+    mockRequireAuth.mockResolvedValue({
+      user: { id: "user-1" },
+    });
+    mockGetPaymentRecordById.mockResolvedValue({
+      id: "payment-1",
+      user_id: "user-1",
+      subscription_id: "subscription-1",
+      payment_method: "paypal",
+      transaction_id: "paypal-capture-1",
+      amount: 299,
+      currency: "USD",
+      status: "completed",
+      billing_cycle: "monthly",
+      metadata: {
+        planType: "pro",
+        billingCycle: "monthly",
+      },
+    });
+
+    const response = await POST(createJsonRequest({ paymentId: "payment-1" }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mockPayPalConfirmPayment).not.toHaveBeenCalled();
+    expect(mockApplySubscriptionPaymentSuccess).not.toHaveBeenCalled();
+    expect(payload).toEqual({
+      success: true,
+      transactionId: "paypal-capture-1",
+      amount: 299,
+      currency: "USD",
+      subscription: {
+        id: "subscription-1",
+        planId: "pro",
+        status: "active",
+        billingCycle: "monthly",
+      },
+    });
   });
 
   test("syncs the subscription after a successful provider confirmation", async () => {

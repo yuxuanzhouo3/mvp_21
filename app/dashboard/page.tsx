@@ -76,11 +76,11 @@ export default function DashboardPage() {
       description={content.description}
       actions={
         <>
-          <div className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+          <div className="inline-flex items-center justify-center gap-1 rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground sm:justify-start">
             <CalendarClock className="h-3.5 w-3.5" />
             {content.updated} {lastUpdated}
           </div>
-          <Button asChild>
+          <Button asChild className="w-full sm:w-auto">
             <Link href="/dashboard/contracts/new">
               <Plus className="mr-2 h-4 w-4" />
               {content.newContract}
@@ -91,7 +91,7 @@ export default function DashboardPage() {
     >
       <DashboardStats stats={overview?.stats} loading={loading} />
 
-      <section className="mt-8 grid gap-6 xl:grid-cols-3">
+      <section className="mt-6 grid gap-6 xl:mt-8 xl:grid-cols-3">
         <div className="xl:col-span-2">
           <ContractList />
         </div>

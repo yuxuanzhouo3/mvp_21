@@ -190,12 +190,17 @@ export function PaymentForm({
         headers.Authorization = `Bearer ${token}`;
       }
 
-      const response = await fetch("/api/payment/onetime/create", {
+      const response = await fetch("/api/payment/create", {
         method: "POST",
         headers,
         body: JSON.stringify({
           method: selectedMethod,
+          amount,
+          currency,
+          description,
+          planType: planId,
           billingCycle,
+          idempotencyKey,
         }),
         signal: controller.signal,
       });
@@ -223,12 +228,22 @@ export function PaymentForm({
       }
 
       const result = await response.json();
-      if (result.success) {
-        onSuccess(result);
+      const normalizedResult = result?.data
+        ? {
+            ...result.data,
+            success: result.success,
+            paymentId: result.data.paymentId || result.data.orderId,
+            paymentUrl: result.data.paymentUrl,
+            codeUrl: result.data.codeUrl,
+          }
+        : result;
+
+      if (normalizedResult.success) {
+        onSuccess(normalizedResult);
         return;
       }
 
-      const message = result.error || t.payment.messages.failed;
+      const message = normalizedResult.error || t.payment.messages.failed;
       onError(message);
       toast({
         title: t.payment.messages.failed,

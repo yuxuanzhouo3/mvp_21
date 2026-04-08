@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
+import { isChinaRegion } from "@/lib/config/region";
 import {
   analyzeContractChatScreenshot,
   ContractChatOcrError,
 } from "@/lib/ocr/contract-chat";
+
+function t(zh: string, en: string) {
+  return isChinaRegion() ? zh : en;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,7 +45,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Missing imageBase64 payload",
+          error: t("缺少 imageBase64 图片数据。", "Missing imageBase64 payload."),
           code: "OCR_INVALID_PAYLOAD",
         },
         { status: 400 },
@@ -72,7 +77,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: "Contract screenshot OCR failed",
+        error: t("合同截图 OCR 识别失败。", "Contract screenshot OCR failed."),
         code: "OCR_UNKNOWN_ERROR",
       },
       { status: 500 },

@@ -69,11 +69,15 @@ export function ConsoleShell({
 
       <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8">
         <section className="mb-6 flex flex-col gap-4 rounded-2xl border border-border/70 bg-card/95 p-4 shadow-sm md:mb-8 md:flex-row md:items-center md:justify-between md:p-6">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{title}</h1>
             <p className="mt-1 text-sm text-muted-foreground">{description}</p>
           </div>
-          {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+          {actions ? (
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center md:w-auto md:justify-end">
+              {actions}
+            </div>
+          ) : null}
         </section>
         {children}
       </main>

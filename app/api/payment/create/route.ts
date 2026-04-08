@@ -3,11 +3,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
+import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
+import { PayPalProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/paypal-provider";
+import { StripeProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/stripe-provider";
+import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
 import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
+import { getPaymentMethodStatus } from "@/lib/config/third-party-capabilities";
 import { isChinaRegion } from "@/lib/config/region";
+import {
+  getAppUrl,
+  getWechatPayApiV3Key,
+  getWechatPayAppId,
+} from "@/lib/config/runtime-env";
 import { captureException } from "@/lib/integrations/sentry";
 import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
-import { getPayment } from "@/lib/payment/adapter";
 import { buildSubscriptionPaymentFields } from "@/lib/payment/subscription-payment-sync";
 import { paymentRateLimit } from "@/lib/security/rate-limit";
 
@@ -79,6 +88,22 @@ async function handlePaymentCreate(request: NextRequest) {
     } = validationResult.data;
 
     const userId = user.id;
+    const methodStatus = getPaymentMethodStatus(
+      method as "stripe" | "paypal" | "alipay" | "wechat",
+    );
+
+    if (!methodStatus.enabled) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            methodStatus.reason ||
+            "Payment method is not available in this environment.",
+          code: "PAYMENT_METHOD_UNAVAILABLE",
+        },
+        { status: 503 },
+      );
+    }
 
     // Block repeated create requests that arrive within a short window.
     let recentPayments: any[] = [];
@@ -169,8 +194,6 @@ async function handlePaymentCreate(request: NextRequest) {
       billingCycle: billingCycle || "monthly",
     });
 
-    const payment = getPayment();
-
     const order = {
       amount,
       currency,
@@ -183,17 +206,93 @@ async function handlePaymentCreate(request: NextRequest) {
       method,
     };
 
-    console.log(`Creating payment with method: ${method} using adapter`);
-
-    // Create the provider order through the payment adapter.
-    const orderResult = await payment.createOrder(amount, userId);
-    const normalizedOrderResult = orderResult as typeof orderResult & {
-      qrCode?: string;
-      expiresAt?: string;
+    let orderResult: {
+      orderId: string;
+      paymentUrl?: string;
+      formHtml?: string;
+      codeUrl?: string;
+      transactionId?: string;
     };
+
+    if (method === "stripe") {
+      const provider = new StripeProvider(process.env);
+      const created = await provider.createOnetimePayment(order);
+
+      if (!created.success || !created.paymentId) {
+        throw new Error(created.error || "Failed to create Stripe payment");
+      }
+
+      orderResult = {
+        orderId: created.paymentId,
+        paymentUrl: created.paymentUrl,
+        transactionId: created.paymentId,
+      };
+    } else if (method === "paypal") {
+      const provider = new PayPalProvider(process.env);
+      const created = await provider.createOnetimePayment(order);
+
+      if (!created.success || !created.paymentId) {
+        throw new Error(created.error || "Failed to create PayPal payment");
+      }
+
+      orderResult = {
+        orderId: created.paymentId,
+        paymentUrl: created.paymentUrl,
+        transactionId: created.paymentId,
+      };
+    } else if (method === "alipay") {
+      const provider = new AlipayProvider(process.env);
+      const created = await provider.createPayment(order);
+
+      if (!created.success || !created.paymentId) {
+        throw new Error(created.error || "Failed to create Alipay payment");
+      }
+
+      orderResult = {
+        orderId: created.paymentId,
+        paymentUrl: created.paymentUrl,
+        formHtml: created.paymentUrl,
+        transactionId: created.paymentId,
+      };
+    } else if (method === "wechat") {
+      const outTradeNo = `WX${Date.now()}${Math.random()
+        .toString(36)
+        .slice(2, 7)
+        .toUpperCase()}`;
+      const provider = new WechatProviderV3({
+        appId: getWechatPayAppId(),
+        mchId: process.env.WECHAT_PAY_MCH_ID || "",
+        apiV3Key: getWechatPayApiV3Key(),
+        privateKey: process.env.WECHAT_PAY_PRIVATE_KEY || "",
+        serialNo: process.env.WECHAT_PAY_SERIAL_NO || "",
+        notifyUrl: `${getAppUrl()}/api/payment/webhook/wechat`,
+      });
+
+      const created = await provider.createNativePayment({
+        out_trade_no: outTradeNo,
+        amount: Math.round(amount * 100),
+        description: order.description,
+      });
+
+      orderResult = {
+        orderId: outTradeNo,
+        paymentUrl: created.codeUrl,
+        codeUrl: created.codeUrl,
+        transactionId: outTradeNo,
+      };
+    } else {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Unsupported payment method: ${method}`,
+        },
+        { status: 400 },
+      );
+    }
 
     // Persist the pending payment record in the region-specific store.
     let paymentRecordError: any = null;
+    const nowIso = new Date().toISOString();
 
     if (isChinaRegion()) {
       try {
@@ -208,14 +307,16 @@ async function handlePaymentCreate(request: NextRequest) {
           payment_method: method,
           order_id: orderResult.orderId,
           out_trade_no: orderResult.orderId,
-          transaction_id: orderResult.orderId,
+          transaction_id: orderResult.transactionId || orderResult.orderId,
+          code_url: orderResult.codeUrl,
+          client_type: method === "wechat" ? "native" : undefined,
           billing_cycle: paymentFields.billing_cycle,
           product_type: paymentFields.product_type,
           product_name: paymentFields.product_name,
           metadata: paymentFields.metadata,
           region: "CN",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          created_at: nowIso,
+          updated_at: nowIso,
         });
       } catch (error) {
         console.error("Error recording CloudBase payment:", error);
@@ -230,7 +331,8 @@ async function handlePaymentCreate(request: NextRequest) {
         payment_method: method,
         order_id: orderResult.orderId,
         out_trade_no: orderResult.orderId,
-        transaction_id: orderResult.orderId,
+        transaction_id: orderResult.transactionId || orderResult.orderId,
+        code_url: orderResult.codeUrl,
         billing_cycle: paymentFields.billing_cycle,
         product_type: paymentFields.product_type,
         product_name: paymentFields.product_name,
@@ -260,11 +362,14 @@ async function handlePaymentCreate(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      paymentId: orderResult.orderId,
+      paymentUrl: orderResult.formHtml || orderResult.paymentUrl,
+      codeUrl: orderResult.codeUrl,
       data: {
         orderId: orderResult.orderId,
-        paymentUrl: orderResult.paymentUrl,
-        qrCode: normalizedOrderResult.qrCode,
-        expiresAt: normalizedOrderResult.expiresAt,
+        paymentId: orderResult.orderId,
+        paymentUrl: orderResult.formHtml || orderResult.paymentUrl,
+        codeUrl: orderResult.codeUrl,
         method: order.method,
         amount: order.amount,
         currency: order.currency,

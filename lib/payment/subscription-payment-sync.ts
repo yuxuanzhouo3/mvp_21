@@ -30,6 +30,7 @@ export interface PaymentRecordLike {
   payment_method?: string;
   transaction_id?: string;
   out_trade_no?: string;
+  code_url?: string;
   order_id?: string;
   subscription_id?: string;
   billing_cycle?: BillingCycle | string;
@@ -142,6 +143,46 @@ function pickTransactionReference(record: PaymentRecordLike | null | undefined):
   }
 
   return record.transaction_id || record.out_trade_no || record.order_id || null;
+}
+
+function buildReferenceCandidates(
+  payment: PaymentRecordLike,
+  overrides?: {
+    finalTransactionId?: string;
+    providerReference?: string;
+  },
+): string[] {
+  return Array.from(
+    new Set(
+      [
+        overrides?.finalTransactionId,
+        overrides?.providerReference,
+        payment.transaction_id,
+        payment.out_trade_no,
+        payment.order_id,
+      ].filter((value): value is string => typeof value === "string" && value.trim().length > 0),
+    ),
+  );
+}
+
+export function hasProcessedSubscriptionPaymentSuccess(
+  subscription: Record<string, any> | null | undefined,
+  references: string[],
+): boolean {
+  if (!subscription || references.length === 0) {
+    return false;
+  }
+
+  const metadata = subscription.metadata || {};
+  const knownReferences = new Set(
+    [
+      subscription.transaction_id,
+      subscription.provider_subscription_id,
+      metadata.lastSuccessfulTransactionId,
+    ].filter((value): value is string => typeof value === "string" && value.trim().length > 0),
+  );
+
+  return references.some((reference) => knownReferences.has(reference));
 }
 
 export function buildSubscriptionPaymentFields(input: {
@@ -407,6 +448,24 @@ async function findSubscriptionForPayment(
       return null;
     }
 
+    if (transactionReference) {
+      const referenceResult = await db
+        .collection("subscriptions")
+        .where({
+          user_id: userId,
+          $or: [
+            { provider_subscription_id: transactionReference },
+            { transaction_id: transactionReference },
+          ],
+        })
+        .limit(1)
+        .get();
+
+      if (referenceResult.data?.length) {
+        return referenceResult.data[0];
+      }
+    }
+
     const result = await db
       .collection("subscriptions")
       .where({
@@ -443,15 +502,18 @@ async function findSubscriptionForPayment(
     const { data, error } = await supabaseAdmin
       .from("subscriptions")
       .select("*")
-      .eq("provider_subscription_id", transactionReference)
-      .maybeSingle();
+      .eq("user_id", userId)
+      .or(
+        `provider_subscription_id.eq.${transactionReference},transaction_id.eq.${transactionReference}`,
+      )
+      .limit(1);
 
-    if (error && error.code !== "PGRST116") {
+    if (error) {
       throw error;
     }
 
-    if (data) {
-      return data;
+    if (data?.length) {
+      return data[0];
     }
   }
 
@@ -565,31 +627,75 @@ export async function applySubscriptionPaymentSuccess(
   }
 
   const metadata = extractSubscriptionOrderMetadata(payment);
+  const latestPayment = (await getPaymentRecordById(paymentId)) || payment;
   const now = new Date();
-  const paymentMethod = options.paymentMethod || payment.payment_method || "unknown";
+  const paymentMethod =
+    options.paymentMethod || latestPayment.payment_method || payment.payment_method || "unknown";
   const finalTransactionId =
-    options.finalTransactionId || pickTransactionReference(payment) || paymentId;
+    options.finalTransactionId ||
+    pickTransactionReference(latestPayment) ||
+    pickTransactionReference(payment) ||
+    paymentId;
   const providerReference = options.providerReference || finalTransactionId;
+  const referenceCandidates = buildReferenceCandidates(latestPayment, {
+    finalTransactionId,
+    providerReference,
+  });
 
-  if (payment.status === "completed" && payment.subscription_id) {
+  if (latestPayment.status === "completed" && latestPayment.subscription_id) {
     await syncUserFromRelevantSubscription(userId);
     return {
       paymentId,
-      subscriptionId: payment.subscription_id,
+      subscriptionId: latestPayment.subscription_id,
       metadata,
     };
   }
 
-  const existingSubscription = await findSubscriptionForPayment(payment, providerReference);
+  const existingSubscription = await findSubscriptionForPayment(latestPayment, providerReference);
   const paymentMetadata = {
-    ...payment.metadata,
+    ...latestPayment.metadata,
     ...metadata,
     source: "subscription-payment-sync",
     lastSuccessfulTransactionId: finalTransactionId,
   };
 
-  const amount = options.amount ?? payment.amount ?? 0;
-  const currency = options.currency ?? payment.currency ?? (isChinaRegion() ? "CNY" : "USD");
+  if (hasProcessedSubscriptionPaymentSuccess(existingSubscription, referenceCandidates)) {
+    const existingSubscriptionId = existingSubscription.id || existingSubscription._id;
+
+    await updatePaymentRecordFields(paymentId, {
+      amount: options.amount ?? latestPayment.amount ?? payment.amount ?? 0,
+      currency:
+        options.currency ??
+        latestPayment.currency ??
+        payment.currency ??
+        (isChinaRegion() ? "CNY" : "USD"),
+      status: "completed",
+      payment_method: paymentMethod,
+      transaction_id: finalTransactionId,
+      subscription_id: existingSubscriptionId,
+      billing_cycle: metadata.billingCycle,
+      product_type: metadata.productType,
+      product_name: metadata.productName,
+      metadata: paymentMetadata,
+      completed_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    });
+
+    await syncUserFromRelevantSubscription(userId);
+
+    return {
+      paymentId,
+      subscriptionId: existingSubscriptionId,
+      metadata,
+    };
+  }
+
+  const amount = options.amount ?? latestPayment.amount ?? payment.amount ?? 0;
+  const currency =
+    options.currency ??
+    latestPayment.currency ??
+    payment.currency ??
+    (isChinaRegion() ? "CNY" : "USD");
   const currentPeriodStart = now.toISOString();
   const existingEnd =
     existingSubscription?.current_period_end

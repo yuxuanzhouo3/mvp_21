@@ -73,13 +73,16 @@ function WechatQRCodeContent() {
               headers["Authorization"] = `Bearer ${session.access_token}`;
             }
 
-            const confirmResponse = await fetch(
-              `/api/payment/onetime/confirm?wechat_out_trade_no=${encodeURIComponent(paymentId)}`,
-              {
-                method: "GET",
-                headers,
-              }
-            );
+            const confirmResponse = await fetch("/api/payment/confirm", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...headers,
+              },
+              body: JSON.stringify({
+                paymentId,
+              }),
+            });
             const confirmResult = await confirmResponse.json();
 
             console.log("[QR Code Page] 确认API响应:", {

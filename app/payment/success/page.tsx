@@ -50,24 +50,36 @@ function PaymentSuccessContent() {
           throw new Error(missingParameters);
         }
 
-        const params = new URLSearchParams();
-        if (sessionId) params.set("session_id", sessionId);
-        if (token) params.set("token", token);
-        if (outTradeNo) params.set("out_trade_no", outTradeNo);
-        if (tradeNo) params.set("trade_no", tradeNo);
-        if (wechatOutTradeNo) params.set("wechat_out_trade_no", wechatOutTradeNo);
+        const paymentReference =
+          wechatOutTradeNo || outTradeNo || tradeNo || sessionId || token;
+
+        if (!paymentReference) {
+          throw new Error(missingParameters);
+        }
+
+        const body: Record<string, string> = {
+          paymentId: paymentReference,
+        };
+
+        if (token) {
+          body.token = token;
+        }
 
         const { getAuthClient } = await import("@/lib/auth/client");
         const sessionResult = await getAuthClient().getSession();
         const session = sessionResult.data.session;
 
-        const headers: Record<string, string> = {};
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
         if (session?.access_token) {
           headers["Authorization"] = `Bearer ${session.access_token}`;
         }
 
-        const response = await fetch(`/api/payment/onetime/confirm?${params.toString()}`, {
+        const response = await fetch("/api/payment/confirm", {
+          method: "POST",
           headers,
+          body: JSON.stringify(body),
         });
 
         if (!response.ok) {
@@ -81,7 +93,6 @@ function PaymentSuccessContent() {
           setHasProcessed(true);
 
           setPaymentDetails({
-            daysAdded: result.daysAdded,
             amount: result.amount,
             currency: result.currency,
           });

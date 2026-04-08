@@ -16,9 +16,9 @@ export function Footer() {
 
   return (
     <footer className="border-t border-border bg-muted/30">
-      <div className="mx-auto w-full max-w-7xl px-4 py-14 md:px-6">
-        <div className="mb-10 grid grid-cols-2 gap-8 md:grid-cols-4">
-          <div className="col-span-2 md:col-span-1">
+      <div className="mx-auto w-full max-w-7xl px-4 py-12 sm:py-14 md:px-6">
+        <div className="mb-10 grid grid-cols-1 gap-8 sm:grid-cols-2 md:grid-cols-4">
+          <div className="sm:col-span-2 md:col-span-1">
             <div className="mb-4 flex items-center gap-2">
               <FileText className="h-6 w-6 text-primary" />
               <span className="text-xl font-semibold">{appName}</span>
@@ -33,7 +33,10 @@ export function Footer() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               {data.columns.console.links.map((link) => (
                 <li key={link.href}>
-                  <Link href={link.href} className="transition-colors hover:text-foreground">
+                  <Link
+                    href={link.href}
+                    className="inline-flex min-h-9 items-center transition-colors hover:text-foreground"
+                  >
                     {link.label}
                   </Link>
                 </li>
@@ -46,7 +49,10 @@ export function Footer() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               {data.columns.resources.links.map((link) => (
                 <li key={link.href}>
-                  <Link href={link.href} className="transition-colors hover:text-foreground">
+                  <Link
+                    href={link.href}
+                    className="inline-flex min-h-9 items-center transition-colors hover:text-foreground"
+                  >
                     {link.label}
                   </Link>
                 </li>
@@ -59,7 +65,10 @@ export function Footer() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               {data.columns.workspace.links.map((link) => (
                 <li key={link.href}>
-                  <Link href={link.href} className="transition-colors hover:text-foreground">
+                  <Link
+                    href={link.href}
+                    className="inline-flex min-h-9 items-center transition-colors hover:text-foreground"
+                  >
                     {link.label}
                   </Link>
                 </li>
@@ -69,17 +78,26 @@ export function Footer() {
         </div>
 
         <div className="flex flex-col items-center justify-between gap-4 border-t border-border pt-8 text-sm text-muted-foreground md:flex-row">
-          <p>
+          <p className="text-center md:text-left">
             Copyright {currentYear} {appName}. {data.legal.rights}
           </p>
-          <div className="flex flex-wrap items-center gap-6">
-            <Link href="/privacy" className="transition-colors hover:text-foreground">
+          <div className="flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-2 md:w-auto md:justify-end">
+            <Link
+              href="/privacy"
+              className="inline-flex min-h-9 items-center transition-colors hover:text-foreground"
+            >
               {data.legal.privacy}
             </Link>
-            <Link href="/terms" className="transition-colors hover:text-foreground">
+            <Link
+              href="/terms"
+              className="inline-flex min-h-9 items-center transition-colors hover:text-foreground"
+            >
               {data.legal.terms}
             </Link>
-            <Link href="/auth?mode=signin" className="transition-colors hover:text-foreground">
+            <Link
+              href="/auth?mode=signin"
+              className="inline-flex min-h-9 items-center transition-colors hover:text-foreground"
+            >
               {data.legal.signIn}
             </Link>
           </div>

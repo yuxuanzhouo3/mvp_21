@@ -6,8 +6,8 @@
  */
 
 import cloudbase from '@cloudbase/node-sdk';
-import * as jwt from 'jsonwebtoken';
 
+import { verifyJwt } from "@/lib/auth/jwt";
 import { isChinaRegion } from '@/lib/config/region';
 import { supabase } from '@/lib/integrations/supabase';
 import { isTokenExpired, normalizeTokenPayload } from '@/lib/utils/token-normalizer';
@@ -46,10 +46,7 @@ export async function verifyAuthToken(token: string): Promise<{
       let payload: any;
 
       try {
-        payload = jwt.verify(
-          token,
-          process.env.JWT_SECRET || 'fallback-secret-key-for-development-only',
-        );
+        payload = verifyJwt(token);
       } catch (error) {
         console.error('[Auth Utils] JWT verification failed:', error);
         return {

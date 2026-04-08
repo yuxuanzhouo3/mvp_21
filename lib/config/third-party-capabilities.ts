@@ -1,4 +1,11 @@
 import { currentRegion, getPaymentProviders, isAuthFeatureSupported } from "@/lib/config/deployment.config";
+import {
+  getAppUrl,
+  getPayPalMode,
+  getWechatOAuthAppId,
+  getWechatPayApiV3Key,
+  getWechatPayAppId,
+} from "@/lib/config/runtime-env";
 
 type Region = "CN" | "INTL";
 type PaymentMethod = "stripe" | "paypal" | "wechat" | "alipay";
@@ -51,17 +58,13 @@ function createStatus(enabled: boolean, reason?: string): CapabilityStatus {
   return enabled ? { enabled: true } : { enabled: false, reason };
 }
 
-function getAppUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "";
-}
-
 function getWechatAuthStatus(region: Region): CapabilityStatus {
   if (region !== "CN" || !isAuthFeatureSupported("wechatAuth")) {
     return createStatus(false, "WeChat sign-in is not supported in this deployment.");
   }
 
-  if (!isPresent(process.env.NEXT_PUBLIC_WECHAT_APP_ID)) {
-    return createStatus(false, "NEXT_PUBLIC_WECHAT_APP_ID is missing.");
+  if (!isPresent(getWechatOAuthAppId())) {
+    return createStatus(false, "NEXT_PUBLIC_WECHAT_APP_ID or WECHAT_APP_ID is missing.");
   }
 
   if (!looksLikeUrl(getAppUrl())) {
@@ -148,6 +151,11 @@ function getPayPalStatus(region: Region): CapabilityStatus {
     return createStatus(false, "PAYPAL_WEBHOOK_ID is missing.");
   }
 
+  const payPalMode = getPayPalMode();
+  if (!["sandbox", "live"].includes(payPalMode)) {
+    return createStatus(false, "PAYPAL_ENVIRONMENT or PAYPAL_MODE is invalid.");
+  }
+
   if (!looksLikeUrl(getAppUrl())) {
     return createStatus(false, "APP_URL or NEXT_PUBLIC_APP_URL is missing or invalid.");
   }
@@ -168,7 +176,9 @@ function getAlipayStatus(region: Region): CapabilityStatus {
     return createStatus(false, "ALIPAY_PRIVATE_KEY is missing.");
   }
 
-  const hasPublicKey = isPresent(process.env.ALIPAY_ALIPAY_PUBLIC_KEY);
+  const hasPublicKey =
+    isPresent(process.env.ALIPAY_PUBLIC_KEY) ||
+    isPresent(process.env.ALIPAY_ALIPAY_PUBLIC_KEY);
   const hasCertBundle =
     isPresent(process.env.ALIPAY_APP_CERT) &&
     isPresent(process.env.ALIPAY_ALIPAY_PUBLIC_CERT) &&
@@ -190,15 +200,15 @@ function getWechatPayStatus(region: Region): CapabilityStatus {
     return createStatus(false, "WeChat Pay is not supported in this deployment.");
   }
 
-  if (!isPresent(process.env.WECHAT_APP_ID)) {
-    return createStatus(false, "WECHAT_APP_ID is missing.");
+  if (!isPresent(getWechatPayAppId())) {
+    return createStatus(false, "WECHAT_APP_ID or NEXT_PUBLIC_WECHAT_APP_ID is missing.");
   }
 
   if (!isPresent(process.env.WECHAT_PAY_MCH_ID)) {
     return createStatus(false, "WECHAT_PAY_MCH_ID is missing.");
   }
 
-  if ((process.env.WECHAT_PAY_API_V3_KEY || "").trim().length !== 32) {
+  if (getWechatPayApiV3Key().length !== 32) {
     return createStatus(false, "WECHAT_PAY_API_V3_KEY must be 32 characters.");
   }
 

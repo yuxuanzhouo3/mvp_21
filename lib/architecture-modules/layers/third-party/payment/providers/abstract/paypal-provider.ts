@@ -8,6 +8,7 @@ import {
   PaymentConfirmation,
   RefundResult,
 } from "../../router";
+import { getPayPalEnvironment } from "@/lib/config/runtime-env";
 
 export interface PayPalConfig {
   clientId: string;
@@ -61,9 +62,7 @@ export abstract class AbstractPayPalProvider extends BasePaymentProvider {
         config.PAYPAL_TEAM_ANNUAL_PLAN_ID ||
         process.env.PAYPAL_TEAM_ANNUAL_PLAN_ID ||
         "",
-      environment: (config.PAYPAL_ENVIRONMENT ||
-        process.env.PAYPAL_ENVIRONMENT ||
-        "sandbox") as "sandbox" | "production",
+      environment: getPayPalEnvironment(),
     };
 
     // Set paypalConfig after super() is called

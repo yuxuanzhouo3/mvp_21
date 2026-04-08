@@ -9,6 +9,11 @@ import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
 import { getDatabase } from "@/lib/auth/auth-utils";
 import { getPaymentMethodStatus } from "@/lib/config/third-party-capabilities";
 import { isChinaRegion } from "@/lib/config/region";
+import {
+  getAppUrl,
+  getWechatPayApiV3Key,
+  getWechatPayAppId,
+} from "@/lib/config/runtime-env";
 import { paymentRateLimit } from "@/lib/security/rate-limit";
 import { captureException } from "@/lib/integrations/sentry";
 import { logInfo, logError, logWarn } from "@/lib/utils/logger";
@@ -282,12 +287,12 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
 
         // 初始化微信支付提供商
         const wechatProvider = new WechatProviderV3({
-          appId: process.env.WECHAT_APP_ID!,
+          appId: getWechatPayAppId(),
           mchId: process.env.WECHAT_PAY_MCH_ID!,
-          apiV3Key: process.env.WECHAT_PAY_API_V3_KEY!,
+          apiV3Key: getWechatPayApiV3Key(),
           privateKey: process.env.WECHAT_PAY_PRIVATE_KEY!,
           serialNo: process.env.WECHAT_PAY_SERIAL_NO!,
-          notifyUrl: `${process.env.APP_URL}/api/payment/webhook/wechat`,
+          notifyUrl: `${getAppUrl()}/api/payment/webhook/wechat`,
         });
 
         // 创建微信 NATIVE 支付订单
@@ -344,9 +349,13 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
         },
       };
 
+      // 国内支付额外字段：保留商户单号，供同步回跳和异步 webhook 关联同一笔订单
+      if (method === "alipay" || method === "wechat") {
+        paymentData.out_trade_no = result.paymentId;
+      }
+
       // 微信支付额外字段
       if (method === "wechat") {
-        paymentData.out_trade_no = result.paymentId;
         paymentData.code_url = result.codeUrl;
         paymentData.client_type = "native";
       }

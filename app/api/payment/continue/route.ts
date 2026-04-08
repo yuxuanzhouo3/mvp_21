@@ -3,8 +3,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
 import { PayPalProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/paypal-provider";
 import { StripeProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/stripe-provider";
+import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
 import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
 import { isChinaRegion } from "@/lib/config/region";
+import {
+  getAppUrl,
+  getPayPalEnvironment,
+  getWechatPayApiV3Key,
+  getWechatPayAppId,
+} from "@/lib/config/runtime-env";
 import {
   extractSubscriptionOrderMetadata,
   getPaymentRecordById,
@@ -55,6 +62,35 @@ async function createFreshPaymentSession(payment: any) {
   if (payment.payment_method === "alipay") {
     const provider = new AlipayProvider(process.env);
     return provider.createPayment(order);
+  }
+
+  if (payment.payment_method === "wechat") {
+    const outTradeNo =
+      payment.out_trade_no ||
+      payment.transaction_id ||
+      `WX${Date.now()}${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+    const provider = new WechatProviderV3({
+      appId: getWechatPayAppId(),
+      mchId: process.env.WECHAT_PAY_MCH_ID || "",
+      apiV3Key: getWechatPayApiV3Key(),
+      privateKey: process.env.WECHAT_PAY_PRIVATE_KEY || "",
+      serialNo: process.env.WECHAT_PAY_SERIAL_NO || "",
+      notifyUrl: `${getAppUrl()}/api/payment/webhook/wechat`,
+    });
+
+    const wechatResult = await provider.createNativePayment({
+      out_trade_no: outTradeNo,
+      amount: Math.round(Number(payment.amount) * 100),
+      description: order.description,
+    });
+
+    return {
+      success: true,
+      paymentId: outTradeNo,
+      paymentUrl: wechatResult.codeUrl,
+      codeUrl: wechatResult.codeUrl,
+      transactionId: outTradeNo,
+    };
   }
 
   throw new Error("Unsupported payment method");
@@ -149,7 +185,10 @@ async function handlePaymentContinue(request: NextRequest) {
     const createdAt = new Date(payment.created_at || Date.now());
     const minutesDiff = (Date.now() - createdAt.getTime()) / (1000 * 60);
     const shouldRefreshSession =
-      minutesDiff > 30 || payment.payment_method === "stripe" || payment.payment_method === "alipay";
+      minutesDiff > 30 ||
+      payment.payment_method === "stripe" ||
+      payment.payment_method === "alipay" ||
+      (payment.payment_method === "wechat" && !payment.code_url);
 
     logBusinessEvent("payment_continue_requested", user.id, {
       operationId,
@@ -162,7 +201,7 @@ async function handlePaymentContinue(request: NextRequest) {
     });
 
     if (!shouldRefreshSession && payment.payment_method === "paypal") {
-      const environment = process.env.PAYPAL_ENVIRONMENT || "sandbox";
+      const environment = getPayPalEnvironment();
       const baseUrl =
         environment === "production"
           ? "https://www.paypal.com"
@@ -174,10 +213,20 @@ async function handlePaymentContinue(request: NextRequest) {
       });
     }
 
+    if (!shouldRefreshSession && payment.payment_method === "wechat") {
+      return NextResponse.json({
+        success: true,
+        paymentUrl: payment.code_url,
+        paymentId: payment.out_trade_no || payment.transaction_id,
+      });
+    }
+
     const refreshedSession = await createFreshPaymentSession(payment);
 
     if (!refreshedSession.success || !refreshedSession.paymentId) {
-      throw new Error(refreshedSession.error || "Failed to create payment session");
+      const refreshedError =
+        "error" in refreshedSession ? refreshedSession.error : undefined;
+      throw new Error(refreshedError || "Failed to create payment session");
     }
 
     const nextTransactionId = refreshedSession.paymentId;

@@ -49,7 +49,11 @@ export class AlipayProvider extends AbstractAlipayProvider {
       privateKey:
         config.ALIPAY_PRIVATE_KEY || process.env.ALIPAY_PRIVATE_KEY || "",
       publicKey:
-        config.ALIPAY_PUBLIC_KEY || process.env.ALIPAY_PUBLIC_KEY || "",
+        config.ALIPAY_PUBLIC_KEY ||
+        process.env.ALIPAY_PUBLIC_KEY ||
+        config.ALIPAY_ALIPAY_PUBLIC_KEY ||
+        process.env.ALIPAY_ALIPAY_PUBLIC_KEY ||
+        "",
       alipayPublicKey:
         config.ALIPAY_ALIPAY_PUBLIC_KEY ||
         process.env.ALIPAY_ALIPAY_PUBLIC_KEY ||

@@ -1,4 +1,5 @@
 import { getAuthProvider, getDefaultLanguage } from "@/lib/config/deployment.config";
+import { getAppUrl, getWechatOAuthAppId } from "@/lib/config/runtime-env";
 import { getPublicAuthConfig } from "@/lib/config/third-party-capabilities";
 
 export async function GET() {
@@ -10,8 +11,8 @@ export async function GET() {
     authProvider: getAuthProvider(),
     features: authConfig.features,
     availability: authConfig.availability,
-    wechatAppId: process.env.NEXT_PUBLIC_WECHAT_APP_ID,
-    appUrl: process.env.NEXT_PUBLIC_APP_URL,
+    wechatAppId: getWechatOAuthAppId() || undefined,
+    appUrl: getAppUrl() || undefined,
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     wechatCloudbaseId: process.env.NEXT_PUBLIC_WECHAT_CLOUDBASE_ID,

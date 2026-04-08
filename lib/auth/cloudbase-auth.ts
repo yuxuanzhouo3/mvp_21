@@ -7,7 +7,8 @@
 
 import cloudbase from '@cloudbase/node-sdk'
 import bcrypt from 'bcryptjs'
-import * as jwt from 'jsonwebtoken'
+
+import { signJwt } from "@/lib/auth/jwt";
 
 interface CloudBaseUser {
   _id?: string
@@ -60,9 +61,8 @@ export async function cloudbaseSignInWithEmail(
     }
 
     // 生成 JWT Token
-    const token = jwt.sign(
+    const token = signJwt(
       { userId: user._id, email: user.email, region: 'china' },
-      process.env.JWT_SECRET || 'fallback-secret-key-for-development-only',
       { expiresIn: user.pro ? '90d' : '30d' }
     )
 
@@ -120,9 +120,8 @@ export async function cloudbaseSignUpWithEmail(
     const result = await usersCollection.add(newUser)
 
     // 生成 JWT Token
-    const token = jwt.sign(
+    const token = signJwt(
       { userId: result.id, email, region: 'china' },
-      process.env.JWT_SECRET || 'fallback-secret-key-for-development-only',
       { expiresIn: '30d' }
     )
 
@@ -165,9 +164,8 @@ export async function cloudbaseRefreshToken(
     const user = userResult.data[0]
 
     // 生成新的 JWT Token
-    const token = jwt.sign(
+    const token = signJwt(
       { userId: user._id, email: user.email, region: 'china' },
-      process.env.JWT_SECRET || 'fallback-secret-key-for-development-only',
       { expiresIn: user.pro ? '90d' : '30d' }
     )
 

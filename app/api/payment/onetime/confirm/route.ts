@@ -475,6 +475,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const isAlipayReturn = !!outTradeNo || !!tradeNo;
+    const alipayOutTradeNo = outTradeNo || "";
     let transactionId = "";
     let amount = 0;
     let currency = "USD";
@@ -823,7 +825,7 @@ export async function GET(request: NextRequest) {
         const db = getDatabase();
         const paymentsCollection = db.collection("payments");
 
-        const result = await paymentsCollection
+        let result = await paymentsCollection
           .where({
             transaction_id: transactionId,
             status: "completed",
@@ -831,6 +833,17 @@ export async function GET(request: NextRequest) {
           .get();
 
         existingCompletedPayment = result.data?.[0] || null;
+
+        if (!existingCompletedPayment && isAlipayReturn && alipayOutTradeNo) {
+          result = await paymentsCollection
+            .where({
+              out_trade_no: alipayOutTradeNo,
+              status: "completed",
+            })
+            .get();
+
+          existingCompletedPayment = result.data?.[0] || null;
+        }
       } catch (error) {
         logError("Error checking existing CloudBase payment", error as Error, {
           operationId,
@@ -841,7 +854,7 @@ export async function GET(request: NextRequest) {
       }
     } else {
       // 国际用户：从 Supabase 检查重复支付
-      const { data, error } = await supabaseAdmin
+      let { data, error } = await supabaseAdmin
         .from("payments")
         .select("id, status")
         .eq("transaction_id", transactionId)
@@ -850,6 +863,23 @@ export async function GET(request: NextRequest) {
 
       existingCompletedPayment = data;
       existingCheckError = error;
+
+      if (
+        !existingCompletedPayment &&
+        isAlipayReturn &&
+        alipayOutTradeNo &&
+        (!error || error.code === "PGRST116")
+      ) {
+        const fallbackResult = await supabaseAdmin
+          .from("payments")
+          .select("id, status")
+          .eq("out_trade_no", alipayOutTradeNo)
+          .eq("status", "completed")
+          .maybeSingle();
+
+        existingCompletedPayment = fallbackResult.data;
+        existingCheckError = fallbackResult.error;
+      }
     }
 
     if (existingCheckError) {
@@ -1001,7 +1031,7 @@ export async function GET(request: NextRequest) {
         const db = getDatabase();
         const paymentsCollection = db.collection("payments");
 
-        const result = await paymentsCollection
+        let result = await paymentsCollection
           .where({
             transaction_id: paymentIdToUpdate,
             user_id: user.id,
@@ -1010,6 +1040,18 @@ export async function GET(request: NextRequest) {
           .get();
 
         pendingPayment = result.data?.[0] || null;
+
+        if (!pendingPayment && isAlipayReturn && alipayOutTradeNo) {
+          result = await paymentsCollection
+            .where({
+              out_trade_no: alipayOutTradeNo,
+              user_id: user.id,
+              status: "pending",
+            })
+            .get();
+
+          pendingPayment = result.data?.[0] || null;
+        }
       } catch (error) {
         logError("Error finding CloudBase pending payment", error as Error, {
           operationId,
@@ -1020,7 +1062,7 @@ export async function GET(request: NextRequest) {
       }
     } else {
       // 国际用户：从 Supabase 查找 pending 支付
-      const { data, error } = await supabaseAdmin
+      let { data, error } = await supabaseAdmin
         .from("payments")
         .select("id, amount, currency") // 获取原始金额和货币
         .eq("transaction_id", paymentIdToUpdate)
@@ -1030,6 +1072,24 @@ export async function GET(request: NextRequest) {
 
       pendingPayment = data;
       findError = error;
+
+      if (
+        !pendingPayment &&
+        isAlipayReturn &&
+        alipayOutTradeNo &&
+        (!error || error.code === "PGRST116")
+      ) {
+        const fallbackResult = await supabaseAdmin
+          .from("payments")
+          .select("id, amount, currency, out_trade_no")
+          .eq("out_trade_no", alipayOutTradeNo)
+          .eq("user_id", user.id)
+          .eq("status", "pending")
+          .maybeSingle();
+
+        pendingPayment = fallbackResult.data;
+        findError = fallbackResult.error;
+      }
     }
 
     if (
@@ -1069,6 +1129,10 @@ export async function GET(request: NextRequest) {
           await paymentsCollection.doc(pendingPayment._id).update({
             status: "completed",
             transaction_id: transactionId, // 更新为最终的 transaction ID
+            out_trade_no:
+              isAlipayReturn && alipayOutTradeNo
+                ? alipayOutTradeNo
+                : pendingPayment.out_trade_no,
             amount,
             currency,
             updatedAt: new Date().toISOString(),
@@ -1088,6 +1152,10 @@ export async function GET(request: NextRequest) {
           .update({
             status: "completed",
             transaction_id: transactionId, // 更新为最终的 transaction ID
+            out_trade_no:
+              isAlipayReturn && alipayOutTradeNo
+                ? alipayOutTradeNo
+                : pendingPayment.out_trade_no,
             amount,
             currency,
             updated_at: new Date().toISOString(),
@@ -1141,6 +1209,10 @@ export async function GET(request: NextRequest) {
             billingCycle: days === 365 ? "yearly" : "monthly",
           },
         };
+
+        if (isAlipayReturn && alipayOutTradeNo) {
+          paymentData.out_trade_no = alipayOutTradeNo;
+        }
 
         let insertError: any = null;
 
