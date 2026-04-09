@@ -8,10 +8,20 @@ function isProductionEnvironment() {
   return process.env.NODE_ENV === "production";
 }
 
+function isNextProductionBuildPhase() {
+  return process.env.NEXT_PHASE === "phase-production-build";
+}
+
 export function ensureJwtSecretConfigured(context = "authentication"): string {
   const configuredSecret = process.env.JWT_SECRET?.trim();
   if (configuredSecret) {
     return configuredSecret;
+  }
+
+  // During `next build`, runtime-only secrets might not be injected yet.
+  // Keep build unblocked and enforce strict secret checks when serving traffic.
+  if (isNextProductionBuildPhase()) {
+    return DEVELOPMENT_JWT_SECRET;
   }
 
   if (isProductionEnvironment()) {
