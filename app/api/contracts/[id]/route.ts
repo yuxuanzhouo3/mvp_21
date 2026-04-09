@@ -11,9 +11,30 @@ import {
   applyContractAction,
   normalizeContractEnhancementMeta,
 } from "@/lib/contracts/enhancements";
+import { isChinaRegion } from "@/lib/config/region";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
+}
+
+const CN_REGION = isChinaRegion();
+
+function localeText(en: string, zh: string) {
+  return CN_REGION ? zh : en;
+}
+
+function getSignatureMethodLabel(method: "draw" | "type" | "upload") {
+  if (!CN_REGION) {
+    return method;
+  }
+
+  if (method === "draw") {
+    return "手写";
+  }
+  if (method === "type") {
+    return "输入";
+  }
+  return "上传";
 }
 
 function ensureRecord(value: unknown): Record<string, unknown> | undefined {
@@ -22,6 +43,12 @@ function ensureRecord(value: unknown): Record<string, unknown> | undefined {
   }
 
   return undefined;
+}
+
+function omitUndefined<T extends Record<string, unknown>>(value: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined),
+  ) as Partial<T>;
 }
 
 async function requireCurrentUser(request: NextRequest) {
@@ -60,7 +87,7 @@ async function requireCurrentUser(request: NextRequest) {
     authResult.user?.user_metadata?.displayName ||
     authResult.user?.user_metadata?.full_name ||
     authResult.user?.user_metadata?.email ||
-    "Current User";
+    localeText("Current User", "当前用户");
 
   return {
     user: {
@@ -139,7 +166,24 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const body = await request.json();
+    let bodyRaw: unknown;
+    try {
+      bodyRaw = await request.json();
+    } catch {
+      return NextResponse.json(
+        { success: false, error: { message: "Invalid JSON body." } },
+        { status: 400 },
+      );
+    }
+
+    if (!bodyRaw || typeof bodyRaw !== "object" || Array.isArray(bodyRaw)) {
+      return NextResponse.json(
+        { success: false, error: { message: "Request body must be an object." } },
+        { status: 400 },
+      );
+    }
+
+    const body = bodyRaw as Record<string, any>;
     const action =
       body.action === "archive" ||
       body.action === "unarchive" ||
@@ -169,12 +213,26 @@ export async function PUT(request: NextRequest, context: RouteContext) {
           : undefined,
       region: body.region,
     };
+    const normalizedUpdateInput = omitUndefined(updateInput);
+    const actionNote = typeof body.note === "string" ? body.note : undefined;
+    const updateDescription =
+      typeof body.updateDescription === "string" ? body.updateDescription : undefined;
 
     if (action) {
       const signatureInput = ensureRecord(body.signatureInput);
       const enhancement = normalizeContractEnhancementMeta(existing.metadata, existing);
       const nextSignatures = updateInput.signatures ?? existing.signatures;
+      const resolvedParties = Array.isArray(normalizedUpdateInput.parties)
+        ? normalizedUpdateInput.parties
+        : existing.parties;
+      const hasParties =
+        Array.isArray(resolvedParties) && resolvedParties.length > 0;
       let nextMetadata = updateInput.metadata ?? existing.metadata;
+
+      console.info("[/api/contracts/[id] PUT action]", {
+        action,
+        hasParties,
+      });
 
       if (signatureInput) {
         const role =
@@ -189,8 +247,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
           typeof signatureInput.signerName === "string" && signatureInput.signerName.trim()
             ? signatureInput.signerName.trim()
             : role === "sender"
-              ? "Sender"
-              : "Counterparty";
+              ? localeText("Sender", "发起方")
+              : localeText("Counterparty", "对方");
         const createdAt =
           typeof signatureInput.createdAt === "string"
             ? signatureInput.createdAt
@@ -235,8 +293,13 @@ export async function PUT(request: NextRequest, context: RouteContext) {
             evidence: [
               {
                 id: `signature-evidence-${Date.now()}`,
-                label: role === "sender" ? "Sender signature captured" : "Counterparty signature captured",
-                description: `Signature captured on mobile via ${method}${signatureRecord.fileName ? ` (${signatureRecord.fileName})` : ""}.`,
+                label:
+                  role === "sender"
+                    ? localeText("Sender signature captured", "发起方签名已采集")
+                    : localeText("Counterparty signature captured", "对方签名已采集"),
+                description: CN_REGION
+                  ? `已通过移动端${getSignatureMethodLabel(method)}${signatureRecord.fileName ? `（${signatureRecord.fileName}）` : ""}采集签名。`
+                  : `Signature captured on mobile via ${method}${signatureRecord.fileName ? ` (${signatureRecord.fileName})` : ""}.`,
                 createdAt,
                 type: "signature",
               },
@@ -253,14 +316,15 @@ export async function PUT(request: NextRequest, context: RouteContext) {
             ...applyContractAction(
               {
                 ...existing,
+                ...normalizedUpdateInput,
                 signatures: mergedSignatures,
                 metadata: nextMetadata,
               },
               action,
               auth.user.actor,
-              body.note,
+              actionNote,
             ),
-            ...updateInput,
+            ...normalizedUpdateInput,
             signatures: mergedSignatures,
           },
         );
@@ -274,17 +338,17 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       const updated = await updateContractRecord(
         id,
         {
-          ...updateInput,
+          ...normalizedUpdateInput,
           ...applyContractAction(
             {
               ...existing,
-              ...updateInput,
+              ...normalizedUpdateInput,
               signatures: nextSignatures,
               metadata: nextMetadata,
             },
             action,
             auth.user.actor,
-            body.note,
+            actionNote,
           ),
         },
       );
@@ -298,12 +362,13 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const nextMetadata = appendContractUpdateLog(
       existing,
       auth.user.actor,
-      body.updateDescription || "Contract content and workflow settings were updated",
+      updateDescription ||
+        localeText("Contract content and workflow settings were updated", "合同内容与流程设置已更新"),
       updateInput.metadata,
     );
 
     const contract = await updateContractRecord(id, {
-      ...updateInput,
+      ...normalizedUpdateInput,
       metadata: nextMetadata,
     });
 

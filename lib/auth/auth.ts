@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { isChinaRegion } from '../config/region';
-import { supabase } from '../integrations/supabase';
+import { extractTokenFromHeader, verifyAuthToken } from '@/lib/auth/auth-utils';
 
 export async function requireAuth(request: NextRequest): Promise<{
   user: any;
@@ -9,61 +8,20 @@ export async function requireAuth(request: NextRequest): Promise<{
 } | null> {
   try {
     const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const { token } = extractTokenFromHeader(authHeader);
+    if (!token) {
       console.error('[auth] Missing or invalid authorization header');
       return null;
     }
 
-    const token = authHeader.substring(7);
-
-    if (isChinaRegion()) {
-      try {
-        const internalBaseUrl =
-          process.env.APP_URL ||
-          process.env.NEXT_PUBLIC_APP_URL ||
-          request.nextUrl.origin ||
-          'http://localhost:3000';
-
-        const response = await fetch(`${internalBaseUrl}/api/auth/me`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!response.ok) {
-          console.error('[auth] CloudBase auth verification failed:', response.status);
-          return null;
-        }
-
-        const data = await response.json();
-        if (!data.success || !data.user) {
-          console.error('[auth] CloudBase auth verification returned invalid data');
-          return null;
-        }
-
-        return {
-          user: data.user,
-          session: { access_token: token },
-        };
-      } catch (error) {
-        console.error('[auth] CloudBase auth verification error:', error);
-        return null;
-      }
-    }
-
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser(token);
-
-    if (error || !user) {
-      console.error('[auth] Invalid token or user not found:', error?.message);
+    const authResult = await verifyAuthToken(token);
+    if (!authResult.success || !authResult.userId) {
+      console.error('[auth] Token verification failed:', authResult.error);
       return null;
     }
 
     return {
-      user,
+      user: authResult.user || { id: authResult.userId },
       session: { access_token: token },
     };
   } catch (error) {

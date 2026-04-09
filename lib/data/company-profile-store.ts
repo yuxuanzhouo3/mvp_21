@@ -38,16 +38,29 @@ export async function listCompanyProfiles(
   userId: string,
 ): Promise<UnifiedCompanyProfile[]> {
   if (isChinaRegion()) {
-    const db = getDatabase();
-    const result = await db
-      .collection("company_profiles")
-      .where({ user_id: userId })
-      .orderBy("updated_at", "desc")
-      .get();
+    try {
+      const db = getDatabase();
+      const result = await db
+        .collection("company_profiles")
+        .where({ user_id: userId })
+        .orderBy("updated_at", "desc")
+        .get();
 
-    return (result.data || []).map((record: Record<string, any>) =>
-      normalizeCompanyProfileRecord(record),
-    );
+      return (result.data || []).map((record: Record<string, any>) =>
+        normalizeCompanyProfileRecord(record),
+      );
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String((error as { code?: unknown }).code || "")
+          : "";
+
+      if (code === "DATABASE_COLLECTION_NOT_EXIST") {
+        return [];
+      }
+
+      throw error;
+    }
   }
 
   const supabaseAdmin = getSupabaseAdmin() as any;

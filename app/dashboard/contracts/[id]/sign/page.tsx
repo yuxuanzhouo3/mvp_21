@@ -3,6 +3,7 @@ import { FileText } from "lucide-react";
 
 import { ContractSignFlow } from "@/components/contracts/contract-sign-flow";
 import { getAppDisplayName } from "@/lib/config/deployment.config";
+import { isChinaRegion } from "@/lib/config/region";
 
 interface SignContractPageProps {
   params: Promise<{ id: string }>;
@@ -11,6 +12,7 @@ interface SignContractPageProps {
 export default async function SignContractPage({ params }: SignContractPageProps) {
   const { id } = await params;
   const appName = getAppDisplayName();
+  const backLabel = isChinaRegion() ? "返回合同详情" : "Back to Contract";
 
   return (
     <div className="min-h-screen bg-background">
@@ -26,7 +28,7 @@ export default async function SignContractPage({ params }: SignContractPageProps
         <ContractSignFlow
           contractId={id}
           backHref={`/contracts/${id}?ctx=dashboard`}
-          backLabel="Back to Contract"
+          backLabel={backLabel}
           openContractHref={`/contracts/${id}?ctx=dashboard`}
           signatureSource="dashboard-web"
         />

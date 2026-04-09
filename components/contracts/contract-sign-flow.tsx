@@ -189,7 +189,11 @@ export function ContractSignFlow({
       return null;
     }
 
-    const signerName = typedName.trim() || (role === "sender" ? String(contract.parties[0]?.name || "Sender") : String(contract.parties[1]?.name || "Counterparty"));
+    const signerName =
+      typedName.trim() ||
+      (role === "sender"
+        ? String(contract.parties[0]?.name || (isEn ? "Sender" : "发起方"))
+        : String(contract.parties[1]?.name || (isEn ? "Counterparty" : "对方")));
     const createdAt = new Date().toISOString();
 
     if (signMethod === "type") {

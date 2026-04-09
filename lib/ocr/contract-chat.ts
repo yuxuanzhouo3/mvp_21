@@ -156,6 +156,37 @@ function ensureResult(data: ContractChatScreenshotData) {
   }
 }
 
+function hasDashScope() {
+  return Boolean(process.env.DASHSCOPE_API_KEY);
+}
+
+function hasOpenAI() {
+  return Boolean(process.env.OPENAI_API_KEY);
+}
+
+function getProviderOrder(): Array<"dashscope" | "openai"> {
+  const candidates = isChinaRegion()
+    ? (["dashscope", "openai"] as const)
+    : (["openai", "dashscope"] as const);
+
+  return candidates.filter((provider) =>
+    provider === "dashscope" ? hasDashScope() : hasOpenAI(),
+  );
+}
+
+function isRetryableProviderError(error: unknown) {
+  if (!(error instanceof ContractChatOcrError)) {
+    return false;
+  }
+
+  return (
+    error.code === "OCR_NOT_CONFIGURED" ||
+    error.code === "OCR_PROVIDER_FAILED" ||
+    error.code === "OCR_EMPTY_RESPONSE" ||
+    error.code === "OCR_EMPTY_RESULT"
+  );
+}
+
 async function callDashScope(imageBase64: string): Promise<string> {
   const apiKey = process.env.DASHSCOPE_API_KEY;
   if (!apiKey) {
@@ -285,22 +316,55 @@ export async function analyzeContractChatScreenshot(
   imageBase64: string,
   sourceHint?: "wechat" | "feishu" | "screenshot",
 ): Promise<ContractChatScreenshotAnalysisResult> {
-  const provider = isChinaRegion() ? "dashscope" : "openai";
-  const rawText =
-    provider === "dashscope"
-      ? await callDashScope(imageBase64)
-      : await callOpenAI(imageBase64);
-  const data = parseRawResult(rawText);
-
-  if (sourceHint && data.sourceType === "screenshot") {
-    data.sourceType = sourceHint;
+  const providers = getProviderOrder();
+  if (providers.length === 0) {
+    throw new ContractChatOcrError(
+      "No OCR provider is configured",
+      "OCR_NOT_CONFIGURED",
+      500,
+    );
   }
 
-  ensureResult(data);
+  let lastError: unknown = null;
 
-  return {
-    provider,
-    rawText,
-    data,
-  };
+  for (let index = 0; index < providers.length; index += 1) {
+    const provider = providers[index];
+
+    try {
+      const rawText =
+        provider === "dashscope"
+          ? await callDashScope(imageBase64)
+          : await callOpenAI(imageBase64);
+      const data = parseRawResult(rawText);
+
+      if (sourceHint && data.sourceType === "screenshot") {
+        data.sourceType = sourceHint;
+      }
+
+      ensureResult(data);
+
+      return {
+        provider,
+        rawText,
+        data,
+      };
+    } catch (error) {
+      lastError = error;
+
+      const hasFallback = index < providers.length - 1;
+      if (!hasFallback || !isRetryableProviderError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+
+  throw new ContractChatOcrError(
+    "OCR processing failed",
+    "OCR_UNKNOWN_ERROR",
+    502,
+  );
 }

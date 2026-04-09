@@ -3,10 +3,10 @@ import { createHash } from "node:crypto";
 import { normalizeContractEnhancementMeta } from "@/lib/contracts/enhancements";
 import {
   buildContractHtml,
-  buildContractPdfBuffer,
   normalizeContractContent,
   sanitizeDownloadFileName,
 } from "@/lib/contracts/format";
+import { buildContractPdfBuffer } from "@/lib/contracts/pdf";
 import { getContractById, listContracts } from "@/lib/data/contracts-store";
 import type { UnifiedContractRecord } from "@/lib/data/unified-models";
 import {
@@ -31,6 +31,58 @@ import type {
   DashboardDocumentVerificationData,
   DashboardDocumentsData,
 } from "@/lib/dashboard/types";
+import { isChinaRegion } from "@/lib/config/region";
+
+const CN_REGION = isChinaRegion();
+
+function localeText(en: string, zh: string) {
+  return CN_REGION ? zh : en;
+}
+
+function normalizeParticipantRole(role: string) {
+  if (role === "sender") {
+    return localeText("Sender", "发起方");
+  }
+
+  if (role === "counterparty") {
+    return localeText("Counterparty", "对方");
+  }
+
+  return role;
+}
+
+function normalizeSignatureStatus(status: string) {
+  if (!CN_REGION) {
+    return status;
+  }
+
+  if (status === "confirmed") {
+    return "已确认";
+  }
+  if (status === "pending") {
+    return "待确认";
+  }
+
+  return status;
+}
+
+function normalizeReminderTarget(target: string) {
+  if (!CN_REGION) {
+    return target;
+  }
+
+  if (target === "all_signers") {
+    return "全部签署方";
+  }
+  if (target === "sender") {
+    return "发起方";
+  }
+  if (target === "counterparty") {
+    return "对方";
+  }
+
+  return target;
+}
 
 function joinLine(label: string, value?: string | number | null) {
   return `${label}: ${value ?? "-"}`;
@@ -50,14 +102,14 @@ function formatBytes(bytes: number) {
 
 function formatAverageHours(hours: number) {
   if (!Number.isFinite(hours) || hours <= 0) {
-    return "N/A";
+    return localeText("N/A", "暂无");
   }
 
   if (hours >= 24) {
-    return `${(hours / 24).toFixed(hours >= 48 ? 0 : 1)} d`;
+    return `${(hours / 24).toFixed(hours >= 48 ? 0 : 1)} ${localeText("d", "天")}`;
   }
 
-  return `${hours.toFixed(hours >= 10 ? 0 : 1)} h`;
+  return `${hours.toFixed(hours >= 10 ? 0 : 1)} ${localeText("h", "小时")}`;
 }
 
 function buildShareUrl(origin: string | undefined, token: string) {
@@ -83,11 +135,11 @@ function toSafePageCount(sizeBytes: number) {
 }
 
 function normalizeCategory(value?: string | null) {
-  return value && value.trim() ? value.trim() : "General";
+  return value && value.trim() ? value.trim() : localeText("General", "通用");
 }
 
 function normalizeGroupName(value?: string | null) {
-  return value && value.trim() ? value.trim() : "Workspace";
+  return value && value.trim() ? value.trim() : localeText("Workspace", "工作空间");
 }
 
 function normalizeTags(tags: string[]) {
@@ -190,7 +242,7 @@ function buildContractDocumentPayload(contract: UnifiedContractRecord): Dashboar
     Boolean(enhancement.signFlow.finalCopy) ||
     contract.status === "signed" ||
     contract.status === "completed";
-  const fileName = `${contract.title || "contract"}${verified ? ".pdf" : ".draft"}`;
+  const fileName = `${contract.title || localeText("contract", "合同")}${verified ? ".pdf" : ".draft"}`;
   const tags = normalizeTags(
     [contract.type, contract.sourceType, enhancement.signFlow.status, contract.status].filter(
       (value): value is string => Boolean(value),
@@ -202,15 +254,15 @@ function buildContractDocumentPayload(contract: UnifiedContractRecord): Dashboar
     sourceKind: "contract",
     rawId: contract.id,
     contractId: contract.id,
-    title: contract.title || "Untitled Contract",
+    title: contract.title || localeText("Untitled Contract", "未命名合同"),
     fileName,
     documentType: verified ? "contract" : "draft",
     verificationStatus: verified ? "verified" : "pending",
     contractStatus: contract.status,
     signFlowStatus: enhancement.signFlow.status,
     sourceType: contract.sourceType,
-    category: normalizeCategory(contract.type || "Contract"),
-    groupName: "Contracts",
+    category: normalizeCategory(contract.type || localeText("Contract", "合同")),
+    groupName: localeText("Contracts", "合同"),
     tags,
     contentType: "application/pdf",
     storageProvider: "contract-record",
@@ -234,8 +286,8 @@ function buildUploadedDocumentPayload(document: WorkspaceDocumentRecord): Dashbo
     id: encodeDashboardDocumentId("uploaded", document.id),
     sourceKind: "uploaded",
     rawId: document.id,
-    title: document.title || document.fileName || "Uploaded Document",
-    fileName: document.fileName || "uploaded-document",
+    title: document.title || document.fileName || localeText("Uploaded Document", "上传文档"),
+    fileName: document.fileName || localeText("uploaded-document", "上传文档"),
     documentType: "uploaded",
     verificationStatus: "verified",
     sourceType: "upload",
@@ -326,8 +378,8 @@ function buildContractTimeline(contract: UnifiedContractRecord): DashboardDocume
   if (contract.createdAt) {
     events.push({
       id: `${contract.id}-created`,
-      label: "Draft created",
-      description: "The contract draft record was created.",
+      label: localeText("Draft created", "草稿已创建"),
+      description: localeText("The contract draft record was created.", "合同草稿记录已创建。"),
       occurredAt: contract.createdAt,
       type: "created",
     });
@@ -336,8 +388,8 @@ function buildContractTimeline(contract: UnifiedContractRecord): DashboardDocume
   if (enhancement.signFlow.initiatedAt) {
     events.push({
       id: `${contract.id}-signing-started`,
-      label: "Signing started",
-      description: "The signing workflow was launched.",
+      label: localeText("Signing started", "签署流程已发起"),
+      description: localeText("The signing workflow was launched.", "签署流程已启动。"),
       occurredAt: enhancement.signFlow.initiatedAt,
       type: "signing",
     });
@@ -347,8 +399,14 @@ function buildContractTimeline(contract: UnifiedContractRecord): DashboardDocume
     if (!participant.confirmedAt) return;
     events.push({
       id: `${contract.id}-${participant.role}-confirmed`,
-      label: participant.role === "sender" ? "Sender confirmed" : "Counterparty confirmed",
-      description: `${participant.name} confirmed the signature package.`,
+      label:
+        participant.role === "sender"
+          ? localeText("Sender confirmed", "发起方已确认")
+          : localeText("Counterparty confirmed", "对方已确认"),
+      description: localeText(
+        `${participant.name} confirmed the signature package.`,
+        `${participant.name}已确认签署材料。`,
+      ),
       occurredAt: participant.confirmedAt,
       type: "signature",
     });
@@ -357,8 +415,13 @@ function buildContractTimeline(contract: UnifiedContractRecord): DashboardDocume
   enhancement.signFlow.reminders.forEach((reminder) => {
     events.push({
       id: reminder.id,
-      label: "Reminder sent",
-      description: reminder.note || `Reminder sent to ${reminder.target}.`,
+      label: localeText("Reminder sent", "提醒已发送"),
+      description:
+        reminder.note ||
+        localeText(
+          `Reminder sent to ${reminder.target}.`,
+          `已向${normalizeReminderTarget(reminder.target)}发送提醒。`,
+        ),
       occurredAt: reminder.sentAt,
       type: "reminder",
     });
@@ -386,7 +449,7 @@ function buildContractTimeline(contract: UnifiedContractRecord): DashboardDocume
   if (enhancement.signFlow.finalCopy) {
     events.push({
       id: `${contract.id}-final-copy`,
-      label: "Final copy retained",
+      label: localeText("Final copy retained", "最终电子版已留存"),
       description: enhancement.signFlow.finalCopy.note,
       occurredAt: enhancement.signFlow.finalCopy.createdAt,
       type: "final_copy",
@@ -412,8 +475,11 @@ function buildUploadedTimeline(
   if (document.createdAt) {
     events.push({
       id: `${document.id}-uploaded`,
-      label: "Document uploaded",
-      description: `${document.fileName} entered the workspace document center.`,
+      label: localeText("Document uploaded", "文档已上传"),
+      description: localeText(
+        `${document.fileName} entered the workspace document center.`,
+        `${document.fileName}已进入工作台文档中心。`,
+      ),
       occurredAt: document.createdAt,
       type: "created",
     });
@@ -422,8 +488,11 @@ function buildUploadedTimeline(
   if (document.updatedAt && document.updatedAt !== document.createdAt) {
     events.push({
       id: `${document.id}-updated`,
-      label: "Metadata updated",
-      description: "Document metadata was refreshed in the workspace document center.",
+      label: localeText("Metadata updated", "文档元数据已更新"),
+      description: localeText(
+        "Document metadata was refreshed in the workspace document center.",
+        "工作台文档中心中的文档元数据已更新。",
+      ),
       occurredAt: document.updatedAt,
       type: "update",
     });
@@ -432,10 +501,12 @@ function buildUploadedTimeline(
   if (share) {
     events.push({
       id: `${document.id}-shared`,
-      label: isShareExpired(share) ? "Share link expired" : "Share link active",
+      label: isShareExpired(share)
+        ? localeText("Share link expired", "分享链接已过期")
+        : localeText("Share link active", "分享链接有效"),
       description: isShareExpired(share)
-        ? "The public verification link is no longer valid."
-        : "A public verification page is active for this document.",
+        ? localeText("The public verification link is no longer valid.", "公开验真链接已失效。")
+        : localeText("A public verification page is active for this document.", "此文档的公开验真页当前可访问。"),
       occurredAt: share.updatedAt || share.createdAt || document.updatedAt || document.createdAt || new Date().toISOString(),
       type: "update",
     });
@@ -444,8 +515,11 @@ function buildUploadedTimeline(
   if (share?.lastAccessedAt) {
     events.push({
       id: `${document.id}-shared-accessed`,
-      label: "Shared page visited",
-      description: `The public verification page has been opened ${share.accessCount} times.`,
+      label: localeText("Shared page visited", "分享页已被访问"),
+      description: localeText(
+        `The public verification page has been opened ${share.accessCount} times.`,
+        `公开验真页已被访问 ${share.accessCount} 次。`,
+      ),
       occurredAt: share.lastAccessedAt,
       type: "update",
     });
@@ -485,8 +559,14 @@ async function buildContractVerificationData(
     integrityStatus: document.verificationStatus,
     integritySummary:
       document.verificationStatus === "verified"
-        ? "The document hash, signing participants, and retained copy are all backed by live contract workflow data."
-        : "The draft exists, but the signing workflow or retained final copy is not complete yet.",
+        ? localeText(
+            "The document hash, signing participants, and retained copy are all backed by live contract workflow data.",
+            "文档哈希、签署参与方与留存副本均由真实合同流程数据支撑。",
+          )
+        : localeText(
+            "The draft exists, but the signing workflow or retained final copy is not complete yet.",
+            "草稿已存在，但签署流程或最终留存副本尚未完成。",
+          ),
     contentHash: document.hash,
     finalCopy: enhancement.signFlow.finalCopy,
     evidence: enhancement.signFlow.evidence.map((item) => ({
@@ -522,22 +602,31 @@ async function buildUploadedVerificationData(
   const evidence = [
     {
       id: `${documentRecord.id}-hash`,
-      label: "SHA-256 hash recorded",
-      description: "The uploaded file hash was calculated and stored when the document entered the workspace.",
+      label: localeText("SHA-256 hash recorded", "SHA-256 哈希已记录"),
+      description: localeText(
+        "The uploaded file hash was calculated and stored when the document entered the workspace.",
+        "文档进入工作空间时，系统已计算并保存上传文件哈希。",
+      ),
       createdAt: documentRecord.createdAt || documentRecord.updatedAt || new Date().toISOString(),
       type: "hash",
     },
     {
       id: `${documentRecord.id}-storage`,
-      label: "Storage receipt retained",
-      description: `The original file is retained through ${documentRecord.storageProvider}.`,
+      label: localeText("Storage receipt retained", "存储回执已留存"),
+      description: localeText(
+        `The original file is retained through ${documentRecord.storageProvider}.`,
+        `原始文件已通过 ${documentRecord.storageProvider} 留存。`,
+      ),
       createdAt: documentRecord.createdAt || documentRecord.updatedAt || new Date().toISOString(),
       type: "storage",
     },
     {
       id: `${documentRecord.id}-metadata`,
-      label: "Classification metadata stored",
-      description: `Category: ${normalizeCategory(documentRecord.category)} | Group: ${normalizeGroupName(documentRecord.groupName)} | Tags: ${normalizeTags(documentRecord.tags).join(", ") || "-"}`,
+      label: localeText("Classification metadata stored", "分类元数据已存储"),
+      description: localeText(
+        `Category: ${normalizeCategory(documentRecord.category)} | Group: ${normalizeGroupName(documentRecord.groupName)} | Tags: ${normalizeTags(documentRecord.tags).join(", ") || "-"}`,
+        `分类：${normalizeCategory(documentRecord.category)} | 分组：${normalizeGroupName(documentRecord.groupName)} | 标签：${normalizeTags(documentRecord.tags).join(", ") || "-"}`,
+      ),
       createdAt: documentRecord.updatedAt || documentRecord.createdAt || new Date().toISOString(),
       type: "metadata",
     },
@@ -546,17 +635,28 @@ async function buildUploadedVerificationData(
   if (share) {
     evidence.push({
       id: `${documentRecord.id}-share`,
-      label: isShareExpired(share) ? "Share link expired" : "Share link active",
+      label: isShareExpired(share)
+        ? localeText("Share link expired", "分享链接已过期")
+        : localeText("Share link active", "分享链接有效"),
       description: isShareExpired(share)
-        ? "The public verification link has passed its effective period."
-        : `Public verification is available${share.expiresAt ? ` until ${share.expiresAt}` : ""}.`,
+        ? localeText(
+            "The public verification link has passed its effective period.",
+            "公开验真链接已超过有效期。",
+          )
+        : localeText(
+            `Public verification is available${share.expiresAt ? ` until ${share.expiresAt}` : ""}.`,
+            `公开验真页可访问${share.expiresAt ? `，有效期至 ${share.expiresAt}` : "。"} `,
+          ).trim(),
       createdAt: share.updatedAt || share.createdAt || new Date().toISOString(),
       type: "share",
     });
     evidence.push({
       id: `${documentRecord.id}-share-access`,
-      label: "Share access statistics",
-      description: `This shared page has been opened ${share.accessCount} times.`,
+      label: localeText("Share access statistics", "分享访问统计"),
+      description: localeText(
+        `This shared page has been opened ${share.accessCount} times.`,
+        `该分享页面已被访问 ${share.accessCount} 次。`,
+      ),
       createdAt: share.lastAccessedAt || share.updatedAt || share.createdAt || new Date().toISOString(),
       type: "share_access",
     });
@@ -566,7 +666,10 @@ async function buildUploadedVerificationData(
     document,
     integrityStatus: document.verificationStatus,
     integritySummary:
-      "The uploaded document has a stored content hash, retained original file, and workspace audit metadata.",
+      localeText(
+        "The uploaded document has a stored content hash, retained original file, and workspace audit metadata.",
+        "上传文档已具备内容哈希、原始文件留存与工作空间审计元数据。",
+      ),
     contentHash: document.hash,
     evidence,
     signatures: [],
@@ -712,7 +815,7 @@ export async function buildDashboardDocumentDownload(
     return null;
   }
 
-  const pdfBuffer = buildContractPdfBuffer(content);
+  const pdfBuffer = await buildContractPdfBuffer(content);
   return {
     fileName: `${sanitizeDownloadFileName(content.title || contract.title || "contract")}.pdf`,
     buffer: pdfBuffer,
@@ -722,47 +825,54 @@ export async function buildDashboardDocumentDownload(
 
 function buildCertificateLines(verification: DashboardDocumentVerificationData) {
   const { document } = verification;
+  const sectionTitle = {
+    main: localeText("# Document Verification Certificate", "# 文档验真证书"),
+    summary: localeText("## Summary", "## 摘要"),
+    signatures: localeText("## Signatures", "## 签署记录"),
+    evidence: localeText("## Evidence", "## 证据记录"),
+    timeline: localeText("## Timeline", "## 时间线"),
+  };
 
   return [
-    "# Document Verification Certificate",
+    sectionTitle.main,
     "",
-    joinLine("Document ID", `DOC-${document.id}`),
-    joinLine("Source Kind", document.sourceKind),
-    joinLine("Raw Document ID", document.rawId),
-    joinLine("Contract ID", document.contractId || "-"),
-    joinLine("Document Name", document.fileName),
-    joinLine("Document Type", document.documentType),
-    joinLine("Verification Status", verification.integrityStatus),
-    joinLine("Contract Status", document.contractStatus || "-"),
-    joinLine("Signing Flow", document.signFlowStatus || "-"),
-    joinLine("Source Type", document.sourceType || "-"),
-    joinLine("Category", document.category),
-    joinLine("Group", document.groupName || "-"),
-    joinLine("Tags", document.tags.join(", ") || "-"),
-    joinLine("Hash", verification.contentHash),
-    joinLine("Uploaded At", document.uploadedAt || "-"),
-    joinLine("Updated At", document.updatedAt || "-"),
-    joinLine("Public Share URL", verification.shareUrl || "-"),
-    joinLine("Share Expires At", verification.shareExpiresAt || "-"),
-    joinLine("Share Access Count", verification.shareAccessCount ?? 0),
-    joinLine("Share Last Accessed At", verification.shareLastAccessedAt || "-"),
+    joinLine(localeText("Document ID", "文档编号"), `DOC-${document.id}`),
+    joinLine(localeText("Source Kind", "来源类型"), document.sourceKind),
+    joinLine(localeText("Raw Document ID", "原始文档 ID"), document.rawId),
+    joinLine(localeText("Contract ID", "合同 ID"), document.contractId || "-"),
+    joinLine(localeText("Document Name", "文档名称"), document.fileName),
+    joinLine(localeText("Document Type", "文档类型"), document.documentType),
+    joinLine(localeText("Verification Status", "验真状态"), verification.integrityStatus),
+    joinLine(localeText("Contract Status", "合同状态"), document.contractStatus || "-"),
+    joinLine(localeText("Signing Flow", "签署流程"), document.signFlowStatus || "-"),
+    joinLine(localeText("Source Type", "来源渠道"), document.sourceType || "-"),
+    joinLine(localeText("Category", "分类"), document.category),
+    joinLine(localeText("Group", "分组"), document.groupName || "-"),
+    joinLine(localeText("Tags", "标签"), document.tags.join(", ") || "-"),
+    joinLine(localeText("Hash", "哈希"), verification.contentHash),
+    joinLine(localeText("Uploaded At", "上传时间"), document.uploadedAt || "-"),
+    joinLine(localeText("Updated At", "更新时间"), document.updatedAt || "-"),
+    joinLine(localeText("Public Share URL", "公开分享链接"), verification.shareUrl || "-"),
+    joinLine(localeText("Share Expires At", "分享失效时间"), verification.shareExpiresAt || "-"),
+    joinLine(localeText("Share Access Count", "分享访问次数"), verification.shareAccessCount ?? 0),
+    joinLine(localeText("Share Last Accessed At", "最近访问时间"), verification.shareLastAccessedAt || "-"),
     "",
-    "## Summary",
+    sectionTitle.summary,
     verification.integritySummary,
     "",
-    "## Signatures",
+    sectionTitle.signatures,
     ...(verification.signatures.length > 0
       ? verification.signatures.map((signature) =>
-          `- ${signature.role}: ${signature.signerName} | ${signature.status} | ${signature.method || "-"} | ${signature.source || "-"} | ${signature.createdAt || "-"}`,
+          `- ${normalizeParticipantRole(signature.role)}: ${signature.signerName} | ${normalizeSignatureStatus(signature.status)} | ${signature.method || "-"} | ${signature.source || "-"} | ${signature.createdAt || "-"}`,
         )
-      : ["- No signature records attached to this document."]),
+      : [localeText("- No signature records attached to this document.", "- 当前文档暂无签署记录。")]),
     "",
-    "## Evidence",
+    sectionTitle.evidence,
     ...verification.evidence.map((item) =>
       `- ${item.createdAt} | ${item.type} | ${item.label} | ${item.description}`,
     ),
     "",
-    "## Timeline",
+    sectionTitle.timeline,
     ...verification.timeline.map((item) =>
       `- ${item.occurredAt} | ${item.type} | ${item.label} | ${item.description}`,
     ),

@@ -16,6 +16,15 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+function getClientIp(request: NextRequest) {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    return forwarded.split(",")[0]?.trim() || "unknown";
+  }
+
+  return request.headers.get("x-real-ip") || "unknown";
+}
+
 function createIntlAuthClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
@@ -32,8 +41,14 @@ function createIntlAuthClient() {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const clientIP = request.headers.get("x-forwarded-for") || "unknown";
+    let body: Record<string, unknown>;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const clientIP = getClientIp(request);
     const validationResult = loginSchema.safeParse(body);
 
     if (!validationResult.success) {

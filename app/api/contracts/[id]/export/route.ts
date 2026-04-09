@@ -5,10 +5,10 @@ import { getContractById } from "@/lib/data/contracts-store";
 import {
   buildContractDocumentHtml,
   buildContractHtml,
-  buildContractPdfBuffer,
   normalizeContractContent,
   sanitizeDownloadFileName,
 } from "@/lib/contracts/format";
+import { buildContractPdfBuffer } from "@/lib/contracts/pdf";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -100,7 +100,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const fileStem = sanitizeDownloadFileName(content.title || contract.title || "contract");
 
     if (format === "pdf") {
-      const pdfBuffer = buildContractPdfBuffer(content);
+      const pdfBuffer = await buildContractPdfBuffer(content);
       return new NextResponse(new Uint8Array(pdfBuffer), {
         status: 200,
         headers: {

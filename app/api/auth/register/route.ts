@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { supabase } from "@/lib/integrations/supabase";
+import { signupUser } from "@/lib/cloudbase/cloudbase-service";
 import { passwordSecurity } from "@/lib/security/password-security";
 import { logSecurityEvent } from "@/lib/utils/logger";
 import { isChinaRegion } from "@/lib/config/region";
+
+function getClientIp(request: NextRequest) {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    return forwarded.split(",")[0]?.trim() || "unknown";
+  }
+
+  return request.headers.get("x-real-ip") || "unknown";
+}
 
 const registerSchema = z
   .object({
@@ -22,17 +32,28 @@ const registerSchema = z
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const clientIP =
-      request.headers.get("x-forwarded-for") ||
-      request.headers.get("x-real-ip") ||
-      "unknown";
+    let bodyRaw: unknown;
+    try {
+      bodyRaw = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid JSON body", code: "INVALID_JSON" },
+        { status: 400 },
+      );
+    }
+    const body =
+      bodyRaw && typeof bodyRaw === "object" && !Array.isArray(bodyRaw)
+        ? (bodyRaw as Record<string, unknown>)
+        : {};
+
+    const clientIP = getClientIp(request);
+    const emailForLog = typeof body.email === "string" ? body.email : undefined;
 
     const validationResult = registerSchema.safeParse(body);
     if (!validationResult.success) {
       logSecurityEvent("register_validation_failed", undefined, clientIP, {
         errors: validationResult.error.errors,
-        email: body.email,
+        email: emailForLog,
       });
 
       return NextResponse.json(
@@ -96,32 +117,29 @@ export async function POST(request: NextRequest) {
       | undefined;
 
     if (isChinaRegion()) {
-      const internalBaseUrl =
-        process.env.APP_URL ||
-        process.env.NEXT_PUBLIC_APP_URL ||
-        request.nextUrl.origin ||
-        "http://localhost:3000";
-
-      const response = await fetch(`${internalBaseUrl}/api/auth`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "signup", email, password }),
+      const userAgent = request.headers.get("user-agent") || undefined;
+      const ipAddress = clientIP !== "unknown" ? clientIP : undefined;
+      const result = await signupUser(email, password, {
+        deviceInfo: "web-signup",
+        ipAddress,
+        userAgent,
       });
 
-      const data = await response.json();
-      if (data.success && data.user) {
+      if (result.success && result.userId) {
         authResponse = {
           user: {
-            id: data.user.id || data.user.userId,
-            email: data.user.email,
-            name: data.user.name || fullName,
-            avatar: data.user.avatar,
+            id: result.userId,
+            email,
+            name: fullName,
+            avatar: null,
           },
         };
       } else {
         if (
-          data.message &&
-          (data.message.includes("已存在") || data.message.includes("exists"))
+          result.error &&
+          (result.error.includes("已被注册") ||
+            result.error.includes("已存在") ||
+            result.error.toLowerCase().includes("exists"))
         ) {
           return NextResponse.json(
             {
@@ -136,7 +154,7 @@ export async function POST(request: NextRequest) {
           {
             error: "Registration failed",
             code: "REGISTRATION_ERROR",
-            details: data.message || "注册失败",
+            details: result.error || "注册失败",
           },
           { status: 400 },
         );

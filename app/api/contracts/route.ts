@@ -5,6 +5,36 @@ import {
   listContracts,
 } from "@/lib/data/contracts-store";
 import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
+import { normalizeContractStatus } from "@/lib/data/unified-models";
+
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 100;
+
+function parsePositiveInt(value: string | null, fallback: number) {
+  const parsed = Number.parseInt(value || "", 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function asPlainRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  return {};
+}
+
+function asNullableRecord(...values: unknown[]): Record<string, unknown> | null {
+  for (const value of values) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+  }
+
+  return null;
+}
 
 async function requireCurrentUser(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -53,8 +83,8 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get("page") || "1", 10);
-    const limit = parseInt(searchParams.get("limit") || "20", 10);
+    const page = parsePositiveInt(searchParams.get("page"), 1);
+    const limit = Math.min(parsePositiveInt(searchParams.get("limit"), DEFAULT_LIMIT), MAX_LIMIT);
     const status = searchParams.get("status") || "";
 
     const { contracts, total } = await listContracts({
@@ -73,7 +103,7 @@ export async function GET(request: NextRequest) {
           page,
           limit,
           total,
-          totalPages: Math.ceil(total / limit),
+          totalPages: Math.max(1, Math.ceil(total / limit)),
         },
       },
     });
@@ -93,7 +123,23 @@ export async function POST(request: NextRequest) {
       return auth.error;
     }
 
-    const body = await request.json();
+    let body: Record<string, unknown>;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { success: false, error: { message: "Invalid JSON body." } },
+        { status: 400 },
+      );
+    }
+
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json(
+        { success: false, error: { message: "Request body must be an object." } },
+        { status: 400 },
+      );
+    }
+
     const {
       title,
       type,
@@ -110,7 +156,7 @@ export async function POST(request: NextRequest) {
       region,
     } = body;
 
-    if (!title || typeof title !== "string") {
+    if (!title || typeof title !== "string" || !title.trim()) {
       return NextResponse.json(
         {
           success: false,
@@ -122,26 +168,25 @@ export async function POST(request: NextRequest) {
 
     const contract = await createContractRecord({
       userId: auth.user.id,
-      title,
-      type: type || "custom",
-      status: status || "draft",
-      content:
-        content && typeof content === "object" && !Array.isArray(content)
-          ? content
-          : {},
-      sourceType: sourceType || "text",
-      sourceContent: sourceContent || source_text || "",
-      analysisResult:
-        analysisResult ||
-        analysis_result ||
-        null,
+      title: title.trim(),
+      type: typeof type === "string" && type.trim() ? type.trim() : "custom",
+      status: normalizeContractStatus(status),
+      content: asPlainRecord(content),
+      sourceType:
+        typeof sourceType === "string" && sourceType.trim()
+          ? sourceType.trim()
+          : "text",
+      sourceContent:
+        typeof sourceContent === "string"
+          ? sourceContent
+          : typeof source_text === "string"
+            ? source_text
+            : "",
+      analysisResult: asNullableRecord(analysisResult, analysis_result),
       parties: Array.isArray(parties) ? parties : [],
       signatures: Array.isArray(signatures) ? signatures : [],
-      metadata:
-        metadata && typeof metadata === "object" && !Array.isArray(metadata)
-          ? metadata
-          : {},
-      region,
+      metadata: asPlainRecord(metadata),
+      region: typeof region === "string" && region.trim() ? region.trim() : undefined,
     });
 
     return NextResponse.json({

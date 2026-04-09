@@ -279,10 +279,23 @@ export function normalizeContractRecord(
   record: Record<string, any>,
 ): UnifiedContractRecord {
   const payload = ensureObject(record.content);
-  const document =
-    isRecord(payload.document)
-      ? payload.document
-      : ensureObject(record.document);
+  const looksLikeEnvelope =
+    Object.prototype.hasOwnProperty.call(payload, "document") ||
+    Object.prototype.hasOwnProperty.call(payload, "analysisResult") ||
+    Object.prototype.hasOwnProperty.call(payload, "analysis_result") ||
+    Object.prototype.hasOwnProperty.call(payload, "sourceType") ||
+    Object.prototype.hasOwnProperty.call(payload, "source_type") ||
+    Object.prototype.hasOwnProperty.call(payload, "parties") ||
+    Object.prototype.hasOwnProperty.call(payload, "signatures") ||
+    Object.prototype.hasOwnProperty.call(payload, "metadata") ||
+    Object.prototype.hasOwnProperty.call(payload, "region");
+  const document = isRecord(payload.document)
+    ? payload.document
+    : isRecord(record.document)
+      ? ensureObject(record.document)
+      : looksLikeEnvelope
+        ? {}
+        : payload;
 
   return {
     id: record.id || record._id || "",
@@ -294,17 +307,21 @@ export function normalizeContractRecord(
     status: normalizeContractStatus(record.status),
     content: document,
     sourceType:
+      record.sourceType ||
       record.source_type ||
       (typeof payload.sourceType === "string" ? payload.sourceType : undefined),
     sourceContent:
+      record.sourceContent ||
       record.source_content ||
       record.source_text ||
       (typeof payload.sourceContent === "string"
         ? payload.sourceContent
         : undefined),
     analysisResult: pickFirstObject(
+      record.analysisResult,
       record.analysis_result,
       payload.analysisResult,
+      payload.analysis_result,
     ),
     parties: ensureArray(record.parties).length
       ? ensureArray(record.parties)

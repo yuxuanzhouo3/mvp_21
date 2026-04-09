@@ -28,7 +28,7 @@ function formatRichText(value: string): string {
 }
 
 function encodePdfHexString(value: string): string {
-  const utf16 = Buffer.from(`\uFEFF${value}`, "utf16le");
+  const utf16 = Buffer.from(value, "utf16le");
   const bytes: string[] = [];
 
   for (let index = 0; index < utf16.length; index += 2) {
@@ -37,13 +37,6 @@ function encodePdfHexString(value: string): string {
   }
 
   return bytes.join("");
-}
-
-function escapePdfLiteral(value: string): string {
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/\(/g, "\\(")
-    .replace(/\)/g, "\\)");
 }
 
 function isContractSection(value: unknown): value is ContractSection {
@@ -425,11 +418,7 @@ function buildPdfContentStreams(lines: string[]) {
         return;
       }
 
-      if (/^[\u0000-\u00FF]+$/.test(line)) {
-        commands.push(`(${escapePdfLiteral(line)}) Tj`);
-      } else {
-        commands.push(`<${encodePdfHexString(line)}> Tj`);
-      }
+      commands.push(`<${encodePdfHexString(line)}> Tj`);
     });
 
     commands.push("ET");

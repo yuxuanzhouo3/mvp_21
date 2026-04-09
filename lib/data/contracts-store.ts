@@ -4,10 +4,12 @@ import { getSupabaseAdmin } from "@/lib/integrations/supabase-admin";
 
 import {
   buildSupabaseContractPayload,
+  normalizeContractStatus,
   normalizeContractRecord,
   type ContractStatus,
   type UnifiedContractRecord,
 } from "@/lib/data/unified-models";
+import { deepRepairPossibleMojibake } from "@/lib/contracts/text-repair.server";
 
 interface ListContractOptions {
   userId: string;
@@ -15,6 +17,10 @@ interface ListContractOptions {
   isAdmin?: boolean;
   limit?: number;
   offset?: number;
+}
+
+function normalizeAndRepairContractRecord(record: Record<string, any>): UnifiedContractRecord {
+  return deepRepairPossibleMojibake(normalizeContractRecord(record));
 }
 
 export async function listContracts({
@@ -45,7 +51,7 @@ export async function listContracts({
 
     return {
       contracts: (result.data || []).map((record: Record<string, any>) =>
-        normalizeContractRecord(record),
+        normalizeAndRepairContractRecord(record),
       ),
       total: countResult.total || 0,
     };
@@ -74,7 +80,7 @@ export async function listContracts({
 
   return {
     contracts: (data || []).map((record: Record<string, any>) =>
-      normalizeContractRecord(record as Record<string, any>),
+      normalizeAndRepairContractRecord(record as Record<string, any>),
     ),
     total: count || 0,
   };
@@ -87,7 +93,7 @@ export async function getContractById(
     const db = getDatabase();
     const result = await db.collection("contracts").doc(id).get();
     const record = result?.data?.[0] as Record<string, any> | undefined;
-    return record ? normalizeContractRecord(record) : null;
+    return record ? normalizeAndRepairContractRecord(record) : null;
   }
 
   const supabaseAdmin = getSupabaseAdmin() as any;
@@ -101,13 +107,14 @@ export async function getContractById(
     return null;
   }
 
-  return normalizeContractRecord(data as Record<string, any>);
+  return normalizeAndRepairContractRecord(data as Record<string, any>);
 }
 
 export async function createContractRecord(
   input: Partial<UnifiedContractRecord> & { userId: string; title: string },
 ): Promise<UnifiedContractRecord> {
   const now = new Date().toISOString();
+  const normalizedStatus = normalizeContractStatus(input.status);
 
   if (isChinaRegion()) {
     const db = getDatabase();
@@ -115,7 +122,7 @@ export async function createContractRecord(
       user_id: input.userId,
       title: input.title,
       type: input.type || "custom",
-      status: (input.status || "draft") as ContractStatus,
+      status: normalizedStatus as ContractStatus,
       content: input.content || {},
       source_type: input.sourceType || "text",
       source_content: input.sourceContent || "",
@@ -130,7 +137,7 @@ export async function createContractRecord(
 
     const result = await db.collection("contracts").add(payload);
     return {
-      ...normalizeContractRecord(payload),
+      ...normalizeAndRepairContractRecord(payload),
       id: result.id,
     };
   }
@@ -138,7 +145,7 @@ export async function createContractRecord(
   const insertPayload = {
     user_id: input.userId,
     title: input.title,
-    status: input.status || "draft",
+    status: normalizedStatus,
     region: input.region || null,
     content: buildSupabaseContractPayload(input),
     created_at: now,
@@ -156,7 +163,7 @@ export async function createContractRecord(
     throw error || new Error("Failed to create contract");
   }
 
-  return normalizeContractRecord(data as Record<string, any>);
+  return normalizeAndRepairContractRecord(data as Record<string, any>);
 }
 
 export async function updateContractRecord(
@@ -197,6 +204,7 @@ export async function updateContractRecord(
   const merged: UnifiedContractRecord = {
     ...existing,
     ...input,
+    status: input.status ? normalizeContractStatus(input.status) : existing.status,
     content: input.content ?? existing.content,
     parties: input.parties ?? existing.parties,
     signatures: input.signatures ?? existing.signatures,
@@ -227,7 +235,7 @@ export async function updateContractRecord(
     throw error || new Error("Failed to update contract");
   }
 
-  return normalizeContractRecord(data as Record<string, any>);
+  return normalizeAndRepairContractRecord(data as Record<string, any>);
 }
 
 export async function deleteContractRecord(id: string): Promise<void> {
