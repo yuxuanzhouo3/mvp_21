@@ -7,7 +7,7 @@ export interface ContractChatScreenshotData {
 }
 
 export interface ContractChatScreenshotAnalysisResult {
-  provider: "dashscope" | "openai";
+  provider: "dashscope";
   rawText: string;
   data: ContractChatScreenshotData;
 }
@@ -52,7 +52,6 @@ const OCR_PROMPT_ZH = `你正在从一张合同协商聊天截图中提取可读
 5. 用简体中文输出一段简短摘要，总结截图中可见的合同事实。
 
 只返回 JSON，不要包裹 Markdown。
-
 Schema:
 {
   "sourceType": "wechat",
@@ -88,36 +87,6 @@ function normalizeSourceType(value: unknown): ContractChatScreenshotData["source
   }
 
   return "screenshot";
-}
-
-function extractOpenAIText(content: unknown): string {
-  if (typeof content === "string") {
-    return content;
-  }
-
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => {
-        if (typeof part === "string") {
-          return part;
-        }
-
-        if (
-          typeof part === "object" &&
-          part !== null &&
-          "text" in part &&
-          typeof part.text === "string"
-        ) {
-          return part.text;
-        }
-
-        return "";
-      })
-      .join("\n")
-      .trim();
-  }
-
-  return "";
 }
 
 function parseRawResult(rawText: string): ContractChatScreenshotData {
@@ -156,44 +125,13 @@ function ensureResult(data: ContractChatScreenshotData) {
   }
 }
 
-function hasDashScope() {
-  return Boolean(process.env.DASHSCOPE_API_KEY);
-}
-
-function hasOpenAI() {
-  return Boolean(process.env.OPENAI_API_KEY);
-}
-
-function getProviderOrder(): Array<"dashscope" | "openai"> {
-  const candidates = isChinaRegion()
-    ? (["dashscope", "openai"] as const)
-    : (["openai", "dashscope"] as const);
-
-  return candidates.filter((provider) =>
-    provider === "dashscope" ? hasDashScope() : hasOpenAI(),
-  );
-}
-
-function isRetryableProviderError(error: unknown) {
-  if (!(error instanceof ContractChatOcrError)) {
-    return false;
-  }
-
-  return (
-    error.code === "OCR_NOT_CONFIGURED" ||
-    error.code === "OCR_PROVIDER_FAILED" ||
-    error.code === "OCR_EMPTY_RESPONSE" ||
-    error.code === "OCR_EMPTY_RESULT"
-  );
-}
-
 async function callDashScope(imageBase64: string): Promise<string> {
   const apiKey = process.env.DASHSCOPE_API_KEY;
-  if (!apiKey) {
+  if (!apiKey?.trim()) {
     throw new ContractChatOcrError(
-      "DASHSCOPE_API_KEY is not configured",
-      "OCR_NOT_CONFIGURED",
-      500,
+      "DASHSCOPE_API_KEY is unavailable",
+      "OCR_KEY_UNAVAILABLE",
+      503,
     );
   }
 
@@ -224,6 +162,15 @@ async function callDashScope(imageBase64: string): Promise<string> {
 
   if (!response.ok) {
     const errorText = await response.text();
+
+    if (response.status === 401 || response.status === 403) {
+      throw new ContractChatOcrError(
+        `DASHSCOPE_API_KEY is unavailable: ${errorText}`,
+        "OCR_KEY_UNAVAILABLE",
+        503,
+      );
+    }
+
     throw new ContractChatOcrError(
       `DashScope OCR failed: ${errorText}`,
       "OCR_PROVIDER_FAILED",
@@ -252,119 +199,22 @@ async function callDashScope(imageBase64: string): Promise<string> {
   );
 }
 
-async function callOpenAI(imageBase64: string): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new ContractChatOcrError(
-      "OPENAI_API_KEY is not configured",
-      "OCR_NOT_CONFIGURED",
-      500,
-    );
-  }
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_OCR_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini",
-      temperature: 0,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: getOcrPrompt() },
-            {
-              type: "image_url",
-              image_url: {
-                url: imageBase64,
-              },
-            },
-          ],
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new ContractChatOcrError(
-      `OpenAI OCR failed: ${errorText}`,
-      "OCR_PROVIDER_FAILED",
-      502,
-    );
-  }
-
-  const result = await response.json();
-  const content = result?.choices?.[0]?.message?.content;
-  const rawText = extractOpenAIText(content);
-
-  if (!rawText) {
-    throw new ContractChatOcrError(
-      "OpenAI OCR returned an empty response",
-      "OCR_EMPTY_RESPONSE",
-      502,
-    );
-  }
-
-  return rawText;
-}
-
 export async function analyzeContractChatScreenshot(
   imageBase64: string,
   sourceHint?: "wechat" | "feishu" | "screenshot",
 ): Promise<ContractChatScreenshotAnalysisResult> {
-  const providers = getProviderOrder();
-  if (providers.length === 0) {
-    throw new ContractChatOcrError(
-      "No OCR provider is configured",
-      "OCR_NOT_CONFIGURED",
-      500,
-    );
+  const rawText = await callDashScope(imageBase64);
+  const data = parseRawResult(rawText);
+
+  if (sourceHint && data.sourceType === "screenshot") {
+    data.sourceType = sourceHint;
   }
 
-  let lastError: unknown = null;
+  ensureResult(data);
 
-  for (let index = 0; index < providers.length; index += 1) {
-    const provider = providers[index];
-
-    try {
-      const rawText =
-        provider === "dashscope"
-          ? await callDashScope(imageBase64)
-          : await callOpenAI(imageBase64);
-      const data = parseRawResult(rawText);
-
-      if (sourceHint && data.sourceType === "screenshot") {
-        data.sourceType = sourceHint;
-      }
-
-      ensureResult(data);
-
-      return {
-        provider,
-        rawText,
-        data,
-      };
-    } catch (error) {
-      lastError = error;
-
-      const hasFallback = index < providers.length - 1;
-      if (!hasFallback || !isRetryableProviderError(error)) {
-        throw error;
-      }
-    }
-  }
-
-  if (lastError instanceof Error) {
-    throw lastError;
-  }
-
-  throw new ContractChatOcrError(
-    "OCR processing failed",
-    "OCR_UNKNOWN_ERROR",
-    502,
-  );
+  return {
+    provider: "dashscope",
+    rawText,
+    data,
+  };
 }

@@ -3,7 +3,6 @@
 import { isChinaRegion } from "@/lib/config/region";
 import {
   getDashScopeBaseUrl,
-  getOpenAIModel,
   getQwenModel,
 } from "@/lib/config/runtime-env";
 
@@ -158,36 +157,17 @@ function getIntakePrompt(messages: IntakeChatMessage[]) {
 }
 
 function getChatClient() {
-  if (isChinaRegion() && process.env.DASHSCOPE_API_KEY) {
+  if (process.env.DASHSCOPE_API_KEY?.trim()) {
     return new OpenAI({
       apiKey: process.env.DASHSCOPE_API_KEY,
       baseURL: getDashScopeBaseUrl(),
     });
   }
 
-  if (process.env.OPENAI_API_KEY) {
-    return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
-
-  if (process.env.DASHSCOPE_API_KEY) {
-    return new OpenAI({
-      apiKey: process.env.DASHSCOPE_API_KEY,
-      baseURL: getDashScopeBaseUrl(),
-    });
-  }
-
-  throw new Error("AI_CHAT_NOT_CONFIGURED");
+  throw new Error("AI_CHAT_KEY_UNAVAILABLE");
 }
 
 function getChatModel() {
-  if (isChinaRegion() && process.env.DASHSCOPE_API_KEY) {
-    return getQwenModel();
-  }
-
-  if (process.env.OPENAI_API_KEY) {
-    return getOpenAIModel();
-  }
-
   return getQwenModel();
 }
 

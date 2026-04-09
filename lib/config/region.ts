@@ -48,10 +48,8 @@ export const RegionConfig = {
     primary: isChinaRegion() ? "wechat" : "stripe",
   },
   ai: {
-    provider: isChinaRegion() ? "dashscope" : "openai",
-    availableModels: isChinaRegion()
-      ? ["qwen-plus", "qwen-max", "qwen-vl-plus"]
-      : ["gpt-4.1", "gpt-4o", "gpt-4o-mini"],
+    provider: "dashscope",
+    availableModels: ["qwen-plus", "qwen-max", "qwen-vl-plus"],
   },
   storage: {
     provider: isChinaRegion() ? "cloudbase" : "supabase",
@@ -87,8 +85,8 @@ export function validateRegionConfig(): { valid: boolean; errors: string[] } {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
       errors.push("INTL deployment requires NEXT_PUBLIC_SUPABASE_URL");
     }
-    if (!process.env.OPENAI_API_KEY) {
-      errors.push("INTL deployment requires OPENAI_API_KEY");
+    if (!process.env.DASHSCOPE_API_KEY) {
+      errors.push("INTL deployment requires DASHSCOPE_API_KEY");
     }
   }
 
@@ -116,4 +114,3 @@ export function printRegionConfig() {
 
   console.log("==========================================\n");
 }
-

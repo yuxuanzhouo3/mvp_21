@@ -72,17 +72,22 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[/api/contracts/ai-chat] Failed:", error);
 
-    const message =
-      error instanceof Error && error.message === "AI_CHAT_NOT_CONFIGURED"
-        ? t("AI 对话服务未配置。", "AI chat service is not configured.")
-        : t("AI 对话请求失败。", "AI chat request failed.");
+    const isKeyUnavailable =
+      error instanceof Error && error.message === "AI_CHAT_KEY_UNAVAILABLE";
+
+    const message = isKeyUnavailable
+      ? t(
+          "DASHSCOPE_API_KEY 密钥不可用，请联系管理员检查配置。",
+          "DASHSCOPE_API_KEY is unavailable. Please ask the administrator to check the configuration.",
+        )
+      : t("AI 对话请求失败。", "AI chat request failed.");
 
     return NextResponse.json(
       {
         success: false,
         error: message,
       },
-      { status: 500 },
+      { status: isKeyUnavailable ? 503 : 500 },
     );
   }
 }

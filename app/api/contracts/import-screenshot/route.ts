@@ -11,6 +11,17 @@ function t(zh: string, en: string) {
   return isChinaRegion() ? zh : en;
 }
 
+function mapOcrErrorMessage(error: ContractChatOcrError) {
+  if (error.code === "OCR_KEY_UNAVAILABLE") {
+    return t(
+      "DASHSCOPE_API_KEY 密钥不可用，请联系管理员检查配置。",
+      "DASHSCOPE_API_KEY is unavailable. Please ask the administrator to check the configuration.",
+    );
+  }
+
+  return error.message;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const authHeader = request.headers.get("authorization");
@@ -66,7 +77,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: error.message,
+          error: mapOcrErrorMessage(error),
           code: error.code,
         },
         { status: error.status },

@@ -4,7 +4,6 @@ import OpenAI from "openai";
 import { isChinaRegion } from "@/lib/config/region";
 import {
   getDashScopeBaseUrl,
-  getOpenAIModel,
   getQwenModel,
 } from "@/lib/config/runtime-env";
 import type {
@@ -42,7 +41,21 @@ import {
 } from "./prompts/experts";
 
 type AILanguage = AnalyzePromptLanguage & GeneratePromptLanguage;
-type AIProvider = "dashscope" | "openai";
+type AIProvider = "dashscope";
+
+export class ContractAIError extends Error {
+  code: string;
+  status: number;
+  provider?: AIProvider;
+
+  constructor(message: string, code: string, status = 500, provider?: AIProvider) {
+    super(message);
+    this.name = "ContractAIError";
+    this.code = code;
+    this.status = status;
+    this.provider = provider;
+  }
+}
 
 function getDefaultLanguage(): AILanguage {
   return isChinaRegion() ? "zh" : "en";
@@ -53,40 +66,95 @@ function resolveLanguage(input?: "zh" | "en"): AILanguage {
 }
 
 function hasDashScope() {
-  return Boolean(process.env.DASHSCOPE_API_KEY);
+  return Boolean(process.env.DASHSCOPE_API_KEY?.trim());
 }
 
-function hasOpenAI() {
-  return Boolean(process.env.OPENAI_API_KEY);
+function getAIClientByProvider(provider: AIProvider): OpenAI {
+  return new OpenAI({
+    apiKey: process.env.DASHSCOPE_API_KEY,
+    baseURL: getDashScopeBaseUrl(),
+  });
 }
 
-function getPreferredProvider(): AIProvider {
-  if (isChinaRegion()) {
-    if (hasDashScope()) return "dashscope";
-    if (hasOpenAI()) return "openai";
-  } else {
-    if (hasOpenAI()) return "openai";
-    if (hasDashScope()) return "dashscope";
+function getModelByProvider(provider: AIProvider): string {
+  return getQwenModel();
+}
+
+function mapProviderError(error: unknown, provider: AIProvider): ContractAIError {
+  if (error instanceof ContractAIError) {
+    return error;
   }
 
-  throw new Error("AI_PROVIDER_NOT_CONFIGURED");
+  const status =
+    typeof (error as { status?: unknown })?.status === "number"
+      ? (error as { status: number }).status
+      : undefined;
+  const message = error instanceof Error ? error.message : String(error);
+  const normalizedMessage = message.toLowerCase();
+
+  if (status === 429) {
+    return new ContractAIError(
+      `AI provider rate limited: ${message}`,
+      "AI_RATE_LIMITED",
+      503,
+      provider,
+    );
+  }
+
+  if (status === 401 || status === 403) {
+    return new ContractAIError(
+      `DashScope API key is unavailable: ${message}`,
+      "AI_KEY_UNAVAILABLE",
+      503,
+      provider,
+    );
+  }
+
+  if (
+    normalizedMessage.includes("api key") ||
+    normalizedMessage.includes("apikey") ||
+    normalizedMessage.includes("unauthorized") ||
+    normalizedMessage.includes("authentication")
+  ) {
+    return new ContractAIError(
+      `DashScope API key is unavailable: ${message}`,
+      "AI_KEY_UNAVAILABLE",
+      503,
+      provider,
+    );
+  }
+
+  return new ContractAIError(
+    `AI provider request failed: ${message}`,
+    "AI_PROVIDER_FAILED",
+    502,
+    provider,
+  );
 }
 
-function getAIClient(): OpenAI {
-  const provider = getPreferredProvider();
+async function runWithProviderFallback<T>(
+  task: (context: { provider: AIProvider; client: OpenAI; model: string }) => Promise<T>,
+): Promise<T> {
+  const provider: AIProvider = "dashscope";
 
-  if (provider === "dashscope") {
-    return new OpenAI({
-      apiKey: process.env.DASHSCOPE_API_KEY,
-      baseURL: getDashScopeBaseUrl(),
+  if (!hasDashScope()) {
+    throw new ContractAIError(
+      "DASHSCOPE_API_KEY is unavailable",
+      "AI_KEY_UNAVAILABLE",
+      503,
+      provider,
+    );
+  }
+
+  try {
+    return await task({
+      provider,
+      client: getAIClientByProvider(provider),
+      model: getModelByProvider(provider),
     });
+  } catch (error) {
+    throw mapProviderError(error, provider);
   }
-
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-}
-
-function getModel(): string {
-  return getPreferredProvider() === "dashscope" ? getQwenModel() : getOpenAIModel();
 }
 
 function normalizeContractType(contractType: unknown): ContractType | "custom" {
@@ -258,36 +326,64 @@ function normalizeJsonResponse(content: string) {
 
 async function requestJsonCompletion(
   client: OpenAI,
+  provider: AIProvider,
   model: string,
   systemPrompt: string,
   userPrompt: string,
   temperature: number,
   maxTokens: number,
 ) {
-  const response = await client.chat.completions.create({
-    model,
-    temperature,
-    response_format: { type: "json_object" },
-    max_tokens: maxTokens,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-  });
+  let response: Awaited<ReturnType<typeof client.chat.completions.create>>;
+
+  try {
+    response = await client.chat.completions.create({
+      model,
+      temperature,
+      response_format: { type: "json_object" },
+      max_tokens: maxTokens,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    });
+  } catch (error) {
+    throw mapProviderError(error, provider);
+  }
 
   const content = response.choices[0]?.message?.content;
   if (!content) {
-    throw new Error("AI_EMPTY_RESPONSE");
+    throw new ContractAIError(
+      "AI provider returned an empty response",
+      "AI_EMPTY_RESPONSE",
+      502,
+      provider,
+    );
   }
 
-  return normalizeJsonResponse(content);
+  try {
+    return normalizeJsonResponse(content);
+  } catch (error) {
+    throw new ContractAIError(
+      `AI provider returned invalid JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      "AI_INVALID_JSON_RESPONSE",
+      502,
+      provider,
+    );
+  }
 }
 
-async function preAnalyze(content: string, language: AILanguage) {
-  const client = getAIClient();
-  const model = getModel();
+async function preAnalyze(
+  content: string,
+  language: AILanguage,
+  provider: AIProvider,
+  client: OpenAI,
+  model: string,
+) {
   const result = await requestJsonCompletion(
     client,
+    provider,
     model,
     generatePreAnalyzeSystemPrompt(language),
     generatePreAnalyzePrompt(content, language),
@@ -330,19 +426,28 @@ export async function analyzeConversation(
   request: AnalyzeConversationRequest,
 ): Promise<AIAnalysisResult> {
   const language = resolveLanguage(request.language);
-  const client = getAIClient();
-  const model = getModel();
+  const { parsed, contractType, expert } = await runWithProviderFallback(
+    async ({ provider, client, model }) => {
+      const { contractType } = await preAnalyze(
+        request.content,
+        language,
+        provider,
+        client,
+        model,
+      );
+      const expert = getExpertByContractType(contractType);
+      const parsed = await requestJsonCompletion(
+        client,
+        provider,
+        model,
+        generateAnalyzeSystemPrompt(expert, language),
+        generateAnalyzePrompt(expert, request.content, language),
+        0.2,
+        3200,
+      );
 
-  const { contractType } = await preAnalyze(request.content, language);
-  const expert = getExpertByContractType(contractType);
-
-  const parsed = await requestJsonCompletion(
-    client,
-    model,
-    generateAnalyzeSystemPrompt(expert, language),
-    generateAnalyzePrompt(expert, request.content, language),
-    0.2,
-    3200,
+      return { parsed, contractType, expert };
+    },
   );
 
   const normalizedType = normalizeContractType(parsed.contractType || contractType);
@@ -448,9 +553,6 @@ export async function generateContract(
   request: GenerateContractRequest,
 ): Promise<ContractContent> {
   const language = resolveLanguage(request.language);
-  const client = getAIClient();
-  const model = getModel();
-
   const contractType = normalizeContractType(request.analysisResult.contractType);
   const expert = getExpertByContractType(contractType);
   const prompt = generateContractPrompt(
@@ -466,13 +568,17 @@ export async function generateContract(
       : `\n\nAdditional instruction: Prefer the structure and drafting style of the template below, but do not contradict the actual transaction facts in the analysis result.\nTemplate name: ${request.templateName || getContractTypeDisplayName(contractType, language)}\nTemplate version: ${request.templateVersion || 1}\nTemplate body:\n${request.templateContent}`
     : "";
 
-  const parsed = await requestJsonCompletion(
-    client,
-    model,
-    generateContractSystemPrompt(expert, language),
-    `${prompt}${templatePrompt}`,
-    0.35,
-    6500,
+  const parsed = await runWithProviderFallback(
+    async ({ provider, client, model }) =>
+      requestJsonCompletion(
+        client,
+        provider,
+        model,
+        generateContractSystemPrompt(expert, language),
+        `${prompt}${templatePrompt}`,
+        0.35,
+        6500,
+      ),
   );
 
   const title =

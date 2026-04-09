@@ -1,5 +1,3 @@
-import { isChinaRegion } from "@/lib/config/region";
-
 export interface BusinessLicenseInfo {
   companyName: string;
   creditCode: string;
@@ -8,7 +6,7 @@ export interface BusinessLicenseInfo {
 }
 
 export interface BusinessLicenseAnalysisResult {
-  provider: "dashscope" | "openai";
+  provider: "dashscope";
   rawText: string;
   data: BusinessLicenseInfo;
 }
@@ -85,7 +83,7 @@ function normalizeText(value: unknown): string {
   return value
     .replace(/\r/g, "")
     .replace(/\s+/g, " ")
-    .replace(/[：:]\s*$/, "")
+    .replace(/[；，。]\s*$/, "")
     .trim();
 }
 
@@ -137,7 +135,7 @@ function parseJsonResult(rawText: string): BusinessLicenseInfo | null {
 function pickRegexValue(rawText: string, labels: string[]): string {
   for (const label of labels) {
     const regex = new RegExp(
-      `${label}\\s*[：:]\\s*["“”']?([^"“”'\\n]+)["“”']?`,
+      `${label}\\s*[：:]\\s*["“”]?([^"“”\\n]+)["“”]?`,
       "i",
     );
     const match = rawText.match(regex);
@@ -195,43 +193,13 @@ function ensureAtLeastOneField(data: BusinessLicenseInfo) {
   }
 }
 
-function extractOpenAIText(content: unknown): string {
-  if (typeof content === "string") {
-    return content;
-  }
-
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => {
-        if (typeof part === "string") {
-          return part;
-        }
-
-        if (
-          typeof part === "object" &&
-          part !== null &&
-          "text" in part &&
-          typeof part.text === "string"
-        ) {
-          return part.text;
-        }
-
-        return "";
-      })
-      .join("\n")
-      .trim();
-  }
-
-  return "";
-}
-
 async function callDashScope(imageBase64: string): Promise<string> {
   const apiKey = process.env.DASHSCOPE_API_KEY;
-  if (!apiKey) {
+  if (!apiKey?.trim()) {
     throw new BusinessLicenseOcrError(
-      "DASHSCOPE_API_KEY is not configured",
-      "OCR_NOT_CONFIGURED",
-      500,
+      "DASHSCOPE_API_KEY is unavailable",
+      "OCR_KEY_UNAVAILABLE",
+      503,
     );
   }
 
@@ -262,6 +230,15 @@ async function callDashScope(imageBase64: string): Promise<string> {
 
   if (!response.ok) {
     const errorText = await response.text();
+
+    if (response.status === 401 || response.status === 403) {
+      throw new BusinessLicenseOcrError(
+        `DASHSCOPE_API_KEY is unavailable: ${errorText}`,
+        "OCR_KEY_UNAVAILABLE",
+        503,
+      );
+    }
+
     throw new BusinessLicenseOcrError(
       `DashScope OCR failed: ${errorText}`,
       "OCR_PROVIDER_FAILED",
@@ -292,82 +269,17 @@ async function callDashScope(imageBase64: string): Promise<string> {
   );
 }
 
-async function callOpenAI(imageBase64: string): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new BusinessLicenseOcrError(
-      "OPENAI_API_KEY is not configured",
-      "OCR_NOT_CONFIGURED",
-      500,
-    );
-  }
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_OCR_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini",
-      temperature: 0,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: OCR_PROMPT },
-            {
-              type: "image_url",
-              image_url: {
-                url: imageBase64,
-              },
-            },
-          ],
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new BusinessLicenseOcrError(
-      `OpenAI OCR failed: ${errorText}`,
-      "OCR_PROVIDER_FAILED",
-      502,
-    );
-  }
-
-  const result = await response.json();
-  const content = result?.choices?.[0]?.message?.content;
-  const rawText = extractOpenAIText(content);
-
-  if (!rawText) {
-    throw new BusinessLicenseOcrError(
-      "OpenAI OCR returned an empty response",
-      "OCR_EMPTY_RESPONSE",
-      502,
-    );
-  }
-
-  return rawText;
-}
-
 export async function analyzeBusinessLicense(
   imageBase64: string,
 ): Promise<BusinessLicenseAnalysisResult> {
-  const provider = isChinaRegion() ? "dashscope" : "openai";
-  const rawText =
-    provider === "dashscope"
-      ? await callDashScope(imageBase64)
-      : await callOpenAI(imageBase64);
+  const rawText = await callDashScope(imageBase64);
   const data = normalizeAnalysis(rawText);
 
   ensureAtLeastOneField(data);
 
   return {
-    provider,
+    provider: "dashscope",
     rawText,
     data,
   };
 }
-
