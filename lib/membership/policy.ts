@@ -1,5 +1,7 @@
 import { DEFAULT_ADMIN_SETTINGS, type AdminSettings } from "@/lib/admin/settings-schema";
 
+const FREE_PLAN_CONTRACTS_PER_MONTH = 2;
+
 export type MembershipPlan = "free" | "pro" | "enterprise";
 export type MembershipStatus =
   | "active"
@@ -142,7 +144,7 @@ function resolveContractsPerMonthLimit(
     return parseLimit(settings.quota.proContractsPerMonth);
   }
 
-  return Math.max(0, Math.floor(settings.quota.freeContractsPerMonth || 0));
+  return FREE_PLAN_CONTRACTS_PER_MONTH;
 }
 
 export function resolveMembershipState(
@@ -195,7 +197,7 @@ export function buildMembershipEntitlements(
     },
     features: {
       canUseAiChat: aiEnabled,
-      canGenerateContract: aiEnabled && isPaidTier,
+      canGenerateContract: aiEnabled,
       canCreateTemplate: isPaidTier,
       canCreateTemplateVersion: isPaidTier,
       canCopyTemplate: isPaidTier,

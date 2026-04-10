@@ -166,7 +166,7 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
-                  <Link href="/pricing">
+                  <Link href="/payment?tab=plans">
                     <CreditCard className="h-4 w-4" />
                     <span>{labels.plans}</span>
                     <ArrowUpRight className="ml-auto h-3.5 w-3.5 text-muted-foreground" />

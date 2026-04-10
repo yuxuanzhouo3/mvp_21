@@ -88,10 +88,10 @@ async function requireCurrentUser(request: NextRequest) {
         {
           success: false,
           error: {
-            code: "MEMBERSHIP_REQUIRED",
+            code: "CONTRACT_GENERATION_DISABLED",
             message: t(
-              "生成合同需要有效的付费会员，请先升级后再试。",
-              "Contract generation requires an active paid membership.",
+              "合同生成功能当前已被管理员关闭。",
+              "Contract generation is currently disabled by the administrator.",
             ),
           },
         },

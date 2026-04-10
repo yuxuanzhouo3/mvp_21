@@ -49,7 +49,7 @@ describe("membership policy", () => {
     expect(state.isPaidActive).toBe(true);
   });
 
-  test("entitlements parse plan limits from admin settings", () => {
+  test("free plan keeps a fixed monthly contract limit while paid limits still parse from settings", () => {
     const settings = {
       ...DEFAULT_ADMIN_SETTINGS,
       quota: {
@@ -74,11 +74,11 @@ describe("membership policy", () => {
       settings,
     );
 
-    expect(free.limits.contractsPerMonth).toBe(3);
+    expect(free.limits.contractsPerMonth).toBe(2);
     expect(pro.limits.contractsPerMonth).toBe(15);
   });
 
-  test("contract generation requires paid tier while AI chat follows feature switch", () => {
+  test("contract generation is available for free/pro when AI feature switch is on", () => {
     const free = buildMembershipEntitlements({
       plan: "free",
       status: "active",
@@ -89,7 +89,7 @@ describe("membership policy", () => {
     });
 
     expect(free.features.canUseAiChat).toBe(true);
-    expect(free.features.canGenerateContract).toBe(false);
+    expect(free.features.canGenerateContract).toBe(true);
     expect(free.features.canCreateTemplate).toBe(false);
     expect(free.features.canCopyTemplate).toBe(false);
     expect(pro.features.canGenerateContract).toBe(true);

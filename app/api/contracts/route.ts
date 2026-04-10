@@ -17,6 +17,7 @@ import {
   buildMembershipEntitlements,
   getCurrentMonthWindow,
 } from "@/lib/membership/policy";
+import { isAdminRole } from "@/lib/auth/user-role";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -142,7 +143,7 @@ export async function GET(request: NextRequest) {
     const { contracts, total } = await listContracts({
       userId: auth.user.id,
       status,
-      isAdmin: auth.user.role === "admin",
+      isAdmin: isAdminRole(auth.user.role),
       limit,
       offset: Math.max(page - 1, 0) * limit,
     });
@@ -218,7 +219,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (auth.user.role !== "admin") {
+    if (!isAdminRole(auth.user.role)) {
       const settings = await loadAdminSettings();
       const entitlements = buildMembershipEntitlements(
         {

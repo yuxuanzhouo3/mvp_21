@@ -20,7 +20,7 @@ const plansData = {
         description: "For individual trials and lightweight document creation",
         features: [
           "Basic AI-assisted drafting",
-          "Limited monthly contract generation",
+          "2 contract generations per month",
           "PDF export",
           "Short-term cloud retention",
         ],
@@ -42,7 +42,7 @@ const plansData = {
           "Email support",
         ],
         cta: "Upgrade to Pro",
-        href: "/signup?plan=pro",
+        href: "/payment?plan=pro&cycle=monthly&tab=payment",
         popular: true,
         popularLabel: "Recommended",
       },
@@ -67,7 +67,7 @@ const plansData = {
   },
   zh: {
     title: "清晰透明的价格方案",
-    subtitle: "根据合同量、团队协作方式和留存要求选择合适的版本。",
+    subtitle: "根据合同量、团队协作方式和留存需求选择合适的版本。",
     disclaimer: "价格以当前产品配置为准，后台系统设置中也可以继续调整。",
     plans: [
       {
@@ -77,7 +77,7 @@ const plansData = {
         description: "适合个人试用和轻量级合同起草",
         features: [
           "基础 AI 辅助起草",
-          "有限的月度生成额度",
+          "每月最多生成 2 份合同",
           "PDF 导出",
           "短期云端留存",
         ],
@@ -99,7 +99,7 @@ const plansData = {
           "邮件支持",
         ],
         cta: "升级到专业版",
-        href: "/signup?plan=pro",
+        href: "/payment?plan=pro&cycle=monthly&tab=payment",
         popular: true,
         popularLabel: "推荐方案",
       },

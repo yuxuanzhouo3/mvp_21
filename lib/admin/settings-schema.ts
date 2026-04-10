@@ -111,7 +111,7 @@ export const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
     maintenanceMode: false,
   },
   quota: {
-    freeContractsPerMonth: 10,
+    freeContractsPerMonth: 2,
     freeStorageDays: 7,
     proContractsPerMonth: "unlimited",
     proStorageDays: "unlimited",

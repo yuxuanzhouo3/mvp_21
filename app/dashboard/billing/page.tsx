@@ -119,7 +119,7 @@ export default function BillingPage() {
       actions={
         <>
           <Button size="sm" variant="outline" asChild>
-            <Link href="/pricing">{labels.comparePlans}</Link>
+            <Link href="/payment?tab=plans">{labels.comparePlans}</Link>
           </Button>
           <Button size="sm" asChild>
             <Link href="/payment">{labels.manageSubscription}</Link>

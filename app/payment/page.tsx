@@ -3,7 +3,8 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, CheckCircle } from "lucide-react";
 
 import { BillingHistory } from "@/components/payment/billing-history";
@@ -28,8 +29,9 @@ type SelectedPlan = {
   description: string;
 };
 
-export default function PaymentPage() {
+function PaymentPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const { language } = useLanguage();
   const { user, loading } = useUser();
@@ -44,14 +46,25 @@ export default function PaymentPage() {
   const currentPlan = user?.subscription_plan || "free";
   const region = isChinaRegion() ? RegionType.CHINA : RegionType.USA;
   const currency = isChinaRegion() ? "CNY" : "USD";
+  const requestedPlan = searchParams.get("plan");
+  const requestedCycle = searchParams.get("cycle");
+  const requestedTab = searchParams.get("tab");
 
-  const buildUrl = useCallback((path: string) => {
+  const buildAuthUrl = useCallback(() => {
     if (typeof window === "undefined") {
-      return path;
+      return "/auth?mode=signin&redirect=/payment";
     }
 
+    const authParams = new URLSearchParams();
+    authParams.set("mode", "signin");
+    authParams.set("redirect", `/payment${window.location.search || ""}`);
+
     const debug = new URLSearchParams(window.location.search).get("debug");
-    return debug ? `${path}?debug=${debug}` : path;
+    if (debug) {
+      authParams.set("debug", debug);
+    }
+
+    return `/auth?${authParams.toString()}`;
   }, []);
 
   const convertPrice = useCallback((usdPrice: number, targetCurrency: string) => {
@@ -61,6 +74,14 @@ export default function PaymentPage() {
 
     return usdPrice;
   }, []);
+
+  const buildPlanDescription = useCallback(
+    (billingCycle: "monthly" | "yearly") =>
+      isZh
+        ? `专业版 - ${billingCycle === "monthly" ? "月付" : "年付"}`
+        : `Pro Plan - ${billingCycle === "monthly" ? "Monthly" : "Yearly"}`,
+    [isZh],
+  );
 
   useEffect(() => {
     if (!loading) {
@@ -93,16 +114,24 @@ export default function PaymentPage() {
 
   useEffect(() => {
     if (!loading && !user && initialLoadComplete) {
-      router.push(buildUrl("/auth"));
+      router.push(buildAuthUrl());
     }
-  }, [buildUrl, initialLoadComplete, loading, router, user]);
+  }, [buildAuthUrl, initialLoadComplete, loading, router, user]);
+
+  useEffect(() => {
+    if (!requestedTab) {
+      return;
+    }
+
+    if (requestedTab === "plans" || requestedTab === "payment" || requestedTab === "history") {
+      setActiveTab(requestedTab);
+    }
+  }, [requestedTab]);
 
   const handleSelectPlan = useCallback(
     (planId: string, billingCycle: "monthly" | "yearly") => {
       const amount = getAmountByCurrency(currency, billingCycle);
-      const description = isZh
-        ? `专业版 - ${billingCycle === "monthly" ? "月付" : "年付"}`
-        : `Pro Plan - ${billingCycle === "monthly" ? "Monthly" : "Yearly"}`;
+      const description = buildPlanDescription(billingCycle);
 
       setSelectedPlan({
         planId,
@@ -113,8 +142,32 @@ export default function PaymentPage() {
       });
       setPaymentResult(null);
     },
-    [currency, isZh],
+    [buildPlanDescription, currency],
   );
+
+  useEffect(() => {
+    if (requestedPlan !== "pro") {
+      return;
+    }
+
+    const billingCycle = requestedCycle === "yearly" ? "yearly" : "monthly";
+    if (selectedPlan?.planId === "pro" && selectedPlan.billingCycle === billingCycle) {
+      return;
+    }
+
+    const amount = getAmountByCurrency(currency, billingCycle);
+    const description = buildPlanDescription(billingCycle);
+
+    setSelectedPlan({
+      planId: "pro",
+      billingCycle,
+      amount,
+      currency,
+      description,
+    });
+    setActiveTab("payment");
+    setPaymentResult(null);
+  }, [buildPlanDescription, currency, requestedCycle, requestedPlan, selectedPlan]);
 
   const handlePaymentSuccess = useCallback(
     (result: any) => {
@@ -126,22 +179,18 @@ export default function PaymentPage() {
 
       if (
         typeof result.paymentUrl === "string" &&
-        (result.paymentUrl.startsWith("weixin://") ||
-          result.paymentUrl.includes("weixin://"))
+        (result.paymentUrl.startsWith("weixin://") || result.paymentUrl.includes("weixin://"))
       ) {
         const qrcodeUrl = `/payment/wechat-qrcode?codeUrl=${encodeURIComponent(
           result.paymentUrl,
-        )}&paymentId=${encodeURIComponent(
-          result.paymentId || "",
-        )}&amount=${encodeURIComponent(selectedPlan?.amount || "")}`;
+        )}&paymentId=${encodeURIComponent(result.paymentId || "")}&amount=${encodeURIComponent(
+          selectedPlan?.amount || "",
+        )}`;
         window.location.href = qrcodeUrl;
         return;
       }
 
-      if (
-        typeof result.paymentUrl === "string" &&
-        result.paymentUrl.includes("<form")
-      ) {
+      if (typeof result.paymentUrl === "string" && result.paymentUrl.includes("<form")) {
         const encodedForm = btoa(result.paymentUrl);
         window.location.href = `/payment/redirect?form=${encodeURIComponent(encodedForm)}`;
         return;
@@ -217,9 +266,7 @@ export default function PaymentPage() {
             {t.common.back}
           </Button>
           <h1 className="text-2xl font-bold sm:text-3xl lg:text-4xl">{t.payment.manage}</h1>
-          <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-            {t.payment.subtitle}
-          </p>
+          <p className="mt-2 text-sm text-muted-foreground sm:text-base">{t.payment.subtitle}</p>
         </div>
 
         {paymentResult ? (
@@ -242,11 +289,7 @@ export default function PaymentPage() {
           </Card>
         ) : null}
 
-        <Tabs
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className="space-y-4 sm:space-y-6"
-        >
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
           <TabsList className="grid w-full grid-cols-3 gap-1 sm:gap-0">
             <TabsTrigger value="plans" className="text-xs sm:text-sm">
               {t.payment.title}
@@ -289,13 +332,9 @@ export default function PaymentPage() {
                 <CardContent className="pt-6">
                   <div className="py-8 text-center">
                     <p className="mb-4 text-muted-foreground">
-                      {isZh
-                        ? "请先选择一个订阅方案。"
-                        : "Please select a subscription plan first."}
+                      {isZh ? "请先选择一个订阅方案。" : "Please select a subscription plan first."}
                     </p>
-                    <Button onClick={() => setActiveTab("plans")}>
-                      {t.payment.choosePlan}
-                    </Button>
+                    <Button onClick={() => setActiveTab("plans")}>{t.payment.choosePlan}</Button>
                   </div>
                 </CardContent>
               </Card>
@@ -308,5 +347,27 @@ export default function PaymentPage() {
         </Tabs>
       </div>
     </div>
+  );
+}
+
+function PaymentPageFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50 p-4">
+      <Card>
+        <CardContent className="pt-6">
+          <div className="text-center">
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function PaymentPage() {
+  return (
+    <Suspense fallback={<PaymentPageFallback />}>
+      <PaymentPageContent />
+    </Suspense>
   );
 }
