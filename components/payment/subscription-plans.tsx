@@ -15,6 +15,7 @@ import { Check, Crown, Users, Zap, AlertCircle } from "lucide-react";
 import { useUser } from "@/components/user-context";
 import { useLanguage } from "@/components/language-provider";
 import { useTranslations } from "@/lib/i18n";
+import { getAmountByCurrency } from "@/lib/payment/payment-config";
 
 interface SubscriptionPlan {
   id: string;
@@ -91,12 +92,11 @@ export function SubscriptionPlans({
   // 根据货币确定价格
   const getPrice = (usdPrice: number) => {
     if (currency === "CNY") {
-      // 人民币定价
-      if (usdPrice === 9.99) return 30;
-      if (usdPrice === 99.99) return 300;
-      return usdPrice * 7; // 其他价格按汇率转换
+      if (usdPrice === 9.99) return getAmountByCurrency("CNY", "monthly");
+      if (usdPrice === 99.99) return getAmountByCurrency("CNY", "yearly");
     }
-    return usdPrice; // 美元保持原价
+
+    return convertPrice(usdPrice, currency);
   };
 
   // 展开所有计划选项（免费、月付、年付）

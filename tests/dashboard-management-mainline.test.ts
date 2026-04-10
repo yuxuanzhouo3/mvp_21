@@ -7,13 +7,23 @@ import {
 } from "@/lib/data/dashboard-store";
 
 describe("dashboard management mainline coverage", () => {
-  test("template permissions expose the managed template workflow actions", () => {
-    const permissions = buildDashboardTemplatePermissions();
+  test("template permissions are plan-aware for managed workflow actions", () => {
+    const freePermissions = buildDashboardTemplatePermissions();
+    const paidPermissions = buildDashboardTemplatePermissions({
+      subscriptionPlan: "pro",
+      subscriptionStatus: "active",
+      membershipExpiresAt: "2030-01-01T00:00:00.000Z",
+    });
 
-    expect(permissions.canCreate).toBe(true);
-    expect(permissions.canEditOwned).toBe(true);
-    expect(permissions.canCreateVersion).toBe(true);
-    expect(permissions.canCopy).toBe(true);
+    expect(freePermissions.canCreate).toBe(false);
+    expect(freePermissions.canEditOwned).toBe(true);
+    expect(freePermissions.canCreateVersion).toBe(false);
+    expect(freePermissions.canCopy).toBe(false);
+
+    expect(paidPermissions.canCreate).toBe(true);
+    expect(paidPermissions.canEditOwned).toBe(true);
+    expect(paidPermissions.canCreateVersion).toBe(true);
+    expect(paidPermissions.canCopy).toBe(true);
   });
 
   test("owner and admin workspace permissions are differentiated correctly", () => {

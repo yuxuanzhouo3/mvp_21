@@ -7,11 +7,13 @@ import {
   type AdminAuditContext,
 } from "@/lib/auth/admin-auth";
 import { downloadFileFromCloudBase } from "@/lib/cloudbase/cloudbase-service";
+import { isChinaRegion } from "@/lib/config/region";
 import {
   deleteAdminUploadedFile,
   resolveDownloadContentType,
   uploadAdminFile,
 } from "@/lib/data/admin-management-store";
+import { getSupabaseAdmin } from "@/lib/integrations/supabase-admin";
 
 export async function GET(request: NextRequest) {
   let auditContext: AdminAuditContext | undefined;
@@ -37,7 +39,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const buffer = await downloadFileFromCloudBase(filePath);
+    const buffer = isChinaRegion()
+      ? await downloadFileFromCloudBase(filePath)
+      : await (async () => {
+          const { data, error } = await getSupabaseAdmin()
+            .storage
+            .from("files")
+            .download(filePath);
+
+          if (error || !data) {
+            throw error || new Error("Failed to download file from storage");
+          }
+
+          return Buffer.from(await data.arrayBuffer());
+        })();
     logAdminAudit("Admin downloaded uploaded file", auditContext, {
       filePath,
       fileName,

@@ -1,11 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import {
+  countContractsByUserInRange,
   createContractRecord,
   listContracts,
 } from "@/lib/data/contracts-store";
+import {
+  loadChinaAccountProfile,
+  loadIntlAccountProfile,
+} from "@/lib/account/server-profile";
 import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
+import { isChinaRegion } from "@/lib/config/region";
+import { loadAdminSettings } from "@/lib/data/admin-settings-store";
 import { normalizeContractStatus } from "@/lib/data/unified-models";
+import {
+  buildMembershipEntitlements,
+  getCurrentMonthWindow,
+} from "@/lib/membership/policy";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -67,10 +78,51 @@ async function requireCurrentUser(request: NextRequest) {
     authResult.user?.user_metadata?.role ||
     "user";
 
+  let subscriptionPlan =
+    authResult.user?.subscription_plan ||
+    authResult.user?.user_metadata?.subscription_plan ||
+    "free";
+  let subscriptionStatus =
+    authResult.user?.subscription_status ||
+    authResult.user?.user_metadata?.subscription_status ||
+    "inactive";
+  let membershipExpiresAt =
+    authResult.user?.membership_expires_at ||
+    authResult.user?.user_metadata?.membership_expires_at;
+  let subscriptionExpiresAt =
+    authResult.user?.subscription_expires_at ||
+    authResult.user?.user_metadata?.subscription_expires_at;
+
+  try {
+    const profile = isChinaRegion()
+      ? await loadChinaAccountProfile(authResult.userId)
+      : await loadIntlAccountProfile(
+          authResult.userId,
+          authResult.user && "user_metadata" in authResult.user
+            ? authResult.user
+            : undefined,
+        );
+
+    if (profile) {
+      subscriptionPlan = profile.subscription_plan || subscriptionPlan;
+      subscriptionStatus = profile.subscription_status || subscriptionStatus;
+      membershipExpiresAt =
+        profile.membership_expires_at || membershipExpiresAt;
+      subscriptionExpiresAt =
+        profile.subscription_expires_at || subscriptionExpiresAt;
+    }
+  } catch (error) {
+    console.warn("[/api/contracts] Failed to load membership snapshot:", error);
+  }
+
   return {
     user: {
       id: authResult.userId,
       role,
+      subscriptionPlan,
+      subscriptionStatus,
+      membershipExpiresAt,
+      subscriptionExpiresAt,
     },
   };
 }
@@ -164,6 +216,49 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 },
       );
+    }
+
+    if (auth.user.role !== "admin") {
+      const settings = await loadAdminSettings();
+      const entitlements = buildMembershipEntitlements(
+        {
+          plan: auth.user.subscriptionPlan,
+          status: auth.user.subscriptionStatus,
+          membershipExpiresAt: auth.user.membershipExpiresAt,
+          subscriptionExpiresAt: auth.user.subscriptionExpiresAt,
+        },
+        settings,
+      );
+
+      const contractLimit = entitlements.limits.contractsPerMonth;
+      if (contractLimit !== null) {
+        const monthWindow = getCurrentMonthWindow();
+        const createdThisMonth = await countContractsByUserInRange({
+          userId: auth.user.id,
+          startAt: monthWindow.startAt,
+          endBefore: monthWindow.endBefore,
+        });
+
+        if (createdThisMonth >= contractLimit) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                message:
+                  "Monthly contract quota exceeded for your current membership plan.",
+                code: "CONTRACT_QUOTA_EXCEEDED",
+              },
+              data: {
+                limit: contractLimit,
+                used: createdThisMonth,
+                plan: entitlements.membership.plan,
+                resetAt: monthWindow.endBefore,
+              },
+            },
+            { status: 403 },
+          );
+        }
+      }
     }
 
     const contract = await createContractRecord({

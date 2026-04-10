@@ -17,6 +17,7 @@ import {
 } from "@/lib/dashboard/types";
 import { type DashboardCurrentUser } from "@/lib/dashboard/server-auth";
 import { getSupabaseAdmin } from "@/lib/integrations/supabase-admin";
+import { buildMembershipEntitlements } from "@/lib/membership/policy";
 
 import { getLatestSubscriptionByUser, listPaymentsByUser } from "@/lib/data/billing-store";
 import { listContracts } from "@/lib/data/contracts-store";
@@ -501,12 +502,22 @@ function compareTemplates(left: DashboardTemplate, right: DashboardTemplate) {
   return right.version - left.version;
 }
 
-export function buildDashboardTemplatePermissions(): DashboardTemplatePermissions {
+export function buildDashboardTemplatePermissions(input?: {
+  subscriptionPlan?: string;
+  subscriptionStatus?: string;
+  membershipExpiresAt?: string;
+}): DashboardTemplatePermissions {
+  const entitlements = buildMembershipEntitlements({
+    plan: input?.subscriptionPlan,
+    status: input?.subscriptionStatus,
+    membershipExpiresAt: input?.membershipExpiresAt,
+  });
+
   return {
-    canCreate: true,
+    canCreate: entitlements.features.canCreateTemplate,
     canEditOwned: true,
-    canCreateVersion: true,
-    canCopy: true,
+    canCreateVersion: entitlements.features.canCreateTemplateVersion,
+    canCopy: entitlements.features.canCopyTemplate,
   };
 }
 

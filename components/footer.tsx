@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { FileText } from "lucide-react";
 
 import { useLanguage } from "@/components/language-provider";
@@ -8,11 +9,13 @@ import { getAppDisplayName } from "@/lib/config/deployment.config";
 import { useTranslations } from "@/lib/i18n";
 
 export function Footer() {
+  const pathname = usePathname();
   const { language } = useLanguage();
   const t = useTranslations(language);
   const data = t.footer;
   const currentYear = new Date().getFullYear();
   const appName = getAppDisplayName();
+  const showIcpRecord = pathname === "/";
 
   return (
     <footer className="border-t border-border bg-muted/30">
@@ -102,6 +105,12 @@ export function Footer() {
             </Link>
           </div>
         </div>
+
+        {showIcpRecord ? (
+          <p className="pt-4 text-center text-xs text-muted-foreground">
+            {appName}预览页·为企业沟通而生&nbsp;&nbsp;粤ICP备2024281756号-3
+          </p>
+        ) : null}
       </div>
     </footer>
   );

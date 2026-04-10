@@ -17,14 +17,15 @@ import {
 } from "@/lib/config/runtime-env";
 import { captureException } from "@/lib/integrations/sentry";
 import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
+import { getPricingByMethod, type PaymentMethod } from "@/lib/payment/payment-config";
 import { buildSubscriptionPaymentFields } from "@/lib/payment/subscription-payment-sync";
 import { paymentRateLimit } from "@/lib/security/rate-limit";
 
 // Validate payment creation payloads from the client.
 const createPaymentSchema = z.object({
-  method: z.string().min(1, "Payment method is required"),
+  method: z.enum(["stripe", "paypal", "alipay", "wechat"]),
   amount: z.number().positive("Amount must be positive"),
-  currency: z.string().min(1, "Currency is required"),
+  currency: z.string().min(1, "Currency is required").transform((value) => value.toUpperCase()),
   description: z.string().optional(),
   planType: z.string().optional(),
   billingCycle: z.enum(["monthly", "yearly"]).optional(),
@@ -86,10 +87,37 @@ async function handlePaymentCreate(request: NextRequest) {
       billingCycle,
       idempotencyKey,
     } = validationResult.data;
+    const paymentMethod = method as PaymentMethod;
+    const resolvedBillingCycle = billingCycle || "monthly";
+
+    const pricing = getPricingByMethod(paymentMethod);
+    const expectedAmount = pricing[resolvedBillingCycle];
+    const expectedCurrency = pricing.currency;
+
+    const roundedClientAmount = Math.round(amount * 100) / 100;
+    const roundedExpectedAmount = Math.round(expectedAmount * 100) / 100;
+    if (
+      roundedClientAmount !== roundedExpectedAmount ||
+      currency !== expectedCurrency
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Submitted pricing does not match the current plan configuration.",
+          code: "PRICE_MISMATCH",
+          expected: {
+            amount: roundedExpectedAmount,
+            currency: expectedCurrency,
+            billingCycle: resolvedBillingCycle,
+          },
+        },
+        { status: 400 },
+      );
+    }
 
     const userId = user.id;
     const methodStatus = getPaymentMethodStatus(
-      method as "stripe" | "paypal" | "alipay" | "wechat",
+      paymentMethod,
     );
 
     if (!methodStatus.enabled) {
@@ -119,9 +147,9 @@ async function handlePaymentCreate(request: NextRequest) {
           .collection("payments")
           .where({
             user_id: userId,
-            amount,
-            currency,
-            payment_method: method,
+            amount: roundedExpectedAmount,
+            currency: expectedCurrency,
+            payment_method: paymentMethod,
             created_at: _.gte(oneMinuteAgo),
             status: _.in(["pending", "completed"]),
           })
@@ -140,9 +168,9 @@ async function handlePaymentCreate(request: NextRequest) {
         .from("payments")
         .select("id, status, created_at, transaction_id")
         .eq("user_id", userId)
-        .eq("amount", amount)
-        .eq("currency", currency)
-        .eq("payment_method", method)
+        .eq("amount", roundedExpectedAmount)
+        .eq("currency", expectedCurrency)
+        .eq("payment_method", paymentMethod)
         .gte("created_at", oneMinuteAgo)
         .in("status", ["pending", "completed"])
         .order("created_at", { ascending: false })
@@ -191,19 +219,19 @@ async function handlePaymentCreate(request: NextRequest) {
     // Derive normalized billing metadata for downstream persistence.
     const paymentFields = buildSubscriptionPaymentFields({
       planType: planType || "pro",
-      billingCycle: billingCycle || "monthly",
+      billingCycle: resolvedBillingCycle,
     });
 
     const order = {
-      amount,
-      currency,
+      amount: roundedExpectedAmount,
+      currency: expectedCurrency,
       description:
         description ||
-        `${billingCycle === "monthly" ? "1 Month" : "1 Year"} Premium Membership`,
+        `${resolvedBillingCycle === "monthly" ? "1 Month" : "1 Year"} Premium Membership`,
       userId,
       planType: paymentFields.metadata.planType,
       billingCycle: paymentFields.metadata.billingCycle,
-      method,
+      method: paymentMethod,
     };
 
     let orderResult: {
@@ -214,7 +242,7 @@ async function handlePaymentCreate(request: NextRequest) {
       transactionId?: string;
     };
 
-    if (method === "stripe") {
+    if (paymentMethod === "stripe") {
       const provider = new StripeProvider(process.env);
       const created = await provider.createOnetimePayment(order);
 
@@ -227,7 +255,7 @@ async function handlePaymentCreate(request: NextRequest) {
         paymentUrl: created.paymentUrl,
         transactionId: created.paymentId,
       };
-    } else if (method === "paypal") {
+    } else if (paymentMethod === "paypal") {
       const provider = new PayPalProvider(process.env);
       const created = await provider.createOnetimePayment(order);
 
@@ -240,7 +268,7 @@ async function handlePaymentCreate(request: NextRequest) {
         paymentUrl: created.paymentUrl,
         transactionId: created.paymentId,
       };
-    } else if (method === "alipay") {
+    } else if (paymentMethod === "alipay") {
       const provider = new AlipayProvider(process.env);
       const created = await provider.createPayment(order);
 
@@ -254,7 +282,7 @@ async function handlePaymentCreate(request: NextRequest) {
         formHtml: created.paymentUrl,
         transactionId: created.paymentId,
       };
-    } else if (method === "wechat") {
+    } else if (paymentMethod === "wechat") {
       const outTradeNo = `WX${Date.now()}${Math.random()
         .toString(36)
         .slice(2, 7)
@@ -284,7 +312,7 @@ async function handlePaymentCreate(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: `Unsupported payment method: ${method}`,
+          error: `Unsupported payment method: ${paymentMethod}`,
         },
         { status: 400 },
       );
@@ -301,15 +329,15 @@ async function handlePaymentCreate(request: NextRequest) {
 
         await paymentsCollection.add({
           user_id: userId,
-          amount,
-          currency: currency || "CNY",
+          amount: roundedExpectedAmount,
+          currency: expectedCurrency || "CNY",
           status: "pending",
-          payment_method: method,
+          payment_method: paymentMethod,
           order_id: orderResult.orderId,
           out_trade_no: orderResult.orderId,
           transaction_id: orderResult.transactionId || orderResult.orderId,
           code_url: orderResult.codeUrl,
-          client_type: method === "wechat" ? "native" : undefined,
+          client_type: paymentMethod === "wechat" ? "native" : undefined,
           billing_cycle: paymentFields.billing_cycle,
           product_type: paymentFields.product_type,
           product_name: paymentFields.product_name,
@@ -325,10 +353,10 @@ async function handlePaymentCreate(request: NextRequest) {
     } else {
       const { error } = await supabaseAdmin.from("payments").insert({
         user_id: userId,
-        amount,
-        currency,
+        amount: roundedExpectedAmount,
+        currency: expectedCurrency,
         status: "pending",
-        payment_method: method,
+        payment_method: paymentMethod,
         order_id: orderResult.orderId,
         out_trade_no: orderResult.orderId,
         transaction_id: orderResult.transactionId || orderResult.orderId,

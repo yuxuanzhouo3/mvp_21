@@ -19,6 +19,12 @@ interface ListContractOptions {
   offset?: number;
 }
 
+interface CountContractsByRangeOptions {
+  userId: string;
+  startAt: string;
+  endBefore?: string;
+}
+
 function normalizeAndRepairContractRecord(record: Record<string, any>): UnifiedContractRecord {
   return deepRepairPossibleMojibake(normalizeContractRecord(record));
 }
@@ -164,6 +170,47 @@ export async function createContractRecord(
   }
 
   return normalizeAndRepairContractRecord(data as Record<string, any>);
+}
+
+export async function countContractsByUserInRange({
+  userId,
+  startAt,
+  endBefore,
+}: CountContractsByRangeOptions): Promise<number> {
+  if (isChinaRegion()) {
+    const db = getDatabase();
+    const _ = db.command;
+    const createdAtCondition = endBefore
+      ? _.gte(startAt).and(_.lt(endBefore))
+      : _.gte(startAt);
+
+    const countResult = await db
+      .collection("contracts")
+      .where({
+        user_id: userId,
+        created_at: createdAtCondition,
+      })
+      .count();
+
+    return countResult.total || 0;
+  }
+
+  let query = getSupabaseAdmin()
+    .from("contracts")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("created_at", startAt);
+
+  if (endBefore) {
+    query = query.lt("created_at", endBefore);
+  }
+
+  const { count, error } = await query;
+  if (error) {
+    throw error;
+  }
+
+  return count || 0;
 }
 
 export async function updateContractRecord(

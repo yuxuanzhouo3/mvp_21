@@ -14,12 +14,17 @@ export async function GET(request: NextRequest) {
       return auth.error;
     }
 
+    const permissions = buildDashboardTemplatePermissions({
+      subscriptionPlan: auth.user.subscriptionPlan,
+      subscriptionStatus: auth.user.subscriptionStatus,
+      membershipExpiresAt: auth.user.membershipExpiresAt,
+    });
     const templates = await listDashboardTemplates(auth.user.id);
     return NextResponse.json({
       success: true,
       data: {
         templates,
-        permissions: buildDashboardTemplatePermissions(),
+        permissions,
       },
     });
   } catch (error) {
@@ -36,6 +41,19 @@ export async function POST(request: NextRequest) {
     const auth = await requireDashboardUser(request);
     if ("error" in auth) {
       return auth.error;
+    }
+
+    const permissions = buildDashboardTemplatePermissions({
+      subscriptionPlan: auth.user.subscriptionPlan,
+      subscriptionStatus: auth.user.subscriptionStatus,
+      membershipExpiresAt: auth.user.membershipExpiresAt,
+    });
+
+    if (!permissions.canCreate) {
+      return NextResponse.json(
+        { success: false, error: { message: "Your current plan cannot create templates." } },
+        { status: 403 },
+      );
     }
 
     const body = await request.json();
@@ -64,7 +82,7 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         template,
-        permissions: buildDashboardTemplatePermissions(),
+        permissions,
       },
     });
   } catch (error) {

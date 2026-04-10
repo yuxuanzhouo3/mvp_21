@@ -10,6 +10,7 @@ import {
 import { resolveUserRole } from "@/lib/auth/user-role";
 import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
 import { getSupabaseAdmin } from "@/lib/integrations/supabase-admin";
+import { resolveMembershipState } from "@/lib/membership/policy";
 
 type SupabaseAuthUserLike = Pick<SupabaseUser, "id" | "email" | "user_metadata">;
 
@@ -32,21 +33,27 @@ function buildSubscriptionSnapshot(
     current_period_end?: string | null;
   } | null,
 ): SubscriptionSnapshot {
-  const plan =
+  const rawPlan =
     subscription?.plan_id ||
     fallback.plan ||
     (fallback.pro ? "pro" : "free");
 
-  const status =
+  const rawStatus =
     subscription?.status ||
     fallback.status ||
-    (plan !== "free" ? "active" : "inactive");
+    (rawPlan !== "free" ? "active" : "inactive");
 
-  return {
-    plan,
-    status,
+  const membership = resolveMembershipState({
+    plan: rawPlan,
+    status: rawStatus,
     membershipExpiresAt:
       subscription?.current_period_end || fallback.membershipExpiresAt,
+  });
+
+  return {
+    plan: membership.plan,
+    status: membership.status,
+    membershipExpiresAt: membership.expiresAt,
   };
 }
 

@@ -11,13 +11,15 @@ export default async function AdminLayout({
 }) {
   const cookieStore = await cookies();
   const loggedIn = cookieStore.get("auth-logged-in")?.value;
-  const role = normalizeUserRole(cookieStore.get("auth-role")?.value);
+  const rawRole = cookieStore.get("auth-role")?.value;
+  const role = normalizeUserRole(rawRole);
 
   if (!loggedIn) {
     redirect("/auth?mode=signin&redirect=/admin");
   }
 
-  if (cookieStore.get("auth-role")?.value && !isAdminRole(role)) {
+  // Fail closed: admin pages should only render for explicit admin roles.
+  if (!isAdminRole(role)) {
     redirect("/dashboard");
   }
 

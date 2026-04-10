@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import {
+  buildDashboardTemplatePermissions,
   createDashboardTemplateVersion,
   duplicateDashboardTemplate,
   getDashboardTemplateById,
@@ -52,11 +53,34 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const { id } = await context.params;
     const body = await request.json();
+    const permissions = buildDashboardTemplatePermissions({
+      subscriptionPlan: auth.user.subscriptionPlan,
+      subscriptionStatus: auth.user.subscriptionStatus,
+      membershipExpiresAt: auth.user.membershipExpiresAt,
+    });
 
     let template;
     if (body.action === "duplicate") {
+      if (!permissions.canCopy) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: { message: "Your plan cannot copy templates." },
+          },
+          { status: 403 },
+        );
+      }
       template = await duplicateDashboardTemplate(auth.user.id, id);
     } else if (body.action === "create_version") {
+      if (!permissions.canCreateVersion) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: { message: "Template versioning requires an active paid plan." },
+          },
+          { status: 403 },
+        );
+      }
       template = await createDashboardTemplateVersion(auth.user.id, id);
     } else {
       template = await updateDashboardTemplate(auth.user.id, id, {

@@ -1,29 +1,117 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { generateContract } from "@/lib/ai";
 import { type AIAnalysisResult } from "@/lib/ai/types";
+import {
+  loadChinaAccountProfile,
+  loadIntlAccountProfile,
+} from "@/lib/account/server-profile";
 import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
 import { isChinaRegion } from "@/lib/config/region";
+import { loadAdminSettings } from "@/lib/data/admin-settings-store";
 import { getDashboardTemplateById } from "@/lib/data/dashboard-store";
+import { buildMembershipEntitlements } from "@/lib/membership/policy";
 
 function t(zh: string, en: string) {
   return isChinaRegion() ? zh : en;
 }
 
-async function resolveCurrentUserId(request: NextRequest) {
+async function requireCurrentUser(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
-  const { token } = extractTokenFromHeader(authHeader);
+  const { token, error: tokenError } = extractTokenFromHeader(authHeader);
 
-  if (!token) {
-    return "";
+  if (tokenError || !token) {
+    return {
+      error: NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "UNAUTHORIZED",
+            message: t("请先登录后再试。", "Please sign in first."),
+          },
+        },
+        { status: 401 },
+      ),
+    };
   }
 
   const authResult = await verifyAuthToken(token);
-  return authResult.success && authResult.userId ? authResult.userId : "";
+  if (!authResult.success || !authResult.userId) {
+    return {
+      error: NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "UNAUTHORIZED",
+            message: t("登录状态无效。", "Invalid token."),
+          },
+        },
+        { status: 401 },
+      ),
+    };
+  }
+
+  const profile = isChinaRegion()
+    ? await loadChinaAccountProfile(authResult.userId)
+    : await loadIntlAccountProfile(
+        authResult.userId,
+        authResult.user && "user_metadata" in authResult.user
+          ? authResult.user
+          : undefined,
+      );
+
+  const settings = await loadAdminSettings();
+  const entitlements = buildMembershipEntitlements(
+    {
+      plan:
+        profile?.subscription_plan ||
+        authResult.user?.subscription_plan ||
+        authResult.user?.user_metadata?.subscription_plan,
+      status:
+        profile?.subscription_status ||
+        authResult.user?.subscription_status ||
+        authResult.user?.user_metadata?.subscription_status,
+      membershipExpiresAt:
+        profile?.membership_expires_at ||
+        profile?.subscription_expires_at ||
+        authResult.user?.membership_expires_at ||
+        authResult.user?.user_metadata?.membership_expires_at ||
+        authResult.user?.subscription_expires_at ||
+        authResult.user?.user_metadata?.subscription_expires_at,
+    },
+    settings,
+  );
+
+  if (!entitlements.features.canGenerateContract) {
+    return {
+      error: NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "MEMBERSHIP_REQUIRED",
+            message: t(
+              "生成合同需要有效的付费会员，请先升级后再试。",
+              "Contract generation requires an active paid membership.",
+            ),
+          },
+        },
+        { status: 403 },
+      ),
+    };
+  }
+
+  return {
+    userId: authResult.userId,
+  };
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireCurrentUser(request);
+    if ("error" in auth) {
+      return auth.error;
+    }
+
     const body = await request.json();
     const {
       analysisResult,
@@ -75,14 +163,11 @@ export async function POST(request: NextRequest) {
     let resolvedTemplateVersion = templateVersion;
 
     if ((!resolvedTemplateContent || !resolvedTemplateContent.trim()) && templateId) {
-      const userId = await resolveCurrentUserId(request);
-      if (userId) {
-        const template = await getDashboardTemplateById(userId, templateId).catch(() => null);
-        if (template?.content) {
-          resolvedTemplateName = template.name;
-          resolvedTemplateContent = template.content;
-          resolvedTemplateVersion = template.version;
-        }
+      const template = await getDashboardTemplateById(auth.userId, templateId).catch(() => null);
+      if (template?.content) {
+        resolvedTemplateName = template.name;
+        resolvedTemplateContent = template.content;
+        resolvedTemplateVersion = template.version;
       }
     }
 
