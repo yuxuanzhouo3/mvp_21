@@ -55,22 +55,25 @@ function toNumberValue(value: unknown, fallback = 0) {
 }
 
 function normalizeTags(value: unknown) {
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => (typeof item === "string" ? item.trim() : ""))
-      .filter(Boolean)
-      .slice(0, 10);
+  const source = Array.isArray(value)
+    ? value.map((item) => (typeof item === "string" ? item : ""))
+    : typeof value === "string" && value.trim()
+      ? value.split(",")
+      : [];
+
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of source) {
+    const tag = raw.trim();
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(tag);
+    if (deduped.length >= 10) break;
   }
 
-  if (typeof value === "string" && value.trim()) {
-    return value
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .slice(0, 10);
-  }
-
-  return [] as string[];
+  return deduped;
 }
 
 function normalizeGroupName(value: unknown, fallback = "Workspace") {

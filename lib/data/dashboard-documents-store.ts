@@ -143,9 +143,18 @@ function normalizeGroupName(value?: string | null) {
 }
 
 function normalizeTags(tags: string[]) {
+  const seen = new Set<string>();
   return tags
     .map((item) => item.trim())
     .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
     .slice(0, 10);
 }
 

@@ -71,10 +71,19 @@ function getDocumentTypeLabel(documentType: DashboardDocumentItem["documentType"
 }
 
 function splitTags(value: string) {
+  const seen = new Set<string>();
   return value
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
     .slice(0, 10);
 }
 
@@ -575,8 +584,8 @@ export function DocumentLibrary({ documents, onDocumentsChanged }: DocumentLibra
                           </div>
                           {doc.tags.length > 0 ? (
                             <div className="mt-3 flex flex-wrap gap-2">
-                              {doc.tags.map((tag) => (
-                                <Badge key={`${doc.id}-${tag}`} variant="secondary">
+                              {doc.tags.map((tag, index) => (
+                                <Badge key={`${doc.id}-${tag}-${index}`} variant="secondary">
                                   #{tag}
                                 </Badge>
                               ))}
