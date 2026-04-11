@@ -1,109 +1,113 @@
-/**
- * POST /api/auth/logout
- * Logout user and revoke all refresh tokens (Plan B: JWT + CloudBase)
- *
- * Flow:
- * 1. Verify accessToken is valid
- * 2. Revoke ALL user's refresh tokens in CloudBase
- * 3. Return success
- * 4. Frontend clears localStorage
- */
-
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAuthToken } from "@/lib/auth/auth-utils";
+
+import { extractTokenFromRequest, verifyAuthToken } from "@/lib/auth/auth-utils";
 import { revokeAllUserTokens } from "@/lib/auth/refresh-token-manager";
 import { logSecurityEvent } from "@/lib/utils/logger";
 
+function clearAuthCookies(response: NextResponse) {
+  const secure = process.env.NODE_ENV === "production";
+  const cookieOptions = {
+    maxAge: 0,
+    path: "/",
+    sameSite: "lax" as const,
+    secure,
+  };
+
+  response.cookies.set("auth-token", "", {
+    ...cookieOptions,
+    httpOnly: true,
+  });
+  response.cookies.set("auth_token", "", {
+    ...cookieOptions,
+    httpOnly: true,
+  });
+  response.cookies.set("access_token", "", {
+    ...cookieOptions,
+    httpOnly: true,
+  });
+  response.cookies.set("auth-logged-in", "", cookieOptions);
+  response.cookies.set("auth-role", "", cookieOptions);
+}
+
+function buildLogoutResponse(payload: {
+  success: boolean;
+  message: string;
+  tokensRevoked: number;
+}) {
+  const response = NextResponse.json(payload, { status: 200 });
+  clearAuthCookies(response);
+  return response;
+}
+
 export async function POST(request: NextRequest) {
+  const clientIP =
+    request.headers.get("x-forwarded-for") ||
+    request.headers.get("x-real-ip") ||
+    "unknown";
+
   try {
-    const clientIP =
-      request.headers.get("x-forwarded-for") ||
-      request.headers.get("x-real-ip") ||
-      "unknown";
+    const { token } = extractTokenFromRequest(request);
 
-    // Step 1: Extract and verify accessToken from Authorization header
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      console.warn(
-        "[/api/auth/logout] Missing or invalid Authorization header"
-      );
-      logSecurityEvent("logout_unauthorized", undefined, clientIP, {
-        reason: "Missing Authorization header",
+    if (!token) {
+      logSecurityEvent("logout_without_token", undefined, clientIP, {
+        reason: "Missing token, cleared cookies only",
       });
-
-      return NextResponse.json(
-        { error: "Unauthorized - missing Authorization header" },
-        { status: 401 }
-      );
+      return buildLogoutResponse({
+        success: true,
+        message: "Logged out successfully",
+        tokensRevoked: 0,
+      });
     }
 
-    const token = authHeader.slice(7); // Remove "Bearer " prefix
     const authResult = await verifyAuthToken(token);
-
     if (!authResult.success || !authResult.userId) {
-      console.warn("[/api/auth/logout] Unauthorized access attempt");
-      logSecurityEvent("logout_unauthorized", undefined, clientIP, {
+      logSecurityEvent("logout_invalid_token", undefined, clientIP, {
         reason: authResult.error || "Invalid token",
       });
-
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return buildLogoutResponse({
+        success: true,
+        message: "Logged out successfully",
+        tokensRevoked: 0,
+      });
     }
 
     const userId = authResult.userId;
-    console.log("[/api/auth/logout] Logout request from userId:", userId);
-
-    // Step 2: Revoke all user's refresh tokens in CloudBase
     const revokeResult = await revokeAllUserTokens(userId, "logout");
 
     if (!revokeResult.success) {
-      console.error(
-        "[/api/auth/logout] Failed to revoke tokens:",
-        revokeResult.error
-      );
       logSecurityEvent("logout_revoke_failed", userId, clientIP, {
         error: revokeResult.error,
       });
 
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Failed to revoke tokens" },
-        { status: 500 }
+        { status: 500 },
       );
+      clearAuthCookies(response);
+      return response;
     }
 
-    // Step 3: Log success
-    console.log(
-      "[/api/auth/logout] Successfully revoked all tokens for userId:",
-      userId
-    );
     logSecurityEvent("logout_success", userId, clientIP, {
       tokensRevoked: revokeResult.revokedCount,
     });
 
-    // Step 4: Return success response (frontend clears localStorage)
-    return NextResponse.json(
-      {
-        success: true,
-        message: "Logged out successfully",
-        tokensRevoked: revokeResult.revokedCount,
-      },
-      { status: 200 }
-    );
-  } catch (error: any) {
-    console.error("[/api/auth/logout] Error:", error.message);
+    return buildLogoutResponse({
+      success: true,
+      message: "Logged out successfully",
+      tokensRevoked: revokeResult.revokedCount || 0,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    logSecurityEvent("logout_error", undefined, clientIP, { error: message });
 
-    logSecurityEvent(
-      "logout_error",
-      undefined,
-      request.headers.get("x-forwarded-for") || "unknown",
-      { error: error.message }
-    );
-
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         error: "Internal server error",
-        details: error.message,
+        details: message,
       },
-      { status: 500 }
+      { status: 500 },
     );
+    clearAuthCookies(response);
+    return response;
   }
 }

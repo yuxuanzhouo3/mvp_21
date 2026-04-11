@@ -88,9 +88,17 @@ function ImportContent() {
     nextContent: string,
     sourceType: SupportedImportMethod | OcrSourceType,
   ) {
+    const headers = await tokenManager.getAuthHeaderAsync();
+    if (!headers) {
+      throw new Error("UNAUTHORIZED");
+    }
+
     const analysisResponse = await fetch("/api/contracts/analyze", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         content: nextContent,
         sourceType,

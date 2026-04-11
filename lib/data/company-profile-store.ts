@@ -96,6 +96,17 @@ export async function getCompanyProfile(
   return profiles[0];
 }
 
+export async function getDefaultCompanyProfile(
+  userId: string,
+): Promise<UnifiedCompanyProfile | null> {
+  const profiles = await listCompanyProfiles(userId);
+  if (!profiles.length) {
+    return null;
+  }
+
+  return profiles.find((profile) => profile.isDefault) || profiles[0];
+}
+
 export async function createCompanyProfile(
   userId: string,
   input: CompanyProfileInput,
@@ -191,6 +202,58 @@ export async function deleteCompanyProfile(
   if (error) {
     throw error;
   }
+}
+
+export async function setDefaultCompanyProfile(
+  userId: string,
+  id: string,
+): Promise<void> {
+  if (isChinaRegion()) {
+    const db = getDatabase();
+    const profiles = await listCompanyProfiles(userId);
+    const now = new Date().toISOString();
+
+    await Promise.all(
+      profiles.map((profile) =>
+        db.collection("company_profiles").doc(profile.id).update({
+          is_default: profile.id === id,
+          updated_at: now,
+        }),
+      ),
+    );
+    return;
+  }
+
+  const supabaseAdmin = getSupabaseAdmin() as any;
+  await supabaseAdmin
+    .from("company_profiles")
+    .update({ is_default: false, updated_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .neq("id", id);
+
+  await supabaseAdmin
+    .from("company_profiles")
+    .update({ is_default: true, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("user_id", userId);
+}
+
+export async function ensureCompanyDefaultProfile(
+  userId: string,
+): Promise<UnifiedCompanyProfile | null> {
+  const profiles = await listCompanyProfiles(userId);
+  if (!profiles.length) {
+    return null;
+  }
+
+  const existing = profiles.find((profile) => profile.isDefault);
+  if (existing) {
+    return existing;
+  }
+
+  const nextDefault = profiles[0];
+  await setDefaultCompanyProfile(userId, nextDefault.id);
+  return nextDefault;
 }
 
 export async function upsertCompanyProfile(

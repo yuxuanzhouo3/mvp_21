@@ -17,19 +17,21 @@ import { useTranslations } from "@/lib/i18n";
 export default function DashboardPage() {
   const { language } = useLanguage();
   const t = useTranslations(language);
+  const isEn = language === "en";
   const [overview, setOverview] = useState<DashboardOverviewData | null>(null);
   const [loading, setLoading] = useState(true);
 
   const labels = t.platform?.consoleModules || {
-    overview: "Overview",
+    overview: isEn ? "Overview" : "总览",
   };
 
   const content = t.pages?.dashboard || {
-    title: "Dashboard",
-    description:
-      "Manage contracts, monitor signature progress, and track team activity.",
-    updated: "Updated",
-    newContract: "New Contract",
+    title: isEn ? "Dashboard" : "控制台",
+    description: isEn
+      ? "Manage contracts, monitor signature progress, and track team activity."
+      : "管理合同、跟踪签署进度，并查看团队活动。",
+    updated: isEn ? "Updated" : "更新于",
+    newContract: isEn ? "New Contract" : "新建合同",
   };
 
   useEffect(() => {

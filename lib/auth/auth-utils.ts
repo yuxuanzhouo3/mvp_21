@@ -150,6 +150,48 @@ export function extractTokenFromHeader(authHeader: string | null): {
   };
 }
 
+type TokenSource = "authorization" | "cookie" | "none";
+
+export function extractTokenFromRequest(request: {
+  headers: { get(name: string): string | null };
+  cookies?: { get(name: string): { value: string } | undefined };
+}): {
+  token: string | null;
+  error: string | null;
+  source: TokenSource;
+} {
+  const authHeader = request.headers.get("authorization");
+  const headerToken = extractTokenFromHeader(authHeader);
+
+  if (headerToken.token) {
+    return {
+      token: headerToken.token,
+      error: null,
+      source: "authorization",
+    };
+  }
+
+  const cookieToken =
+    request.cookies?.get("auth-token")?.value ||
+    request.cookies?.get("auth_token")?.value ||
+    request.cookies?.get("access_token")?.value ||
+    null;
+
+  if (cookieToken) {
+    return {
+      token: cookieToken,
+      error: null,
+      source: "cookie",
+    };
+  }
+
+  return {
+    token: null,
+    error: headerToken.error || "Missing authentication token",
+    source: "none",
+  };
+}
+
 export function getDatabase() {
   if (isChinaRegion()) {
     return getCloudBaseApp().database();

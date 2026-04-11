@@ -22,6 +22,7 @@ import type { UserPreferences } from "@/lib/account/profile";
 import { resolveUserRole } from "@/lib/auth/user-role";
 import { isChinaRegion } from "@/lib/config/region";
 import { supabase } from "@/lib/integrations/supabase";
+import { normalizeAvatarSrc, pickAvatarSrcFromRecord } from "@/lib/account/avatar";
 
 export interface UserProfile {
   id: string;
@@ -63,19 +64,22 @@ function mapSupabaseSessionUser(sessionUser: {
   email?: string | null;
   user_metadata?: Record<string, any>;
 }): UserProfile {
+  const metadata = sessionUser.user_metadata || {};
+
   return {
     id: sessionUser.id,
     email: sessionUser.email || "",
-    name:
-      sessionUser.user_metadata?.displayName ||
-      sessionUser.user_metadata?.full_name ||
-      "",
+    name: metadata.displayName || metadata.full_name || metadata.name || "",
     avatar:
-      sessionUser.user_metadata?.avatar ||
-      sessionUser.user_metadata?.avatar_url ||
-      "",
+      pickAvatarSrcFromRecord(metadata) ||
+      normalizeAvatarSrc(metadata.avatar) ||
+      normalizeAvatarSrc(metadata.avatar_url),
     role: resolveUserRole(sessionUser),
-    preferences: sessionUser.user_metadata?.preferences,
+    subscription_plan: metadata.subscription_plan,
+    subscription_status: metadata.subscription_status,
+    subscription_expires_at: metadata.subscription_expires_at,
+    membership_expires_at: metadata.membership_expires_at,
+    preferences: metadata.preferences,
   };
 }
 

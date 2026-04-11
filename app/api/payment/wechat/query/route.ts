@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { WechatProviderV3 } from '@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3';
+import { createAuthErrorResponse, requireAuth } from "@/lib/auth/auth";
 import { getDatabase } from '@/lib/cloudbase/cloudbase-service';
 import {
   getAppUrl,
@@ -24,6 +25,11 @@ const querySchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await requireAuth(request);
+    if (!authResult) {
+      return createAuthErrorResponse();
+    }
+
     // 1. 解析查询参数
     const searchParams = request.nextUrl.searchParams;
     let out_trade_no = searchParams.get('out_trade_no');
@@ -63,7 +69,7 @@ export async function GET(request: NextRequest) {
       const db = getDatabase();
       const result = await db
         .collection('payments')
-        .where({ out_trade_no })
+        .where({ out_trade_no, user_id: authResult.user.id })
         .get();
 
       localPayment = result.data?.[0];
@@ -87,7 +93,7 @@ export async function GET(request: NextRequest) {
         const db = getDatabase();
         await db
           .collection('payments')
-          .where({ out_trade_no })
+          .where({ out_trade_no, user_id: authResult.user.id })
           .update(updatedPayment);
 
         localPayment = { ...localPayment, ...updatedPayment };

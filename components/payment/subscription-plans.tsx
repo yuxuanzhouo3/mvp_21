@@ -45,6 +45,19 @@ const PLAN_HIERARCHY = {
   pro: 1,
 };
 
+function normalizePlanId(planId?: string | null): keyof typeof PLAN_HIERARCHY {
+  if (!planId) {
+    return "free";
+  }
+
+  const normalized = planId.toLowerCase();
+  if (normalized === "premium") {
+    return "pro";
+  }
+
+  return normalized === "pro" ? "pro" : "free";
+}
+
 export function SubscriptionPlans({
   onSelectPlan,
   currentPlan,
@@ -57,7 +70,7 @@ export function SubscriptionPlans({
   const t = useTranslations(language);
 
   // 获取用户当前订阅计划
-  const userCurrentPlan = user?.subscription_plan || "free";
+  const userCurrentPlan = normalizePlanId(user?.subscription_plan || currentPlan);
   const userCurrentLevel =
     PLAN_HIERARCHY[userCurrentPlan as keyof typeof PLAN_HIERARCHY] ?? 0;
 
@@ -176,7 +189,7 @@ export function SubscriptionPlans({
           const actualPlanId =
             ("planId" in plan ? plan.planId : plan.id) || "free";
           const isCurrentPlan =
-            userCurrentPlan === actualPlanId &&
+            userCurrentPlan === normalizePlanId(actualPlanId) &&
             user?.subscription_status === "active";
 
           return (

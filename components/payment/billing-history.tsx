@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useState } from "react";
 import { CreditCard, Download, Receipt, RefreshCw, X } from "lucide-react";
@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { getAuthClient } from "@/lib/auth/client";
 import { useLanguage } from "@/components/language-provider";
+import { useUser } from "@/components/user-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,7 +40,9 @@ export function BillingHistory({ userId }: BillingHistoryProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [invoiceLoadingId, setInvoiceLoadingId] = useState<string | null>(null);
   const { language } = useLanguage();
+  const { refreshUser } = useUser();
   const isEn = language === "en";
   const t = useTranslations(language);
 
@@ -82,22 +85,30 @@ export function BillingHistory({ userId }: BillingHistoryProps) {
     void fetchBillingHistory();
   }, [fetchBillingHistory]);
 
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    void refreshUser();
+  }, [refreshUser, userId]);
+
   const getStatusBadge = (status: BillingRecord["status"]) => {
     const config = {
       paid: {
-        label: isEn ? "Paid" : "已支付",
+        label: "Paid",
         className: "bg-green-100 text-green-800 hover:bg-green-100",
       },
       pending: {
-        label: isEn ? "Pending" : "待支付",
+        label: "Pending",
         className: "bg-amber-100 text-amber-800 hover:bg-amber-100",
       },
       failed: {
-        label: isEn ? "Failed" : "已失败",
+        label: "Failed",
         className: "bg-slate-100 text-slate-700 hover:bg-slate-100",
       },
       refunded: {
-        label: isEn ? "Refunded" : "已退款",
+        label: "Refunded",
         className: "bg-blue-100 text-blue-800 hover:bg-blue-100",
       },
     } as const;
@@ -153,7 +164,7 @@ export function BillingHistory({ userId }: BillingHistoryProps) {
           record.id === recordId ? { ...record, status: "failed" } : record,
         ),
       );
-      toast.success(isEn ? "Payment cancelled." : "支付已取消。");
+      toast.success("Payment cancelled.");
     } catch (cancelError) {
       console.error("[BillingHistory] Cancel failed:", cancelError);
       toast.error(t.payment.messages.failed);
@@ -191,6 +202,43 @@ export function BillingHistory({ userId }: BillingHistoryProps) {
     }
   }
 
+  async function handleOpenInvoice(record: BillingRecord) {
+    setInvoiceLoadingId(record.id);
+
+    try {
+      const response = await fetch(`/api/payment/invoice/${record.id}`, {
+        method: "GET",
+        headers: await withTokenHeaders(),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to load invoice");
+      }
+
+      const html = await response.text();
+      const blob = new Blob([html], { type: "text/html" });
+      const blobUrl = URL.createObjectURL(blob);
+
+      const popup = window.open(blobUrl, "_blank", "noopener,noreferrer");
+      if (!popup) {
+        const anchor = document.createElement("a");
+        anchor.href = blobUrl;
+        anchor.target = "_blank";
+        anchor.rel = "noopener noreferrer";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch (invoiceError) {
+      console.error("[BillingHistory] Invoice failed:", invoiceError);
+      toast.error(t.payment.messages.failed);
+    } finally {
+      setInvoiceLoadingId(null);
+    }
+  }
+
   const renderRecordActions = (record: BillingRecord) => (
     <div className="flex flex-wrap items-center gap-2">
       {record.status === "pending" ? (
@@ -202,7 +250,7 @@ export function BillingHistory({ userId }: BillingHistoryProps) {
             disabled={processingId === record.id}
           >
             <CreditCard className="mr-1 h-4 w-4" />
-            {isEn ? "Continue" : "继续支付"}
+            {isEn ? "Continue" : "缁х画鏀粯"}
           </Button>
           <Button
             variant="outline"
@@ -211,16 +259,19 @@ export function BillingHistory({ userId }: BillingHistoryProps) {
             disabled={processingId === record.id}
           >
             <X className="mr-1 h-4 w-4" />
-            {isEn ? "Cancel" : "取消"}
+            {isEn ? "Cancel" : "鍙栨秷"}
           </Button>
         </>
       ) : null}
       {record.status === "paid" && record.invoiceUrl ? (
-        <Button variant="ghost" size="sm" asChild>
-          <a href={record.invoiceUrl} target="_blank" rel="noopener noreferrer">
-            <Download className="mr-1 h-4 w-4" />
-            {isEn ? "Invoice" : "发票"}
-          </a>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void handleOpenInvoice(record)}
+          disabled={invoiceLoadingId === record.id}
+        >
+          <Download className="mr-1 h-4 w-4" />
+          {isEn ? "Invoice" : "鍙戠エ"}
         </Button>
       ) : null}
     </div>
@@ -254,18 +305,14 @@ export function BillingHistory({ userId }: BillingHistoryProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Receipt className="h-5 w-5" />
-          {isEn ? "Billing History" : "账单历史"}
+          {isEn ? "Billing History" : "璐﹀崟鍘嗗彶"}
         </CardTitle>
-        <CardDescription>
-          {isEn ? "View and manage your payment records." : "查看并管理你的支付记录。"}
-        </CardDescription>
+        <CardDescription>View and manage your payment records.</CardDescription>
       </CardHeader>
 
       <CardContent>
         {records.length === 0 ? (
-          <div className="py-8 text-center text-muted-foreground">
-            {isEn ? "No billing records found." : "暂无账单记录。"}
-          </div>
+          <div className="py-8 text-center text-muted-foreground">No billing records found.</div>
         ) : (
           <>
             <div className="space-y-3 md:hidden">
@@ -283,13 +330,13 @@ export function BillingHistory({ userId }: BillingHistoryProps) {
                   </div>
                   <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                     <div className="flex items-center justify-between gap-2 rounded-md bg-background/70 px-3 py-2">
-                      <span className="text-muted-foreground">{isEn ? "Amount" : "金额"}</span>
+                      <span className="text-muted-foreground">{isEn ? "Amount" : "閲戦"}</span>
                       <span className="font-medium">
                         {formatAmount(record.amount, record.currency)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2 rounded-md bg-background/70 px-3 py-2">
-                      <span className="text-muted-foreground">{isEn ? "Method" : "方式"}</span>
+                      <span className="text-muted-foreground">{isEn ? "Method" : "鏂瑰紡"}</span>
                       <span className="truncate">{record.paymentMethod}</span>
                     </div>
                   </div>
@@ -302,12 +349,12 @@ export function BillingHistory({ userId }: BillingHistoryProps) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{isEn ? "Date" : "日期"}</TableHead>
-                    <TableHead>{isEn ? "Description" : "说明"}</TableHead>
-                    <TableHead>{isEn ? "Amount" : "金额"}</TableHead>
-                    <TableHead>{isEn ? "Payment Method" : "支付方式"}</TableHead>
-                    <TableHead>{isEn ? "Status" : "状态"}</TableHead>
-                    <TableHead>{isEn ? "Actions" : "操作"}</TableHead>
+                    <TableHead>{isEn ? "Date" : "鏃ユ湡"}</TableHead>
+                    <TableHead>{isEn ? "Description" : "璇存槑"}</TableHead>
+                    <TableHead>{isEn ? "Amount" : "閲戦"}</TableHead>
+                    <TableHead>{isEn ? "Payment Method" : "鏀粯鏂瑰紡"}</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>{isEn ? "Actions" : "鎿嶄綔"}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -332,3 +379,4 @@ export function BillingHistory({ userId }: BillingHistoryProps) {
     </Card>
   );
 }
+

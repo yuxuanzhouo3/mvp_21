@@ -27,32 +27,32 @@ export function DashboardStats({
   const isEn = language === "en";
   const cards = [
     {
-      title: "Total Contracts",
+      title: isEn ? "Total Contracts" : "合同总数",
       value: stats?.totalContracts ?? 0,
       change: stats?.totalContractsDelta ?? 0,
       icon: FileText,
-      hint: "vs last 30 days",
+      hint: isEn ? "vs last 30 days" : "较近 30 天",
     },
     {
-      title: "Pending Signatures",
+      title: isEn ? "Pending Signatures" : "待签署数",
       value: stats?.pendingSignatures ?? 0,
       change: stats?.pendingSignaturesDelta ?? 0,
       icon: Clock3,
-      hint: "queue delta this week",
+      hint: isEn ? "queue delta this week" : "本周队列变化",
     },
     {
-      title: "Completed",
+      title: isEn ? "Completed" : "已完成合同",
       value: stats?.completedContracts ?? 0,
       change: stats?.completedContractsDelta ?? 0,
       icon: CheckCircle2,
-      hint: "signed and retained",
+      hint: isEn ? "signed and retained" : "已签署并归档",
     },
     {
-      title: "Active Parties",
+      title: isEn ? "Active Parties" : "活跃签约方",
       value: stats?.activeParties ?? 0,
       change: stats?.activePartiesDelta ?? 0,
       icon: Users,
-      hint: "unique participants",
+      hint: isEn ? "unique participants" : "去重参与方数量",
     },
   ] as const;
 

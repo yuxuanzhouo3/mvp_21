@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 
 import { ContractAIError, analyzeConversation } from "@/lib/ai";
+import { extractTokenFromRequest, verifyAuthToken } from "@/lib/auth/auth-utils";
 import { isChinaRegion } from "@/lib/config/region";
 import { SourceType } from "@/lib/ai/types";
 
@@ -36,6 +37,34 @@ function getAiErrorMessage(error: ContractAIError): string {
 
 export async function POST(request: NextRequest) {
   try {
+    const { token, error: tokenError } = extractTokenFromRequest(request);
+    if (tokenError || !token) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "UNAUTHORIZED",
+            message: t("请先登录后再使用分析功能。", "Please sign in before analysis."),
+          },
+        },
+        { status: 401 },
+      );
+    }
+
+    const authResult = await verifyAuthToken(token);
+    if (!authResult.success || !authResult.userId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "UNAUTHORIZED",
+            message: t("登录状态无效。", "Invalid token."),
+          },
+        },
+        { status: 401 },
+      );
+    }
+
     const body = await request.json();
     const { content, sourceType = "text" } = body as {
       content: string;

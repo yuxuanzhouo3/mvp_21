@@ -39,6 +39,27 @@ function createIntlAuthClient() {
   );
 }
 
+function attachAuthCookies(
+  response: NextResponse,
+  accessToken: string,
+  maxAgeSeconds: number,
+) {
+  response.cookies.set("auth-token", accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: maxAgeSeconds,
+    path: "/",
+  });
+  response.cookies.set("auth_token", accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: maxAgeSeconds,
+    path: "/",
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     let body: Record<string, unknown>;
@@ -93,7 +114,7 @@ export async function POST(request: NextRequest) {
       accountLockout.recordSuccessfulLogin(email);
       logSecurityEvent("login_success", result.userId, clientIP, { email });
 
-      return NextResponse.json({
+      const response = NextResponse.json({
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
         user: profile || {
@@ -106,6 +127,16 @@ export async function POST(request: NextRequest) {
         },
         tokenMeta: result.tokenMeta,
       });
+
+      if (result.accessToken) {
+        attachAuthCookies(
+          response,
+          result.accessToken,
+          result.tokenMeta?.accessTokenExpiresIn || 3600,
+        );
+      }
+
+      return response;
     }
 
     if (
@@ -149,7 +180,7 @@ export async function POST(request: NextRequest) {
       region: "INTL",
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       accessToken: session.access_token,
       refreshToken: session.refresh_token,
       user: profile || {
@@ -170,6 +201,10 @@ export async function POST(request: NextRequest) {
         refreshTokenExpiresIn: 604800,
       },
     });
+
+    attachAuthCookies(response, session.access_token, session.expires_in || 3600);
+
+    return response;
   } catch (error: any) {
     console.error("[/api/auth/login] Error:", error);
     return NextResponse.json(

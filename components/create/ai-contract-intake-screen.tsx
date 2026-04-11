@@ -172,9 +172,18 @@ export function AIContractIntakeScreen() {
 
     try {
       setDraftLoading(true);
+      const { tokenManager } = await import("@/lib/auth/frontend-token-manager");
+      const headers = await tokenManager.getAuthHeaderAsync();
+      if (!headers) {
+        throw new Error("UNAUTHORIZED");
+      }
+
       const analysisResponse = await fetch("/api/contracts/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           content: chatResult.draftSourceContent,
           sourceType: "text",
@@ -233,6 +242,11 @@ export function AIContractIntakeScreen() {
       );
     } catch (error) {
       console.error("[AIContractIntakeScreen] Failed to create draft:", error);
+      if (error instanceof Error && error.message === "UNAUTHORIZED") {
+        router.push(`/auth?redirect=${encodeURIComponent(canonicalPath)}`);
+        return;
+      }
+
       window.alert(
         error instanceof Error
           ? error.message

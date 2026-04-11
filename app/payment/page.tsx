@@ -34,7 +34,7 @@ function PaymentPageContent() {
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const { language } = useLanguage();
-  const { user, loading } = useUser();
+  const { user, loading, refreshUser } = useUser();
   const t = useTranslations(language);
   const isZh = language === "zh";
 
@@ -111,6 +111,14 @@ function PaymentPageContent() {
 
     return () => clearTimeout(timeoutId);
   }, [loading]);
+
+  useEffect(() => {
+    if (loading || !user?.id) {
+      return;
+    }
+
+    void refreshUser();
+  }, [loading, refreshUser, user?.id]);
 
   useEffect(() => {
     if (!loading && !user && initialLoadComplete) {

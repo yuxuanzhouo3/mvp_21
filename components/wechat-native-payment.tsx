@@ -43,6 +43,14 @@ export function WechatNativePayment({
   const [state, setState] = useState<PaymentState>({ status: 'idle' });
   const [remainingTime, setRemainingTime] = useState<number | null>(null);
 
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    const { getAuthClient } = await import("@/lib/auth/client");
+    const sessionResult = await getAuthClient().getSession();
+    const token = sessionResult.data.session?.access_token;
+
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
   /**
    * 开始支付流程
    */
@@ -55,6 +63,7 @@ export function WechatNativePayment({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(await getAuthHeaders()),
         },
         body: JSON.stringify({
           amount,
@@ -121,9 +130,9 @@ export function WechatNativePayment({
       try {
         pollCount++;
 
-        const response = await fetch(
-          `/api/payment/wechat/query?out_trade_no=${outTradeNo}`
-        );
+        const response = await fetch(`/api/payment/wechat/query?out_trade_no=${outTradeNo}`, {
+          headers: await getAuthHeaders(),
+        });
 
         if (!response.ok) {
           throw new Error(isEn ? 'Failed to query payment status' : '查询支付状态失败');

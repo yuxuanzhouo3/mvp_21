@@ -4,23 +4,13 @@ import {
   loadChinaAccountProfile,
   loadIntlAccountProfile,
 } from "@/lib/account/server-profile";
-import { verifyAuthToken, extractTokenFromHeader } from "@/lib/auth/auth-utils";
+import { extractTokenFromRequest, verifyAuthToken } from "@/lib/auth/auth-utils";
 import { isChinaRegion } from "@/lib/config/region";
 import { logSecurityEvent } from "@/lib/utils/logger";
 
 function getRequestToken(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const authToken = extractTokenFromHeader(authHeader);
-  if (authToken.token) {
-    return authToken;
-  }
-
-  const cookieToken = request.cookies.get("auth-token")?.value;
-  if (cookieToken) {
-    return { token: cookieToken, error: null };
-  }
-
-  return authToken;
+  const { token, error } = extractTokenFromRequest(request);
+  return { token, error };
 }
 
 export async function GET(request: NextRequest) {

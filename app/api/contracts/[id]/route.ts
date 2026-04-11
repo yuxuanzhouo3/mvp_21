@@ -5,7 +5,7 @@ import {
   getContractById,
   updateContractRecord,
 } from "@/lib/data/contracts-store";
-import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
+import { extractTokenFromRequest, verifyAuthToken } from "@/lib/auth/auth-utils";
 import {
   appendContractUpdateLog,
   applyContractAction,
@@ -52,8 +52,7 @@ function omitUndefined<T extends Record<string, unknown>>(value: T): Partial<T> 
 }
 
 async function requireCurrentUser(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const { token, error: tokenError } = extractTokenFromHeader(authHeader);
+  const { token, error: tokenError } = extractTokenFromRequest(request);
 
   if (tokenError || !token) {
     return {

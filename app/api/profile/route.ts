@@ -11,14 +11,14 @@ import {
   loadChinaAccountProfile,
   loadIntlAccountProfile,
 } from "@/lib/account/server-profile";
-import { extractTokenFromHeader, verifyAuthToken } from "@/lib/auth/auth-utils";
+import { normalizeAvatarSrc } from "@/lib/account/avatar";
+import { extractTokenFromRequest, verifyAuthToken } from "@/lib/auth/auth-utils";
 import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
 import { isChinaRegion } from "@/lib/config/region";
 import { getSupabaseAdmin } from "@/lib/integrations/supabase-admin";
 
 async function requireUserId(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const { token, error: tokenError } = extractTokenFromHeader(authHeader);
+  const { token, error: tokenError } = extractTokenFromRequest(request);
 
   if (tokenError || !token) {
     return {
@@ -172,7 +172,11 @@ export async function POST(request: NextRequest) {
       };
 
       if (name !== undefined) updateData.name = name;
-      if (avatar !== undefined) updateData.avatar = avatar;
+      if (avatar !== undefined) {
+        const sanitizedAvatar =
+          typeof avatar === "string" ? normalizeAvatarSrc(avatar) || "" : "";
+        updateData.avatar = sanitizedAvatar;
+      }
       if (phone !== undefined) updateData.phone = phone;
       if (preferences !== undefined) {
         updateData.preferences = normalizeUserPreferences({
@@ -231,8 +235,10 @@ export async function POST(request: NextRequest) {
       nextMetadata.full_name = name;
     }
     if (avatar !== undefined) {
-      nextMetadata.avatar = avatar;
-      nextMetadata.avatar_url = avatar;
+      const sanitizedAvatar =
+        typeof avatar === "string" ? normalizeAvatarSrc(avatar) || "" : "";
+      nextMetadata.avatar = sanitizedAvatar;
+      nextMetadata.avatar_url = sanitizedAvatar;
     }
     if (phone !== undefined) {
       nextMetadata.phone = phone;

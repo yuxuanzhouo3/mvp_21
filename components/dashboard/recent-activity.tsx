@@ -25,16 +25,16 @@ function formatRelativeTime(value: string, locale: "zh-CN" | "en-US") {
 
   if (diff < hour) {
     const minutes = Math.max(1, Math.floor(diff / (60 * 1000)));
-    return locale === "en-US" ? `${minutes}m ago` : `${minutes} min ago`;
+    return locale === "en-US" ? `${minutes}m ago` : `${minutes} 分钟前`;
   }
 
   if (diff < day) {
     const hours = Math.max(1, Math.floor(diff / hour));
-    return locale === "en-US" ? `${hours}h ago` : `${hours} hr ago`;
+    return locale === "en-US" ? `${hours}h ago` : `${hours} 小时前`;
   }
 
   const days = Math.max(1, Math.floor(diff / day));
-  return `${days}d ago`;
+  return locale === "en-US" ? `${days}d ago` : `${days} 天前`;
 }
 
 export function RecentActivity({
@@ -49,7 +49,7 @@ export function RecentActivity({
     if (activity.type === "signed") {
       return {
         ...activity,
-        badge: "Completed",
+        badge: isEn ? "Completed" : "已完成",
         icon: CheckCircle2,
         tone: "text-accent",
       };
@@ -58,7 +58,7 @@ export function RecentActivity({
     if (activity.type === "pending") {
       return {
         ...activity,
-        badge: "Pending",
+        badge: isEn ? "Pending" : "待处理",
         icon: Clock3,
         tone: "text-chart-3",
       };
@@ -67,7 +67,7 @@ export function RecentActivity({
     if (activity.type === "created") {
       return {
         ...activity,
-        badge: "Draft",
+        badge: isEn ? "Draft" : "草稿",
         icon: FileText,
         tone: "text-primary",
       };
@@ -76,7 +76,7 @@ export function RecentActivity({
     if (activity.type === "archived") {
       return {
         ...activity,
-        badge: "Archived",
+        badge: isEn ? "Archived" : "已归档",
         icon: FileText,
         tone: "text-muted-foreground",
       };
@@ -84,7 +84,7 @@ export function RecentActivity({
 
     return {
       ...activity,
-      badge: "Updated",
+      badge: isEn ? "Updated" : "已更新",
       icon: PencilLine,
       tone: "text-muted-foreground",
     };
@@ -94,17 +94,17 @@ export function RecentActivity({
     <Card className="border-border/70 bg-card/95">
       <CardHeader className="pb-4">
         <CardTitle className="text-lg">
-          {isEn ? "Recent Activity" : "Recent Activity"}
+          {isEn ? "Recent Activity" : "最近活动"}
         </CardTitle>
       </CardHeader>
       <CardContent>
         {loading ? (
           <div className="py-8 text-sm text-muted-foreground">
-            Loading recent activity...
+            {isEn ? "Loading recent activity..." : "正在加载最近活动..."}
           </div>
         ) : items.length === 0 ? (
           <div className="py-8 text-sm text-muted-foreground">
-            No recent activity yet.
+            {isEn ? "No recent activity yet." : "暂无最近活动。"}
           </div>
         ) : (
           <div className="space-y-4">

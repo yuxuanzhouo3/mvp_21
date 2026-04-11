@@ -7,6 +7,7 @@ import {
   normalizeUserPreferences,
   type AccountProfile,
 } from "@/lib/account/profile";
+import { pickAvatarSrcFromRecord } from "@/lib/account/avatar";
 import { resolveUserRole } from "@/lib/auth/user-role";
 import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
 import { getSupabaseAdmin } from "@/lib/integrations/supabase-admin";
@@ -101,7 +102,10 @@ export async function loadChinaAccountProfile(
     id: user._id || user.id || userId,
     email: user.email || "",
     name: user.name || user.full_name || "",
-    avatar: user.avatar || user.avatar_url || "",
+    avatar:
+      pickAvatarSrcFromRecord(user as Record<string, unknown>) ||
+      (typeof user.avatar === "string" ? user.avatar : "") ||
+      (typeof user.avatar_url === "string" ? user.avatar_url : ""),
     phone: user.phone || "",
     role: resolveUserRole(user),
     subscription_plan: subscriptionSnapshot.plan,
@@ -178,7 +182,10 @@ export async function loadIntlAccountProfile(
     id: resolvedUser.id,
     email: resolvedUser.email || "",
     name: metadata.displayName || metadata.full_name || metadata.name || "",
-    avatar: metadata.avatar || metadata.avatar_url || "",
+    avatar:
+      pickAvatarSrcFromRecord(metadata as Record<string, unknown>) ||
+      (typeof metadata.avatar === "string" ? metadata.avatar : "") ||
+      (typeof metadata.avatar_url === "string" ? metadata.avatar_url : ""),
     phone: metadata.phone || "",
     role: resolveUserRole(resolvedUser),
     subscription_plan: subscriptionSnapshot.plan,

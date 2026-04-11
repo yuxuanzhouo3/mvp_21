@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -9,6 +9,7 @@ import {
   RefreshCcw,
   Save,
   ScanSearch,
+  Search,
   Trash2,
 } from "lucide-react";
 
@@ -34,9 +35,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+
+type CompanyStatus = "active" | "archived";
 
 interface CompanyProfile {
   id: string;
+  profileName: string;
   companyName: string;
   creditCode: string;
   legalPerson: string;
@@ -44,25 +49,184 @@ interface CompanyProfile {
   contactPerson: string;
   contactPhone: string;
   contactEmail: string;
+  status: CompanyStatus;
+  isDefault: boolean;
   updatedAt?: string;
 }
 
-const emptyCompany = (): CompanyProfile => ({
-  id: "",
-  companyName: "",
-  creditCode: "",
-  legalPerson: "",
-  address: "",
-  contactPerson: "",
-  contactPhone: "",
-  contactEmail: "",
-});
+const copy = {
+  zh: {
+    title: "企业资料管理",
+    subtitle:
+      "支持多主体公司切换、OCR 识别重试、默认主体管理和资料校验，确保合同创建使用正确企业信息。",
+    setup: "打开向导建档",
+    loadFailed: "加载企业资料失败。",
+    createNew: "新增公司主体",
+    searchPlaceholder: "搜索公司名称 / 信用代码 / 联系人",
+    noProfiles: "暂无企业资料，先创建一个主体。",
+    noMatched: "没有匹配的主体。",
+    active: "当前",
+    default: "默认",
+    archived: "已归档",
+    noCreditCode: "暂无统一社会信用代码",
+    sourceType: "识别来源",
+    uploadImage: "上传图片",
+    ocrRule: "压缩策略：长边不超过 1600px，JPEG 质量 0.88，提升 OCR 成功率与重试速度。",
+    runOcr: "开始识别",
+    retry: "失败重试",
+    ocrFailed: "OCR 识别失败，你可以重试或手动补全。",
+    ocrImageFailed: "处理上传图片失败。",
+    ocrSuccess: "OCR 识别成功，请核对后保存。",
+    profileCardTitle: "企业资料",
+    profileCardDesc: "编辑当前主体资料，保存后可在合同流程中作为默认主体使用。",
+    profileName: "主体名称",
+    profileNamePlaceholder: "例如：总部 / 华东分公司",
+    companyName: "公司名称",
+    creditCode: "统一社会信用代码",
+    legalPerson: "法定代表人",
+    contactPerson: "联系人",
+    contactPhone: "联系电话",
+    contactEmail: "联系邮箱",
+    address: "注册地址",
+    status: "状态",
+    statusActive: "启用中",
+    statusArchived: "归档",
+    setDefault: "设为默认主体",
+    requiredHint: "公司名称、统一社会信用代码、法定代表人、注册地址为必填。",
+    updatedAt: "最近更新",
+    requiredFields: "请先填写必填字段。",
+    invalidEmail: "联系邮箱格式不正确。",
+    invalidPhone: "联系电话格式不正确。",
+    duplicateCreditCode: "该信用代码已存在于其他主体。",
+    profileLimit: "企业主体数量已达上限。",
+    saveFailed: "保存企业资料失败。",
+    saveSuccess: "企业资料已保存。",
+    delete: "删除",
+    deleting: "删除中...",
+    deleteFailed: "删除企业资料失败。",
+    deleteSuccess: "企业资料已删除。",
+    save: "保存企业资料",
+    saving: "保存中...",
+  },
+  en: {
+    title: "Company Profiles",
+    subtitle:
+      "Manage multiple entities with OCR retries, default-profile controls, and stronger validation for contract readiness.",
+    setup: "Open Guided Setup",
+    loadFailed: "Failed to load company profiles.",
+    createNew: "Create New Company",
+    searchPlaceholder: "Search by company, credit code, or contact",
+    noProfiles: "No company profiles yet. Create your first one.",
+    noMatched: "No matched profiles.",
+    active: "Active",
+    default: "Default",
+    archived: "Archived",
+    noCreditCode: "No credit code",
+    sourceType: "Source Type",
+    uploadImage: "Upload Image",
+    ocrRule:
+      "Compression strategy: long edge <= 1600px, JPEG quality 0.88 for better OCR success and faster retries.",
+    runOcr: "Run OCR",
+    retry: "Retry",
+    ocrFailed: "OCR failed. You can retry or complete fields manually.",
+    ocrImageFailed: "Failed to process the uploaded image.",
+    ocrSuccess: "OCR parsed successfully. Please verify and save.",
+    profileCardTitle: "Company Profile",
+    profileCardDesc: "Edit the selected entity and keep it ready for contract generation.",
+    profileName: "Profile Name",
+    profileNamePlaceholder: "e.g. HQ / East Branch",
+    companyName: "Company Name",
+    creditCode: "Credit Code",
+    legalPerson: "Legal Representative",
+    contactPerson: "Contact Person",
+    contactPhone: "Contact Phone",
+    contactEmail: "Contact Email",
+    address: "Address",
+    status: "Status",
+    statusActive: "Active",
+    statusArchived: "Archived",
+    setDefault: "Set as default profile",
+    requiredHint:
+      "Company name, credit code, legal representative, and address are required.",
+    updatedAt: "Last Updated",
+    requiredFields: "Please complete the required fields.",
+    invalidEmail: "Invalid contact email format.",
+    invalidPhone: "Invalid contact phone format.",
+    duplicateCreditCode: "Another profile already uses this credit code.",
+    profileLimit: "Profile count reached the limit.",
+    saveFailed: "Failed to save company profile.",
+    saveSuccess: "Company profile saved.",
+    delete: "Delete",
+    deleting: "Deleting...",
+    deleteFailed: "Failed to delete company profile.",
+    deleteSuccess: "Company profile deleted.",
+    save: "Save Company",
+    saving: "Saving...",
+  },
+} as const;
 
 const sourceOptions = [
   { value: "license", zh: "营业执照", en: "Business License" },
   { value: "wechat", zh: "微信截图", en: "WeChat Screenshot" },
   { value: "feishu", zh: "飞书截图", en: "Feishu Screenshot" },
 ] as const;
+
+function emptyCompany(isDefault = false): CompanyProfile {
+  return {
+    id: "",
+    profileName: "",
+    companyName: "",
+    creditCode: "",
+    legalPerson: "",
+    address: "",
+    contactPerson: "",
+    contactPhone: "",
+    contactEmail: "",
+    status: "active",
+    isDefault,
+  };
+}
+
+function normalizeProfile(raw: Record<string, unknown>): CompanyProfile {
+  const status = raw.status === "archived" ? "archived" : "active";
+  return {
+    id: String(raw.id || raw._id || ""),
+    profileName: String(raw.profileName || raw.profile_name || ""),
+    companyName: String(raw.companyName || raw.company_name || ""),
+    creditCode: String(raw.creditCode || raw.credit_code || "").toUpperCase(),
+    legalPerson: String(raw.legalPerson || raw.legal_person || ""),
+    address: String(raw.address || ""),
+    contactPerson: String(raw.contactPerson || raw.contact_person || ""),
+    contactPhone: String(raw.contactPhone || raw.contact_phone || ""),
+    contactEmail: String(raw.contactEmail || raw.contact_email || ""),
+    status,
+    isDefault:
+      typeof raw.isDefault === "boolean"
+        ? raw.isDefault
+        : typeof raw.is_default === "boolean"
+          ? raw.is_default
+          : false,
+    updatedAt:
+      typeof raw.updatedAt === "string"
+        ? raw.updatedAt
+        : typeof raw.updated_at === "string"
+          ? raw.updated_at
+          : undefined,
+  };
+}
+
+function normalizeProfileList(value: unknown): CompanyProfile[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(
+      (item): item is Record<string, unknown> =>
+        Boolean(item) && typeof item === "object",
+    )
+    .map((item) => normalizeProfile(item));
+}
 
 async function readAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -99,21 +263,57 @@ async function compressImage(file: File) {
   });
 }
 
+function formatDate(value: string | undefined, language: "zh" | "en") {
+  if (!value) {
+    return language === "en" ? "N/A" : "暂无";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(language === "en" ? "en-US" : "zh-CN", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function persistableDraft(draft: CompanyProfile): CompanyProfile {
+  return {
+    ...draft,
+    profileName: draft.profileName.trim(),
+    companyName: draft.companyName.trim(),
+    creditCode: draft.creditCode.trim().toUpperCase(),
+    legalPerson: draft.legalPerson.trim(),
+    address: draft.address.trim(),
+    contactPerson: draft.contactPerson.trim(),
+    contactPhone: draft.contactPhone.trim(),
+    contactEmail: draft.contactEmail.trim().toLowerCase(),
+  };
+}
+
 export default function CompaniesPage() {
   const router = useRouter();
   const { language } = useLanguage();
   const { user, loading: userLoading } = useUser();
   const isEn = language === "en";
+  const text = isEn ? copy.en : copy.zh;
 
   const [profiles, setProfiles] = useState<CompanyProfile[]>([]);
   const [activeCompanyId, setActiveCompanyId] = useState("");
-  const [draft, setDraft] = useState<CompanyProfile>(emptyCompany());
+  const [draft, setDraft] = useState<CompanyProfile>(emptyCompany(true));
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrImage, setOcrImage] = useState("");
-  const [ocrSource, setOcrSource] = useState<(typeof sourceOptions)[number]["value"]>("license");
+  const [ocrSource, setOcrSource] =
+    useState<(typeof sourceOptions)[number]["value"]>("license");
   const [ocrAttempt, setOcrAttempt] = useState(0);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -123,6 +323,23 @@ export default function CompaniesPage() {
       router.replace("/auth?redirect=/companies");
     }
   }, [router, user, userLoading]);
+
+  const persistActiveCompany = async (companyId: string) => {
+    const { tokenManager } = await import("@/lib/auth/frontend-token-manager");
+    const headers = await tokenManager.getAuthHeaderAsync();
+    if (!headers) {
+      return;
+    }
+
+    await fetch("/api/profile", {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ activeCompanyProfileId: companyId || "" }),
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -158,27 +375,35 @@ export default function CompaniesPage() {
           throw new Error("load_failed");
         }
 
-        const nextProfiles = Array.isArray(companyPayload.profiles)
-          ? companyPayload.profiles
-          : [];
-        const nextActiveId =
+        const nextProfiles = normalizeProfileList(companyPayload.profiles);
+        const activeIdFromProfile =
           typeof profilePayload.activeCompanyProfileId === "string"
             ? profilePayload.activeCompanyProfileId
-            : nextProfiles[0]?.id || "";
+            : "";
+        const defaultIdFromApi =
+          typeof companyPayload.defaultCompanyProfileId === "string"
+            ? companyPayload.defaultCompanyProfileId
+            : "";
+        const fallbackId =
+          nextProfiles.find((profile) => profile.isDefault)?.id ||
+          nextProfiles[0]?.id ||
+          "";
+        const nextActiveId = activeIdFromProfile || defaultIdFromApi || fallbackId;
         const selected =
-          nextProfiles.find((profile: CompanyProfile) => profile.id === nextActiveId) ||
+          nextProfiles.find((profile) => profile.id === nextActiveId) ||
+          nextProfiles.find((profile) => profile.isDefault) ||
           nextProfiles[0] ||
-          emptyCompany();
+          emptyCompany(true);
 
         if (!cancelled) {
           setProfiles(nextProfiles);
-          setActiveCompanyId(nextActiveId);
+          setActiveCompanyId(selected.id || "");
           setDraft(selected);
         }
       } catch (loadError) {
         console.error("[CompaniesPage] Failed to load data:", loadError);
         if (!cancelled) {
-          setError(isEn ? "Failed to load company profiles." : "加载企业资料失败。");
+          setError(text.loadFailed);
         }
       } finally {
         if (!cancelled) {
@@ -192,14 +417,41 @@ export default function CompaniesPage() {
     return () => {
       cancelled = true;
     };
-  }, [isEn, router, user]);
+  }, [router, text.loadFailed, user]);
 
   const selectedSourceLabel = useMemo(() => {
     const source = sourceOptions.find((item) => item.value === ocrSource);
     return isEn ? source?.en : source?.zh;
   }, [isEn, ocrSource]);
 
-  const updateDraft = <K extends keyof CompanyProfile>(key: K, value: CompanyProfile[K]) => {
+  const filteredProfiles = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    const sorted = [...profiles].sort((left, right) => {
+      if (left.isDefault !== right.isDefault) {
+        return left.isDefault ? -1 : 1;
+      }
+
+      const leftTime = new Date(left.updatedAt || 0).getTime();
+      const rightTime = new Date(right.updatedAt || 0).getTime();
+      return rightTime - leftTime;
+    });
+
+    if (!keyword) {
+      return sorted;
+    }
+
+    return sorted.filter((profile) =>
+      [profile.profileName, profile.companyName, profile.creditCode, profile.contactPerson]
+        .join(" ")
+        .toLowerCase()
+        .includes(keyword),
+    );
+  }, [profiles, search]);
+
+  const updateDraft = <K extends keyof CompanyProfile>(
+    key: K,
+    value: CompanyProfile[K],
+  ) => {
     setDraft((current) => ({ ...current, [key]: value }));
   };
 
@@ -210,27 +462,14 @@ export default function CompaniesPage() {
     setError("");
 
     try {
-      const { tokenManager } = await import("@/lib/auth/frontend-token-manager");
-      const headers = await tokenManager.getAuthHeaderAsync();
-      if (!headers) {
-        return;
-      }
-
-      await fetch("/api/profile", {
-        method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ activeCompanyProfileId: profile.id }),
-      });
+      await persistActiveCompany(profile.id);
     } catch (persistError) {
       console.error("[CompaniesPage] Failed to persist active company:", persistError);
     }
   };
 
   const handleCreateNew = () => {
-    setDraft(emptyCompany());
+    setDraft(emptyCompany(profiles.length === 0));
     setActiveCompanyId("");
     setMessage("");
     setError("");
@@ -247,12 +486,11 @@ export default function CompaniesPage() {
       setOcrImage(await compressImage(file));
     } catch (uploadError) {
       console.error("[CompaniesPage] Failed to process OCR image:", uploadError);
-      setError(isEn ? "Failed to process the uploaded image." : "处理上传图片失败。");
+      setError(text.ocrImageFailed);
     } finally {
       event.target.value = "";
     }
   };
-
   const handleOCR = async () => {
     if (!ocrImage) {
       return;
@@ -290,31 +528,47 @@ export default function CompaniesPage() {
       setDraft((current) => ({
         ...current,
         companyName: payload.data?.companyName || current.companyName,
-        creditCode: payload.data?.creditCode || current.creditCode,
+        creditCode: (payload.data?.creditCode || current.creditCode || "").toUpperCase(),
         legalPerson: payload.data?.legalPerson || current.legalPerson,
         address: payload.data?.address || current.address,
       }));
-      setMessage(
-        isEn
-          ? `${selectedSourceLabel} OCR parsed successfully.`
-          : `${selectedSourceLabel} 识别成功，可继续校对后保存。`,
-      );
+      setMessage(`${selectedSourceLabel || ""} ${text.ocrSuccess}`.trim());
     } catch (ocrError) {
       console.error("[CompaniesPage] OCR failed:", ocrError);
       setOcrAttempt((count) => count + 1);
-      setError(
-        isEn
-          ? "OCR failed. You can retry or complete the form manually."
-          : "OCR 识别失败，你可以重试或手动补全表单。",
-      );
+      setError(text.ocrFailed);
     } finally {
       setOcrLoading(false);
     }
   };
 
+  const validateDraft = (value: CompanyProfile): string | null => {
+    const prepared = persistableDraft(value);
+    if (
+      !prepared.companyName ||
+      !prepared.creditCode ||
+      !prepared.legalPerson ||
+      !prepared.address
+    ) {
+      return text.requiredFields;
+    }
+
+    if (prepared.contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(prepared.contactEmail)) {
+      return text.invalidEmail;
+    }
+
+    if (prepared.contactPhone && !/^[0-9+\-()\s]{6,24}$/.test(prepared.contactPhone)) {
+      return text.invalidPhone;
+    }
+
+    return null;
+  };
+
   const handleSave = async () => {
-    if (!draft.companyName || !draft.creditCode || !draft.legalPerson || !draft.address) {
-      setError(isEn ? "Please complete the required fields." : "请补全必填字段。");
+    const prepared = persistableDraft(draft);
+    const validationError = validateDraft(prepared);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -336,35 +590,43 @@ export default function CompaniesPage() {
           ...headers,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(draft),
+        body: JSON.stringify(prepared),
       });
 
       const payload = await response.json();
       if (!response.ok || !payload.success) {
-        throw new Error(payload.error || "save_failed");
+        if (payload?.code === "DUPLICATE_CREDIT_CODE") {
+          throw new Error(text.duplicateCreditCode);
+        }
+        if (payload?.code === "COMPANY_PROFILE_LIMIT_REACHED") {
+          throw new Error(text.profileLimit);
+        }
+        throw new Error(payload.error || text.saveFailed);
       }
 
-      const nextProfiles = Array.isArray(payload.profiles) ? payload.profiles : [];
+      const nextProfiles = normalizeProfileList(payload.profiles);
+      const preferredId =
+        (payload.data && typeof payload.data.id === "string" ? payload.data.id : "") ||
+        (typeof payload.defaultCompanyProfileId === "string"
+          ? payload.defaultCompanyProfileId
+          : "") ||
+        nextProfiles.find((profile) => profile.isDefault)?.id ||
+        nextProfiles[0]?.id ||
+        "";
       const nextSelected =
-        nextProfiles.find((profile: CompanyProfile) => profile.id === payload.data?.id) ||
-        payload.data;
+        nextProfiles.find((profile) => profile.id === preferredId) ||
+        nextProfiles[0] ||
+        emptyCompany(true);
 
       setProfiles(nextProfiles);
       setDraft(nextSelected);
       setActiveCompanyId(nextSelected.id);
-      setMessage(isEn ? "Company profile saved." : "企业资料已保存。");
+      setMessage(text.saveSuccess);
 
-      await fetch("/api/profile", {
-        method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ activeCompanyProfileId: nextSelected.id }),
-      });
+      await persistActiveCompany(nextSelected.id || "");
     } catch (saveError) {
       console.error("[CompaniesPage] Save failed:", saveError);
-      setError(isEn ? "Failed to save company profile." : "保存企业资料失败。");
+      setError(saveError instanceof Error ? saveError.message : text.saveFailed);
     } finally {
       setSaving(false);
     }
@@ -383,7 +645,6 @@ export default function CompaniesPage() {
 
       const { tokenManager } = await import("@/lib/auth/frontend-token-manager");
       const headers = await tokenManager.getAuthHeaderAsync();
-
       if (!headers) {
         throw new Error("auth_required");
       }
@@ -393,19 +654,32 @@ export default function CompaniesPage() {
         headers,
       });
       const payload = await response.json();
-
       if (!response.ok || !payload.success) {
-        throw new Error(payload.error || "delete_failed");
+        throw new Error(payload.error || text.deleteFailed);
       }
 
-      const nextProfiles = Array.isArray(payload.profiles) ? payload.profiles : [];
+      const nextProfiles = normalizeProfileList(payload.profiles);
+      const nextActiveId =
+        (typeof payload.nextDefaultId === "string" ? payload.nextDefaultId : "") ||
+        nextProfiles.find((profile) => profile.isDefault)?.id ||
+        nextProfiles[0]?.id ||
+        "";
+      const nextDraft =
+        nextProfiles.find((profile) => profile.id === nextActiveId) ||
+        nextProfiles[0] ||
+        emptyCompany(nextProfiles.length === 0);
+
       setProfiles(nextProfiles);
-      setDraft(nextProfiles[0] || emptyCompany());
-      setActiveCompanyId(nextProfiles[0]?.id || "");
-      setMessage(isEn ? "Company profile deleted." : "企业资料已删除。");
+      setDraft(nextDraft);
+      setActiveCompanyId(nextDraft.id || "");
+      setMessage(text.deleteSuccess);
+
+      await persistActiveCompany(nextActiveId);
     } catch (deleteError) {
       console.error("[CompaniesPage] Delete failed:", deleteError);
-      setError(isEn ? "Failed to delete company profile." : "删除企业资料失败。");
+      setError(
+        deleteError instanceof Error ? deleteError.message : text.deleteFailed,
+      );
     } finally {
       setDeleting(false);
     }
@@ -432,18 +706,12 @@ export default function CompaniesPage() {
       <main className="mx-auto w-full max-w-7xl px-4 py-8 md:px-6 lg:px-8">
         <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight">
-              {isEn ? "Company Profiles" : "企业资料管理"}
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {isEn
-                ? "Switch between multiple entities, retry OCR, and keep business credentials ready for contract creation."
-                : "支持多主体公司切换、OCR 失败重试、上传压缩与截图识别，方便快速进入合同流程。"}
-            </p>
+            <h1 className="text-3xl font-semibold tracking-tight">{text.title}</h1>
+            <p className="mt-2 text-sm text-muted-foreground">{text.subtitle}</p>
           </div>
           <Button variant="outline" onClick={() => router.push("/contracts/company-setup")}>
             <Building2 className="mr-2 h-4 w-4" />
-            {isEn ? "Open Guided Setup" : "打开向导建档"}
+            {text.setup}
           </Button>
         </div>
 
@@ -459,20 +727,42 @@ export default function CompaniesPage() {
           </Alert>
         ) : null}
 
-        <div className="grid gap-6 xl:grid-cols-[320px_1fr]">
+        <div className="grid gap-6 xl:grid-cols-[340px_1fr]">
           <Card className="border-border/70 bg-card/95 shadow-sm">
             <CardHeader>
               <CardTitle>{isEn ? "Entity Switcher" : "主体切换"}</CardTitle>
               <CardDescription>
-                {isEn ? "Manage multiple companies under one account." : "同一账户下维护多个公司主体。"}
+                {isEn ? "Manage multiple legal entities in one account." : "同一账号下维护多个企业主体。"}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <Button className="w-full" variant="outline" onClick={handleCreateNew}>
-                {isEn ? "Create New Company" : "新增公司主体"}
+                {text.createNew}
               </Button>
 
-              {profiles.map((profile) => (
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="pl-9"
+                  placeholder={text.searchPlaceholder}
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </div>
+
+              {profiles.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border/70 p-4 text-sm text-muted-foreground">
+                  {text.noProfiles}
+                </div>
+              ) : null}
+
+              {profiles.length > 0 && filteredProfiles.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border/70 p-4 text-sm text-muted-foreground">
+                  {text.noMatched}
+                </div>
+              ) : null}
+
+              {filteredProfiles.map((profile) => (
                 <button
                   key={profile.id}
                   type="button"
@@ -484,14 +774,23 @@ export default function CompaniesPage() {
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium">{profile.companyName || (isEn ? "Untitled Company" : "未命名公司")}</div>
-                    {activeCompanyId === profile.id ? (
-                      <Badge>{isEn ? "Active" : "当前"}</Badge>
-                    ) : null}
+                    <div className="font-medium">
+                      {profile.companyName || (isEn ? "Untitled Company" : "未命名公司")}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {profile.isDefault ? <Badge variant="secondary">{text.default}</Badge> : null}
+                      {activeCompanyId === profile.id ? <Badge>{text.active}</Badge> : null}
+                    </div>
                   </div>
+                  {profile.profileName ? (
+                    <div className="mt-2 text-xs text-muted-foreground">{profile.profileName}</div>
+                  ) : null}
                   <div className="mt-2 text-xs text-muted-foreground">
-                    {profile.creditCode || (isEn ? "No credit code" : "暂无统一社会信用代码")}
+                    {profile.creditCode || text.noCreditCode}
                   </div>
+                  {profile.status === "archived" ? (
+                    <div className="mt-2 text-xs text-amber-600">{text.archived}</div>
+                  ) : null}
                 </button>
               ))}
             </CardContent>
@@ -501,17 +800,18 @@ export default function CompaniesPage() {
             <Card className="border-border/70 bg-card/95 shadow-sm">
               <CardHeader>
                 <CardTitle>{isEn ? "OCR Intake" : "OCR 识别入口"}</CardTitle>
-                <CardDescription>
-                  {isEn
-                    ? "Supports business licenses plus text-rich WeChat / Feishu screenshots. Images are compressed before upload."
-                    : "支持营业执照、微信截图、飞书截图文字提取，上传前会自动压缩图片。"}
-                </CardDescription>
+                <CardDescription>{text.ocrRule}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-[220px_1fr]">
                   <div className="space-y-2">
-                    <Label>{isEn ? "Source Type" : "识别来源"}</Label>
-                    <Select value={ocrSource} onValueChange={(value) => setOcrSource(value as typeof ocrSource)}>
+                    <Label>{text.sourceType}</Label>
+                    <Select
+                      value={ocrSource}
+                      onValueChange={(value) =>
+                        setOcrSource(value as (typeof sourceOptions)[number]["value"])
+                      }
+                    >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -524,19 +824,16 @@ export default function CompaniesPage() {
                       </SelectContent>
                     </Select>
                   </div>
+
                   <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 p-4">
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div className="text-sm text-muted-foreground">
-                        {isEn
-                          ? "Compression strategy: long edge <= 1600px, JPEG quality 0.88 for faster OCR retries."
-                          : "压缩策略：长边不超过 1600px，JPEG 质量 0.88，便于 OCR 重试更快返回。"}
-                      </div>
+                      <div className="text-sm text-muted-foreground">{text.ocrRule}</div>
                       <Label
                         htmlFor="company-ocr-upload"
                         className="inline-flex cursor-pointer items-center rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm"
                       >
                         <ImagePlus className="mr-2 h-4 w-4" />
-                        {isEn ? "Upload Image" : "上传图片"}
+                        {text.uploadImage}
                       </Label>
                     </div>
                     <input
@@ -556,7 +853,7 @@ export default function CompaniesPage() {
                     ) : (
                       <ScanSearch className="mr-2 h-4 w-4" />
                     )}
-                    {isEn ? "Run OCR" : "开始识别"}
+                    {text.runOcr}
                   </Button>
                   <Button
                     variant="outline"
@@ -564,7 +861,7 @@ export default function CompaniesPage() {
                     disabled={!ocrImage || ocrLoading}
                   >
                     <RefreshCcw className="mr-2 h-4 w-4" />
-                    {isEn ? `Retry${ocrAttempt ? ` (${ocrAttempt})` : ""}` : `失败重试${ocrAttempt ? ` (${ocrAttempt})` : ""}`}
+                    {`${text.retry}${ocrAttempt ? ` (${ocrAttempt})` : ""}`}
                   </Button>
                 </div>
               </CardContent>
@@ -572,53 +869,147 @@ export default function CompaniesPage() {
 
             <Card className="border-border/70 bg-card/95 shadow-sm">
               <CardHeader>
-                <CardTitle>{isEn ? "Company Profile" : "企业资料"}</CardTitle>
-                <CardDescription>
-                  {isEn ? "Edit the selected entity and save it as your active contract主体." : "编辑当前主体资料，并将其作为默认合同主体使用。"}
-                </CardDescription>
+                <CardTitle>{text.profileCardTitle}</CardTitle>
+                <CardDescription>{text.profileCardDesc}</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-5">
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>{isEn ? "Company Name" : "公司名称"}</Label>
-                    <Input value={draft.companyName} onChange={(event) => updateDraft("companyName", event.target.value)} />
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="profile-name">{text.profileName}</Label>
+                    <Input
+                      id="profile-name"
+                      placeholder={text.profileNamePlaceholder}
+                      value={draft.profileName}
+                      onChange={(event) => updateDraft("profileName", event.target.value)}
+                    />
                   </div>
+
                   <div className="space-y-2">
-                    <Label>{isEn ? "Credit Code" : "统一社会信用代码"}</Label>
-                    <Input value={draft.creditCode} onChange={(event) => updateDraft("creditCode", event.target.value)} />
+                    <Label htmlFor="company-name">{text.companyName}</Label>
+                    <Input
+                      id="company-name"
+                      value={draft.companyName}
+                      onChange={(event) => updateDraft("companyName", event.target.value)}
+                    />
                   </div>
+
                   <div className="space-y-2">
-                    <Label>{isEn ? "Legal Representative" : "法定代表人"}</Label>
-                    <Input value={draft.legalPerson} onChange={(event) => updateDraft("legalPerson", event.target.value)} />
+                    <Label htmlFor="credit-code">{text.creditCode}</Label>
+                    <Input
+                      id="credit-code"
+                      value={draft.creditCode}
+                      onChange={(event) =>
+                        updateDraft("creditCode", event.target.value.toUpperCase())
+                      }
+                    />
                   </div>
+
                   <div className="space-y-2">
-                    <Label>{isEn ? "Contact Person" : "联系人"}</Label>
-                    <Input value={draft.contactPerson} onChange={(event) => updateDraft("contactPerson", event.target.value)} />
+                    <Label htmlFor="legal-person">{text.legalPerson}</Label>
+                    <Input
+                      id="legal-person"
+                      value={draft.legalPerson}
+                      onChange={(event) => updateDraft("legalPerson", event.target.value)}
+                    />
                   </div>
+
                   <div className="space-y-2">
-                    <Label>{isEn ? "Contact Phone" : "联系电话"}</Label>
-                    <Input value={draft.contactPhone} onChange={(event) => updateDraft("contactPhone", event.target.value)} />
+                    <Label htmlFor="contact-person">{text.contactPerson}</Label>
+                    <Input
+                      id="contact-person"
+                      value={draft.contactPerson}
+                      onChange={(event) => updateDraft("contactPerson", event.target.value)}
+                    />
                   </div>
+
                   <div className="space-y-2">
-                    <Label>{isEn ? "Contact Email" : "联系邮箱"}</Label>
-                    <Input value={draft.contactEmail} onChange={(event) => updateDraft("contactEmail", event.target.value)} />
+                    <Label htmlFor="contact-phone">{text.contactPhone}</Label>
+                    <Input
+                      id="contact-phone"
+                      value={draft.contactPhone}
+                      onChange={(event) => updateDraft("contactPhone", event.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="contact-email">{text.contactEmail}</Label>
+                    <Input
+                      id="contact-email"
+                      type="email"
+                      value={draft.contactEmail}
+                      onChange={(event) =>
+                        updateDraft("contactEmail", event.target.value.toLowerCase())
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="address">{text.address}</Label>
+                    <Input
+                      id="address"
+                      value={draft.address}
+                      onChange={(event) => updateDraft("address", event.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>{text.status}</Label>
+                    <Select
+                      value={draft.status}
+                      onValueChange={(value) => updateDraft("status", value as CompanyStatus)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">{text.statusActive}</SelectItem>
+                        <SelectItem value="archived">{text.statusArchived}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="is-default">{text.setDefault}</Label>
+                    <div className="flex h-10 items-center rounded-md border border-input px-3">
+                      <Switch
+                        id="is-default"
+                        checked={draft.isDefault}
+                        onCheckedChange={(checked) => updateDraft("isDefault", checked)}
+                      />
+                    </div>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>{isEn ? "Address" : "注册地址"}</Label>
-                  <Input value={draft.address} onChange={(event) => updateDraft("address", event.target.value)} />
+                <div className="rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
+                  {text.requiredHint}
                 </div>
 
-                <div className="flex flex-wrap justify-end gap-3">
-                  <Button variant="outline" onClick={handleDelete} disabled={deleting}>
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    {deleting ? (isEn ? "Deleting..." : "删除中...") : isEn ? "Delete" : "删除"}
-                  </Button>
-                  <Button onClick={handleSave} disabled={saving}>
-                    <Save className="mr-2 h-4 w-4" />
-                    {saving ? (isEn ? "Saving..." : "保存中...") : isEn ? "Save Company" : "保存企业资料"}
-                  </Button>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-xs text-muted-foreground">
+                    {text.updatedAt}: {formatDate(draft.updatedAt, isEn ? "en" : "zh")}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => void handleDelete()}
+                      disabled={deleting || saving || !draft.id}
+                    >
+                      {deleting ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="mr-2 h-4 w-4" />
+                      )}
+                      {deleting ? text.deleting : text.delete}
+                    </Button>
+                    <Button onClick={() => void handleSave()} disabled={saving || deleting}>
+                      {saving ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="mr-2 h-4 w-4" />
+                      )}
+                      {saving ? text.saving : text.save}
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>

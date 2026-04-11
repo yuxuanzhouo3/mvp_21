@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPayment } from "@/lib/payment/adapter";
 import { z } from "zod";
+import { createAuthErrorResponse, requireAuth } from "@/lib/auth/auth";
 
 // 验证支付请求验证schema
 const verifyPaymentSchema = z.object({
@@ -14,6 +15,11 @@ const verifyPaymentSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await requireAuth(request);
+    if (!authResult) {
+      return createAuthErrorResponse();
+    }
+
     const body = await request.json();
 
     // 验证输入

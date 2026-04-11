@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { extractTokenFromHeader, verifyAuthToken } from '@/lib/auth/auth-utils';
+import { extractTokenFromRequest, verifyAuthToken } from '@/lib/auth/auth-utils';
 
 export async function requireAuth(request: NextRequest): Promise<{
   user: any;
   session: any;
 } | null> {
   try {
-    const authHeader = request.headers.get('authorization');
-    const { token } = extractTokenFromHeader(authHeader);
+    const { token } = extractTokenFromRequest(request);
     if (!token) {
-      console.error('[auth] Missing or invalid authorization header');
+      console.error('[auth] Missing authentication token');
       return null;
     }
 

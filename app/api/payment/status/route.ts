@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
+import { createAuthErrorResponse, requireAuth } from "@/lib/auth/auth";
 import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
 import { isChinaRegion } from "@/lib/config/region";
 import {
@@ -21,6 +22,11 @@ const querySchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await requireAuth(request);
+    if (!authResult) {
+      return createAuthErrorResponse();
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const paymentId = searchParams.get("paymentId");
 
@@ -43,6 +49,7 @@ export async function GET(request: NextRequest) {
       const result = await db
         .collection("payments")
         .where({
+          user_id: authResult.user.id,
           $or: [
             { out_trade_no: paymentId },
             { _id: paymentId },
@@ -58,6 +65,7 @@ export async function GET(request: NextRequest) {
       const { data, error } = await supabaseAdmin
         .from("payments")
         .select("*")
+        .eq("user_id", authResult.user.id)
         .or(
           `out_trade_no.eq.${paymentId},transaction_id.eq.${paymentId},order_id.eq.${paymentId},id.eq.${paymentId}`,
         )

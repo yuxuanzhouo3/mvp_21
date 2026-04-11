@@ -49,7 +49,18 @@ function WechatQRCodeContent() {
       if (!paymentId) return;
 
       try {
-        const response = await fetch(`/api/payment/status?paymentId=${paymentId}`);
+        const { getAuthClient } = await import("@/lib/auth/client");
+        const sessionResult = await getAuthClient().getSession();
+        const session = sessionResult.data.session;
+
+        const statusHeaders: Record<string, string> = {};
+        if (session?.access_token) {
+          statusHeaders.Authorization = `Bearer ${session.access_token}`;
+        }
+
+        const response = await fetch(`/api/payment/status?paymentId=${paymentId}`, {
+          headers: statusHeaders,
+        });
         const result = await response.json();
 
         console.log("[QR Code Page] 支付状态查询结果:", result);

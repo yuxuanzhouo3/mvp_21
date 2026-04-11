@@ -23,6 +23,7 @@ import {
   type AccountProfile,
   type AccountTheme,
 } from "@/lib/account/profile";
+import { normalizeAvatarSrc } from "@/lib/account/avatar";
 import { MembershipStatusCard } from "@/components/account/membership-status-card";
 import { useLanguage } from "@/components/language-provider";
 import { useUser } from "@/components/user-context";
@@ -243,7 +244,7 @@ export function AccountControlCenter({
   const router = useRouter();
   const { setTheme } = useTheme();
   const { language } = useLanguage();
-  const { user, loading: userLoading, signOut } = useUser();
+  const { user, loading: userLoading, refreshUser, signOut } = useUser();
   const content = language === "en" ? text.en : text.zh;
 
   const [profile, setProfile] = useState<AccountProfile | null>(null);
@@ -323,6 +324,7 @@ export function AccountControlCenter({
     const source = profile?.name || profile?.email || user?.email || "U";
     return source.trim().charAt(0).toUpperCase() || "U";
   }, [profile?.email, profile?.name, user?.email]);
+  const avatarSrc = useMemo(() => normalizeAvatarSrc(profile?.avatar), [profile?.avatar]);
 
   const updateProfile = <K extends keyof AccountProfile>(
     key: K,
@@ -428,6 +430,7 @@ export function AccountControlCenter({
       const nextProfile = normalizeAccountProfile(await response.json());
       setProfile(nextProfile);
       setTheme(nextProfile.preferences.theme);
+      await refreshUser();
       setSuccess(content.saved);
     } catch (saveError) {
       console.error("[AccountControlCenter] Failed to save profile:", saveError);
@@ -577,7 +580,7 @@ export function AccountControlCenter({
               <CardContent className="space-y-5">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center">
                   <Avatar className="h-20 w-20">
-                    <AvatarImage src={profile.avatar} alt={profile.name || profile.email} />
+                    <AvatarImage src={avatarSrc} alt={profile.name || profile.email} />
                     <AvatarFallback className="text-lg">{profileInitial}</AvatarFallback>
                   </Avatar>
                   <div className="space-y-2">

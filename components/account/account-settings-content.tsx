@@ -17,6 +17,7 @@ import {
 
 import type { AccountProfile, AccountTheme } from "@/lib/account/profile";
 import { normalizeAccountProfile } from "@/lib/account/profile";
+import { normalizeAvatarSrc } from "@/lib/account/avatar";
 import { useLanguage } from "@/components/language-provider";
 import { useUser } from "@/components/user-context";
 import { useTranslations } from "@/lib/i18n";
@@ -56,7 +57,7 @@ export function AccountSettingsContent({
   const { language } = useLanguage();
   const t = useTranslations(language);
   const content = t.accountSettings;
-  const { user: currentUser, loading: userLoading, signOut } = useUser();
+  const { user: currentUser, loading: userLoading, refreshUser, signOut } = useUser();
   const { setTheme } = useTheme();
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -127,6 +128,7 @@ export function AccountSettingsContent({
     const source = profile?.name || profile?.email || currentUser?.email || "U";
     return source.trim().charAt(0).toUpperCase() || "U";
   }, [currentUser?.email, profile?.email, profile?.name]);
+  const avatarSrc = useMemo(() => normalizeAvatarSrc(profile?.avatar), [profile?.avatar]);
 
   const statusLabel =
     profile?.subscription_status === "active" ? content.active : content.inactive;
@@ -193,6 +195,7 @@ export function AccountSettingsContent({
       const nextProfile = normalizeAccountProfile(await response.json());
       setProfile(nextProfile);
       setTheme(nextProfile.preferences.theme);
+      await refreshUser();
       setSuccess(content.saved);
     } catch (saveError) {
       console.error("[AccountSettings] Failed to save settings:", saveError);
@@ -343,7 +346,7 @@ export function AccountSettingsContent({
           <CardContent className="space-y-5">
             <div className="flex items-center gap-4">
               <Avatar className="h-14 w-14">
-                <AvatarImage src={profile.avatar} alt={profile.name || profile.email} />
+                <AvatarImage src={avatarSrc} alt={profile.name || profile.email} />
                 <AvatarFallback>{profileInitial}</AvatarFallback>
               </Avatar>
               <div className="min-w-0">

@@ -18,6 +18,37 @@ const refreshSchema = z.object({
   refreshToken: z.string().min(1, "Refresh token is required"),
 });
 
+function attachAuthCookies(
+  response: NextResponse,
+  accessToken: string,
+  maxAgeSeconds: number,
+) {
+  const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    maxAge: maxAgeSeconds,
+    path: "/",
+  };
+
+  response.cookies.set("auth-token", accessToken, cookieOptions);
+  response.cookies.set("auth_token", accessToken, cookieOptions);
+}
+
+function clearAuthTokenCookies(response: NextResponse) {
+  const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    maxAge: 0,
+    path: "/",
+  };
+
+  response.cookies.set("auth-token", "", cookieOptions);
+  response.cookies.set("auth_token", "", cookieOptions);
+  response.cookies.set("access_token", "", cookieOptions);
+}
+
 function createIntlAuthClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
@@ -207,10 +238,14 @@ export async function POST(request: NextRequest) {
         region: isChinaRegion() ? "CN" : "INTL",
       });
 
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: result.error },
         { status: result.status },
       );
+      if (result.status === 401) {
+        clearAuthTokenCookies(response);
+      }
+      return response;
     }
 
     logSecurityEvent("token_refresh_success", result.user?.id, clientIP, {
@@ -218,7 +253,15 @@ export async function POST(request: NextRequest) {
     });
 
     const { success, status, ...responseData } = result;
-    return NextResponse.json(responseData, { status });
+    const response = NextResponse.json(responseData, { status });
+    if (result.accessToken) {
+      attachAuthCookies(
+        response,
+        result.accessToken,
+        result.tokenMeta?.accessTokenExpiresIn || 3600,
+      );
+    }
+    return response;
   } catch (error: any) {
     console.error("[/api/auth/refresh] Error:", error);
     logSecurityEvent(

@@ -268,7 +268,7 @@ async function extendMembership(
           user_metadata: {
             ...(authUser.user_metadata || {}),
             pro: true,
-            subscription_plan: "premium",
+            subscription_plan: "pro",
             subscription_status: "active",
             membership_expires_at: newExpiresAt.toISOString(),
             updated_at: new Date().toISOString(),

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { normalizeAccountProfile, type AccountProfile } from "@/lib/account/profile";
+import { normalizeAvatarSrc } from "@/lib/account/avatar";
 import { Header } from "@/components/header";
 import { useLanguage } from "@/components/language-provider";
 import { useUser } from "@/components/user-context";
@@ -138,6 +139,7 @@ export default function ProfilePage() {
     const source = profile?.name || profile?.email || currentUser?.email || "U";
     return source.trim().charAt(0).toUpperCase() || "U";
   }, [currentUser?.email, profile?.email, profile?.name]);
+  const avatarSrc = useMemo(() => normalizeAvatarSrc(profile?.avatar), [profile?.avatar]);
 
   const handleChange = (
     field: keyof Pick<AccountProfile, "name" | "avatar" | "phone">,
@@ -276,7 +278,7 @@ export default function ProfilePage() {
             <CardContent className="space-y-5">
               <div className="flex items-center gap-4">
                 <Avatar className="h-20 w-20">
-                  <AvatarImage src={profile.avatar} alt={profile.name || profile.email} />
+                  <AvatarImage src={avatarSrc} alt={profile.name || profile.email} />
                   <AvatarFallback className="text-lg">{profileInitial}</AvatarFallback>
                 </Avatar>
                 <div className="min-w-0">

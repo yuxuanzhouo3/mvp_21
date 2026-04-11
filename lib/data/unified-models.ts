@@ -103,6 +103,10 @@ export function normalizeSubscriptionPlan(value?: unknown): SubscriptionPlan {
   if (value === "pro" || value === "enterprise") {
     return value;
   }
+
+  if (value === "premium") {
+    return "pro";
+  }
   return "free";
 }
 

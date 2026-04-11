@@ -16,7 +16,7 @@ import type { DashboardBillingSummary } from "@/lib/dashboard/types";
 
 export default function BillingPage() {
   const { language } = useLanguage();
-  const { user } = useUser();
+  const { user, refreshUser } = useUser();
   const [summary, setSummary] = useState<DashboardBillingSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -50,6 +50,14 @@ export default function BillingPage() {
     noPaymentHistory: isEn ? "No payment history available" : "暂无支付记录",
     loadFailed: isEn ? "Failed to load billing summary." : "加载账单概览失败。",
   };
+
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    void refreshUser();
+  }, [refreshUser, user?.id]);
 
   useEffect(() => {
     let cancelled = false;

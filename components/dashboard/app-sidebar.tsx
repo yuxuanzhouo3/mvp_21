@@ -41,7 +41,9 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import { normalizeAvatarSrc } from "@/lib/account/avatar";
 import { getAppDisplayName } from "@/lib/config/deployment.config";
+import { useTranslations } from "@/lib/i18n";
 
 const consoleItems = [
   { key: "overview", url: "/dashboard", icon: LayoutDashboard },
@@ -58,28 +60,30 @@ export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { language } = useLanguage();
+  const t = useTranslations(language);
   const { user, signOut } = useUser();
   const isEn = language === "en";
   const appName = getAppDisplayName();
+  const modules = t.platform?.consoleModules;
 
   const labels = {
-    overview: isEn ? "Overview" : "总览",
-    contracts: isEn ? "Contracts" : "合同",
-    templates: isEn ? "Templates" : "模板",
-    signatures: isEn ? "Signatures" : "签署流程",
-    documents: isEn ? "Documents" : "文档库",
-    team: isEn ? "Team" : "团队",
-    billing: isEn ? "Billing" : "账单",
-    settings: isEn ? "Settings" : "设置",
-    mainMenu: isEn ? "Main Menu" : "主菜单",
-    quickLinks: isEn ? "Quick Links" : "快捷入口",
-    plans: isEn ? "Plans" : "套餐",
-    support: isEn ? "Support" : "支持",
-    workspace: isEn ? "Workspace" : "工作台",
-    newContract: isEn ? "New Contract" : "新建合同",
-    user: isEn ? "User" : "用户",
-    myAccount: isEn ? "My Account" : "我的账户",
-    logout: isEn ? "Log out" : "退出登录",
+    overview: modules?.overview || (isEn ? "Overview" : "总览"),
+    contracts: modules?.contracts || (isEn ? "Contracts" : "合同"),
+    templates: modules?.templates || (isEn ? "Templates" : "模板"),
+    signatures: modules?.signatures || (isEn ? "Signatures" : "签署"),
+    documents: modules?.documents || (isEn ? "Documents" : "文档"),
+    team: modules?.team || (isEn ? "Team" : "团队"),
+    billing: modules?.billing || (isEn ? "Billing" : "账单"),
+    settings: modules?.settings || (isEn ? "Settings" : "设置"),
+    mainMenu: modules?.mainMenu || (isEn ? "Main Menu" : "主菜单"),
+    quickLinks: modules?.quickLinks || (isEn ? "Quick Links" : "快捷入口"),
+    plans: modules?.plans || (isEn ? "Plans" : "套餐"),
+    support: modules?.support || (isEn ? "Support" : "支持"),
+    workspace: modules?.workspace || (isEn ? "Workspace" : "工作区"),
+    newContract: modules?.newContract || (isEn ? "New Contract" : "新建合同"),
+    user: modules?.user || (isEn ? "User" : "用户"),
+    myAccount: modules?.myAccount || (isEn ? "My Account" : "我的账户"),
+    logout: modules?.logout || (isEn ? "Log out" : "退出登录"),
   } as const;
 
   const handleLogout = async () => {
@@ -90,13 +94,18 @@ export function AppSidebar() {
     }
   };
 
-  const displayName = user?.name?.trim() || user?.email?.split("@")[0] || labels.user;
+  const displayName =
+    user?.name?.trim() || user?.email?.split("@")[0] || labels.user;
   const userInitial = displayName.trim().charAt(0).toUpperCase() || "U";
+  const normalizedPlan = (user?.subscription_plan || "").toLowerCase();
+  const avatarSrc = normalizeAvatarSrc(user?.avatar);
   const planLabel =
-    user?.subscription_plan === "pro"
+    normalizedPlan === "pro" || normalizedPlan === "premium"
       ? "Pro"
-      : user?.subscription_plan === "enterprise"
-        ? "Enterprise"
+      : normalizedPlan === "enterprise"
+        ? isEn
+          ? "Enterprise"
+          : "企业版"
         : isEn
           ? "Free plan"
           : "免费版";
@@ -194,7 +203,7 @@ export function AppSidebar() {
               <DropdownMenuTrigger asChild>
                 <SidebarMenuButton size="lg" className="w-full">
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={user?.avatar} alt={displayName} />
+                    <AvatarImage src={avatarSrc} alt={displayName} />
                     <AvatarFallback>{userInitial}</AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex flex-col items-start text-left">

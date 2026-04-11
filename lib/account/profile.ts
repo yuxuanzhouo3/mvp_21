@@ -1,4 +1,5 @@
 import { getDefaultLanguage } from "@/lib/config/deployment.config";
+import { normalizeAvatarSrc } from "@/lib/account/avatar";
 
 export type AccountTheme = "light" | "dark" | "system";
 
@@ -208,11 +209,13 @@ export function normalizeUserPreferences(
 export function normalizeAccountProfile(
   value?: Partial<AccountProfile> | null,
 ): AccountProfile {
+  const avatar = normalizeAvatarSrc(value?.avatar);
+
   return {
     id: value?.id || "",
     email: value?.email || "",
     name: value?.name || "",
-    avatar: value?.avatar || "",
+    avatar: avatar || "",
     phone: value?.phone || "",
     role: value?.role || "user",
     subscription_plan: value?.subscription_plan || "free",

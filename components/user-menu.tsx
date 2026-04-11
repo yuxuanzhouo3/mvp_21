@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useTranslations } from "@/lib/i18n";
+import { normalizeAvatarSrc } from "@/lib/account/avatar";
 
 export function UserMenu() {
   const router = useRouter();
@@ -73,6 +74,7 @@ export function UserMenu() {
     () => displayName.trim().charAt(0).toUpperCase() || "U",
     [displayName],
   );
+  const avatarSrc = useMemo(() => normalizeAvatarSrc(user?.avatar), [user?.avatar]);
 
   const planLabel =
     user?.subscription_plan === "pro"
@@ -142,7 +144,7 @@ export function UserMenu() {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm" className="flex items-center gap-2">
           <Avatar className="h-8 w-8">
-            <AvatarImage src={user.avatar} alt={displayName} />
+            <AvatarImage src={avatarSrc} alt={displayName} />
             <AvatarFallback className="text-xs">{userInitial}</AvatarFallback>
           </Avatar>
           <span className="hidden max-w-28 truncate text-sm md:inline">
@@ -154,7 +156,7 @@ export function UserMenu() {
         <DropdownMenuLabel className="space-y-3 p-4">
           <div className="flex items-center gap-3">
             <Avatar className="h-11 w-11">
-              <AvatarImage src={user.avatar} alt={displayName} />
+              <AvatarImage src={avatarSrc} alt={displayName} />
               <AvatarFallback>{userInitial}</AvatarFallback>
             </Avatar>
             <div className="min-w-0">
