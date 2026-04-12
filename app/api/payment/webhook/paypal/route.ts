@@ -1,40 +1,48 @@
-// app/api/payment/webhook/paypal/route.ts - PayPal webhook处理
-import { NextRequest, NextResponse } from "next/server";
-import { WebhookHandler } from "../../../../../lib/payment/webhook-handler";
-import { getPayPalMode } from "@/lib/config/runtime-env";
+﻿import { NextRequest, NextResponse } from "next/server";
 
-// PayPal Webhook 必须在 Node.js Runtime 下运行
+import { getPayPalMode } from "@/lib/config/runtime-env";
+import { observeOperationalMetric } from "@/lib/monitoring/operational-observability";
+import { WebhookHandler } from "@/lib/payment/webhook-handler";
+import { logBusinessEvent, logError, logSecurityEvent } from "@/lib/utils/logger";
+
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  console.log("🌐🌐🌐 [PAYPAL WEBHOOK /api/payment/webhook/paypal] STARTED - Entry point");
+  const operationId = `paypal_webhook_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  const startedAt = Date.now();
+  const observe = (
+    outcome: "success" | "failure" | "rejected",
+    statusCode: number,
+    meta?: Record<string, unknown>,
+  ) => {
+    observeOperationalMetric({
+      chain: "payment_webhook",
+      scope: "paypal",
+      outcome,
+      statusCode,
+      operationId,
+      durationMs: Date.now() - startedAt,
+      metadata: meta,
+    });
+  };
 
   try {
     const body = await request.text();
-    console.log("🌐🌐🌐 [PAYPAL WEBHOOK] Body received, length:", body.length);
-
-    // 修复：使用正确的PayPal头名称
-    const signature = request.headers.get("paypal-transmission-sig"); // 注意：不是 signature
+    const signature = request.headers.get("paypal-transmission-sig");
     const certUrl = request.headers.get("paypal-cert-url");
     const transmissionId = request.headers.get("paypal-transmission-id");
     const timestamp = request.headers.get("paypal-transmission-time");
     const authAlgo = request.headers.get("paypal-auth-algo");
 
-    // 记录所有PayPal相关头用于调试
-    console.log("🔍 PayPal webhook headers received:", {
-      signature: signature ? signature.substring(0, 20) + "..." : "MISSING",
-      certUrl: certUrl ? certUrl.substring(0, 50) + "..." : "MISSING",
-      transmissionId,
-      timestamp,
-      authAlgo,
-      allPayPalHeaders: Object.fromEntries(
-        Array.from(request.headers.entries()).filter(([key]) =>
-          key.toLowerCase().includes("paypal")
-        )
-      ),
+    logBusinessEvent("webhook_received", operationId, {
+      provider: "paypal",
+      hasSignature: !!signature,
+      hasTransmissionId: !!transmissionId,
+      bodyLength: body.length,
+      userAgent: request.headers.get("user-agent"),
+      ip: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip"),
     });
 
-    // 验证PayPal webhook签名
     const skipSignatureVerification =
       process.env.PAYPAL_SKIP_SIGNATURE_VERIFICATION === "true";
     const isValidSignature = skipSignatureVerification
@@ -46,70 +54,102 @@ export async function POST(request: NextRequest) {
           transmissionId,
           timestamp,
           authAlgo,
+          operationId,
         });
 
     if (!isValidSignature) {
-      console.error("❌ PayPal webhook signature verification failed:", {
+      logSecurityEvent(
+        "webhook_signature_invalid",
+        operationId,
+        request.headers.get("x-forwarded-for") || "unknown",
+        {
+          provider: "paypal",
+          skipSignatureVerification,
+          hasSignature: !!signature,
+          hasCertUrl: !!certUrl,
+          hasTransmissionId: !!transmissionId,
+          hasTimestamp: !!timestamp,
+          hasAuthAlgo: !!authAlgo,
+          environment: getPayPalMode(),
+        },
+      );
+
+      observe("rejected", 401, {
+        reason: "invalid_signature",
         skipSignatureVerification,
         hasSignature: !!signature,
-        hasCertUrl: !!certUrl,
         hasTransmissionId: !!transmissionId,
-        hasTimestamp: !!timestamp,
-        hasAuthAlgo: !!authAlgo,
-        webhookId: process.env.PAYPAL_WEBHOOK_ID,
-        environment: getPayPalMode(),
-        webhookUrl: `${
-          process.env.APP_URL || "https://mvp-24-main.vercel.app"
-        }/api/payment/webhook/paypal`,
       });
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
-    // 解析webhook数据
     const webhookData = JSON.parse(body);
-    const eventType = webhookData.event_type;
+    const eventType =
+      typeof webhookData.event_type === "string" ? webhookData.event_type : "unknown";
 
-    console.log("Received PayPal webhook:", {
+    logBusinessEvent("webhook_parsed", operationId, {
+      provider: "paypal",
       eventType,
+      eventId: webhookData.id,
       transmissionId,
-      resourceId: webhookData.resource?.id,
+      dataSize: body.length,
     });
 
-    // 🔧 PayPal去重：使用 transmissionId 作为唯一标识，防止重复处理
-    // PayPal 可能会重复发送相同的事件，transmissionId 是唯一的
     if (transmissionId) {
       webhookData._paypal_transmission_id = transmissionId;
-      console.log("✅ Added PayPal transmissionId for deduplication:", {
-        transmissionId,
-      });
     }
 
-    // 处理webhook事件
     const webhookHandler = WebhookHandler.getInstance();
-    const success = await webhookHandler.processWebhook(
-      "paypal",
-      eventType,
-      webhookData
-    );
+    const success = await webhookHandler.processWebhook("paypal", eventType, webhookData);
 
     if (success) {
+      logBusinessEvent("webhook_processed_success", operationId, {
+        provider: "paypal",
+        eventType,
+        eventId: webhookData.id,
+        transmissionId,
+      });
+      observe("success", 200, {
+        eventType,
+        eventId: webhookData.id,
+        transmissionId,
+      });
       return NextResponse.json({ status: "success" });
-    } else {
-      console.error("Failed to process PayPal webhook");
-      return NextResponse.json({ error: "Processing failed" }, { status: 500 });
     }
+
+    logError("webhook_processing_failed", undefined, {
+      operationId,
+      provider: "paypal",
+      eventType,
+      eventId: webhookData.id,
+      transmissionId,
+    });
+    observe("failure", 500, {
+      reason: "handler_failed",
+      eventType,
+      eventId: webhookData.id,
+      transmissionId,
+    });
+    return NextResponse.json({ error: "Processing failed" }, { status: 500 });
   } catch (error) {
-    console.error("PayPal webhook error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
+    observe("failure", 500, {
+      reason: "exception",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    logError(
+      "webhook_processing_error",
+      error instanceof Error ? error : new Error(String(error)),
+      {
+        operationId,
+        provider: "paypal",
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      },
     );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-/**
- * 验证PayPal webhook签名
- */
 async function verifyPayPalSignature(args: {
   body: string;
   signature: string | null;
@@ -117,11 +157,11 @@ async function verifyPayPalSignature(args: {
   transmissionId: string | null;
   timestamp: string | null;
   authAlgo: string | null;
+  operationId: string;
 }): Promise<boolean> {
-  const { body, signature, certUrl, transmissionId, timestamp, authAlgo } =
-    args;
+  const { body, signature, certUrl, transmissionId, timestamp, authAlgo, operationId } = args;
+
   try {
-    // 在开发环境下可选择跳过（如需端到端联调，可设置 PAYPAL_VERIFY_WEBHOOK=false）
     if (
       process.env.NODE_ENV === "development" &&
       process.env.PAYPAL_VERIFY_WEBHOOK !== "true"
@@ -134,22 +174,23 @@ async function verifyPayPalSignature(args: {
     const webhookId = process.env.PAYPAL_WEBHOOK_ID;
 
     if (!clientId || !clientSecret || !webhookId) {
-      console.error("Missing PayPal credentials or webhook id");
+      logError("paypal_webhook_missing_credentials", undefined, {
+        operationId,
+        hasClientId: !!clientId,
+        hasClientSecret: !!clientSecret,
+        hasWebhookId: !!webhookId,
+      });
       return false;
     }
 
     if (!signature || !certUrl || !transmissionId || !timestamp || !authAlgo) {
-      console.error("❌ Missing PayPal signature headers:", {
+      logError("paypal_webhook_missing_signature_headers", undefined, {
+        operationId,
         hasSignature: !!signature,
         hasCertUrl: !!certUrl,
         hasTransmissionId: !!transmissionId,
         hasTimestamp: !!timestamp,
         hasAuthAlgo: !!authAlgo,
-        signature: signature?.substring(0, 50) + "...",
-        certUrl: certUrl?.substring(0, 50) + "...",
-        transmissionId,
-        timestamp,
-        authAlgo,
       });
       return false;
     }
@@ -160,7 +201,6 @@ async function verifyPayPalSignature(args: {
         ? "https://api-m.sandbox.paypal.com"
         : "https://api-m.paypal.com");
 
-    // 1) 获取访问令牌
     const tokenRes = await fetch(`${baseUrl}/v1/oauth2/token`, {
       method: "POST",
       headers: {
@@ -173,62 +213,64 @@ async function verifyPayPalSignature(args: {
     });
 
     if (!tokenRes.ok) {
-      console.error(
-        "Failed to obtain PayPal access token",
-        await tokenRes.text()
-      );
+      logError("paypal_webhook_token_request_failed", undefined, {
+        operationId,
+        statusCode: tokenRes.status,
+      });
       return false;
     }
+
     const { access_token } = (await tokenRes.json()) as {
       access_token: string;
     };
 
-    // 2) 调用验证接口
-    const verifyRes = await fetch(
-      `${baseUrl}/v1/notifications/verify-webhook-signature`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${access_token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          transmission_id: transmissionId,
-          transmission_time: timestamp,
-          cert_url: certUrl,
-          auth_algo: authAlgo,
-          transmission_sig: signature,
-          webhook_id: webhookId,
-          webhook_event: JSON.parse(body),
-        }),
-      }
-    );
+    const verifyRes = await fetch(`${baseUrl}/v1/notifications/verify-webhook-signature`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        transmission_id: transmissionId,
+        transmission_time: timestamp,
+        cert_url: certUrl,
+        auth_algo: authAlgo,
+        transmission_sig: signature,
+        webhook_id: webhookId,
+        webhook_event: JSON.parse(body),
+      }),
+    });
 
     if (!verifyRes.ok) {
-      console.error("PayPal verify webhook API error", await verifyRes.text());
+      logError("paypal_webhook_verify_api_failed", undefined, {
+        operationId,
+        statusCode: verifyRes.status,
+      });
       return false;
     }
 
     const verifyData = (await verifyRes.json()) as {
       verification_status?: string;
     };
-    const ok = verifyData.verification_status === "SUCCESS";
-    if (!ok) {
-      console.error("❌ PayPal webhook verification failed:", {
+
+    const verified = verifyData.verification_status === "SUCCESS";
+    if (!verified) {
+      logError("paypal_webhook_verification_failed", undefined, {
+        operationId,
         verificationStatus: verifyData.verification_status,
-        fullResponse: verifyData,
-        webhookId: process.env.PAYPAL_WEBHOOK_ID,
-        environment: getPayPalMode(),
-        baseUrl,
-        transmissionId,
-        webhookEvent: JSON.parse(body),
       });
-    } else {
-      console.log("✅ PayPal webhook signature verified successfully");
     }
-    return ok;
+
+    return verified;
   } catch (error) {
-    console.error("PayPal signature verification error:", error);
+    logError(
+      "paypal_webhook_signature_verification_error",
+      error instanceof Error ? error : new Error(String(error)),
+      {
+        operationId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
     return false;
   }
 }

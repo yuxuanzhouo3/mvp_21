@@ -15,7 +15,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const { id } = await context.params;
-    const file = await buildDashboardDocumentDownload(auth.user.id, id);
+    const requestedFormat = request.nextUrl.searchParams.get("format");
+    const format =
+      requestedFormat === "pdf" || requestedFormat === "word" || requestedFormat === "html"
+        ? requestedFormat
+        : undefined;
+    const file = await buildDashboardDocumentDownload(auth.user.id, id, { format });
     if (!file) {
       return NextResponse.json(
         { success: false, error: { message: "Document not found." } },

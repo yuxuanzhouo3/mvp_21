@@ -27,6 +27,11 @@ function getAiErrorMessage(error: ContractAIError): string {
         "AI 服务当前请求较多，请稍后重试。",
         "AI service is currently rate-limited. Please try again shortly.",
       );
+    case "AI_TIMEOUT":
+      return t(
+        "AI 分析超时，请稍后重试或精简输入后再分析。",
+        "AI analysis timed out. Please retry, or shorten the input before analyzing.",
+      );
     default:
       return t(
         "AI 服务暂时不可用，请稍后重试。",
@@ -34,6 +39,8 @@ function getAiErrorMessage(error: ContractAIError): string {
       );
   }
 }
+
+export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   try {

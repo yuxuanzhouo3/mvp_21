@@ -1,0 +1,38 @@
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+[2026-04-11T15:46:19.644Z] WARN: Security Event: register_successful {"type":"security","event":"register_successful","userId":"d3a457a269da6ccb03e24ba675a861e1","ip":"::ffff:127.0.0.1","timestamp":"2026-04-11T15:46:19.644Z","email":"codex.regression.17759223762299605@example.com","fullName":"Codex Regression 17759223762299605","passwordStrength":0,"profileSaved":true}
+无法获取客户端IP，使用默认处理
+[2026-04-11T15:46:21.792Z] WARN: Security Event: login_success {"type":"security","event":"login_success","userId":"d3a457a269da6ccb03e24ba675a861e1","ip":"::ffff:127.0.0.1","timestamp":"2026-04-11T15:46:21.791Z","email":"codex.regression.17759223762299605@example.com"}
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+[2026-04-11T15:49:55.604Z] WARN: Security Event: login_success {"type":"security","event":"login_success","userId":"d3a457a269da6ccb03e24ba675a861e1","ip":"::ffff:127.0.0.1","timestamp":"2026-04-11T15:49:55.604Z","email":"codex.regression.17759223762299605@example.com"}
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+[2026-04-12T02:17:45.366Z] WARN: Security Event: login_success {"type":"security","event":"login_success","userId":"f0df711e69c7e02801fdd39178520381","ip":"::1","timestamp":"2026-04-12T02:17:45.366Z","email":"3215763265@qq.com"}
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理
+无法获取客户端IP，使用默认处理

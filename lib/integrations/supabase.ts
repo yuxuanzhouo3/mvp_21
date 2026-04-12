@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { isInternationalDeployment } from "@/lib/config/deployment.config";
+import { assertSupabaseRuntimeEnv } from "@/lib/config/supabase-runtime";
 
 let supabaseInstance: ReturnType<typeof createClient> | null = null;
 let missingEnvWarningShown = false;
@@ -40,14 +41,26 @@ export function getSupabaseClient() {
     return supabaseInstance;
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+  const env = assertSupabaseRuntimeEnv({
+    context: "supabase-client",
+  });
+  const supabaseUrl = env.url;
+  const supabaseAnonKey = env.anonKey;
 
   warnMissingSupabaseEnv(supabaseUrl, supabaseAnonKey);
 
+  const fallbackUrl = env.strictMode ? "" : "https://placeholder.supabase.co";
+  const fallbackKey = env.strictMode ? "" : "placeholder-key";
+
+  if ((!supabaseUrl || !supabaseAnonKey) && env.strictMode) {
+    throw new Error(
+      "[supabase-client] Supabase client initialization blocked: missing required URL/ANON key.",
+    );
+  }
+
   supabaseInstance = createClient(
-    supabaseUrl || "https://placeholder.supabase.co",
-    supabaseAnonKey || "placeholder-key",
+    supabaseUrl || fallbackUrl,
+    supabaseAnonKey || fallbackKey,
     {
       auth: {
         autoRefreshToken: true,

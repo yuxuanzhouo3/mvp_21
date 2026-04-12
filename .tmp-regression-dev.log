@@ -1,0 +1,186 @@
+
+> morncontract@0.1.0 dev
+> node scripts/use-env.mjs cn && next dev -p 3000
+
+Active env switched to .env.cn -> .env.local
+   ▲ Next.js 15.2.4
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.198.1:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 4.7s
+ ✓ Compiled /middleware in 278ms
+ ✓ Compiled (107 modules)
+ ○ Compiling /api/health ...
+ ✓ Compiled /api/health in 1810ms (363 modules)
+ GET /api/health 200 in 26ms
+ ○ Compiling /api/auth/register ...
+ ✓ Compiled /api/auth/register in 2.2s (818 modules)
+[deployment] region=CN, auth=cloudbase
+ [CloudBase Service] 开始注册，邮箱: codex.regression.17759223762299605@example.com
+ [CloudBase Service] 注册成功
+[CloudBase Service] AccessToken generated for signup
+✅ [CloudBase] 初始化环境: contracthub-2go0kvke215f83c1
+✅ [Refresh Token Manager] Refresh token 已保存，tokenId: fcac01f7-9ceb-49ca-adab-fdb73844fcb4, userId: d3a457a269da6ccb03e24ba675a861e1
+ POST /api/auth/register 200 in 3398ms
+ ○ Compiling /api/auth/login ...
+ ✓ Compiled /api/auth/login in 970ms (828 modules)
+[deployment] region=CN, auth=cloudbase
+ [CloudBase Service] 开始登录，邮箱: codex.regression.17759223762299605@example.com
+ [CloudBase Service] 登录成功
+✅ [CloudBase] 初始化环境: contracthub-2go0kvke215f83c1
+✅ [Refresh Token Manager] Refresh token 已保存，tokenId: 5aa67c73-18b2-471e-b67c-9750e85defe5, userId: d3a457a269da6ccb03e24ba675a861e1
+ POST /api/auth/login 200 in 1879ms
+ ○ Compiling /api/contracts/generate ...
+ ✓ Compiled /api/contracts/generate in 774ms (980 modules)
+[deployment] region=CN, auth=cloudbase
+ POST /api/contracts/generate 200 in 62207ms
+ ✓ Compiled /api/contracts in 468ms (829 modules)
+[deployment] region=CN, auth=cloudbase
+ POST /api/contracts 200 in 1542ms
+ ○ Compiling /api/dashboard/documents ...
+ ✓ Compiled /api/dashboard/documents in 1406ms (1016 modules)
+[deployment] region=CN, auth=cloudbase
+ GET /api/dashboard/documents 200 in 2603ms
+ ✓ Compiled /api/dashboard/documents/[id]/download in 365ms (1018 modules)
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+ GET /api/dashboard/documents/contract%3A9f5d149069da6d0d03d4f1b92061bb2f/download?format=pdf 200 in 3158ms
+ GET /api/dashboard/documents/contract%3A9f5d149069da6d0d03d4f1b92061bb2f/download?format=word 200 in 419ms
+ GET /api/dashboard/documents/contract%3A9f5d149069da6d0d03d4f1b92061bb2f/download?format=html 200 in 362ms
+[deployment] region=CN, auth=cloudbase
+ ○ Compiling /api/payment/history ...
+ ✓ Compiled /api/payment/history in 767ms (1036 modules)
+[deployment] region=CN, auth=cloudbase
+[2026-04-11T15:47:33.373Z] INFO: Business Event: payment_history_requested {"type":"business","event":"payment_history_requested","userId":"d3a457a269da6ccb03e24ba675a861e1","timestamp":"2026-04-11T15:47:33.373Z","operationId":"payment_history_1775922453139_w0nhzw4xb","page":1,"pageSize":20,"offset":0}
+[2026-04-11T15:47:33.584Z] INFO: Business Event: payment_history_returned {"type":"business","event":"payment_history_returned","userId":"d3a457a269da6ccb03e24ba675a861e1","timestamp":"2026-04-11T15:47:33.584Z","operationId":"payment_history_1775922453139_w0nhzw4xb","page":1,"pageSize":20,"total":0,"recordCount":0}
+ GET /api/payment/history?page=1&pageSize=20 200 in 1378ms
+ ○ Compiling /api/auth/login ...
+ ✓ Compiled /api/auth/login in 657ms (535 modules)
+[deployment] region=CN, auth=cloudbase
+ [CloudBase Service] 开始登录，邮箱: codex.regression.17759223762299605@example.com
+ [CloudBase Service] 登录成功
+✅ [CloudBase] 初始化环境: contracthub-2go0kvke215f83c1
+✅ [Refresh Token Manager] Refresh token 已保存，tokenId: eed86ddd-2f4b-457b-a3ce-369838b6f510, userId: d3a457a269da6ccb03e24ba675a861e1
+ POST /api/auth/login 200 in 1734ms
+ ✓ Compiled /api/contracts/generate in 349ms (688 modules)
+[deployment] region=CN, auth=cloudbase
+ POST /api/contracts/generate 200 in 76241ms
+ ○ Compiling /api/dashboard/documents ...
+ ✓ Compiled /api/dashboard/documents in 512ms (736 modules)
+[deployment] region=CN, auth=cloudbase
+ GET /api/dashboard/documents 200 in 1663ms
+ ✓ Compiled /api/dashboard/documents/[id]/download in 202ms (738 modules)
+[deployment] region=CN, auth=cloudbase
+ GET /api/dashboard/documents/contract%3A9f5d149069da6d0d03d4f1b92061bb2f/download?format=pdf 200 in 1380ms
+[deployment] region=CN, auth=cloudbase
+ GET /api/dashboard/documents/contract%3A9f5d149069da6d0d03d4f1b92061bb2f/download?format=word 200 in 379ms
+ GET /api/dashboard/documents/contract%3A9f5d149069da6d0d03d4f1b92061bb2f/download?format=html 200 in 363ms
+ ✓ Compiled /api/payment/history in 280ms (756 modules)
+[deployment] region=CN, auth=cloudbase
+[2026-04-11T15:51:16.401Z] INFO: Business Event: payment_history_requested {"type":"business","event":"payment_history_requested","userId":"d3a457a269da6ccb03e24ba675a861e1","timestamp":"2026-04-11T15:51:16.401Z","operationId":"payment_history_1775922676197_fjdmmd17d","page":1,"pageSize":20,"offset":0}
+[2026-04-11T15:51:16.580Z] INFO: Business Event: payment_history_returned {"type":"business","event":"payment_history_returned","userId":"d3a457a269da6ccb03e24ba675a861e1","timestamp":"2026-04-11T15:51:16.580Z","operationId":"payment_history_1775922676197_fjdmmd17d","page":1,"pageSize":20,"total":0,"recordCount":0}
+ GET /api/payment/history?page=1&pageSize=20 200 in 833ms
+ ✓ Compiled in 576ms (757 modules)
+ ✓ Compiled in 317ms (757 modules)
+ ○ Compiling /dashboard/documents ...
+ ✓ Compiled /dashboard/documents in 10.4s (1684 modules)
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[Auth Client] Using CloudBase auth client
+ GET /dashboard/documents 200 in 12779ms
+ ✓ Compiled in 2.2s (543 modules)
+ ✓ Compiled in 679ms (543 modules)
+ ✓ Compiled in 1271ms (543 modules)
+ ✓ Compiled in 716ms (543 modules)
+ ✓ Compiled in 1589ms (1666 modules)
+ ○ Compiling /auth ...
+ ✓ Compiled /auth in 825ms (1677 modules)
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[Auth Client] Using CloudBase auth client
+ GET /auth?mode=signin&redirect=%2Fdashboard%2Fdocuments 200 in 1208ms
+ ○ Compiling /api/auth/config ...
+ ✓ Compiled /api/auth/config in 600ms (1685 modules)
+[deployment] region=CN, auth=cloudbase
+ GET /api/auth/config 200 in 703ms
+ ✓ Compiled in 770ms (554 modules)
+ GET /auth?mode=signin&redirect=%2Fdashboard%2Fdocuments 200 in 135ms
+ ✓ Compiled in 899ms (554 modules)
+ GET /auth?mode=signin&redirect=%2Fdashboard%2Fdocuments 200 in 81ms
+ ○ Compiling /api/auth/login ...
+ ✓ Compiled /api/auth/login in 3.7s (1512 modules)
+[deployment] region=CN, auth=cloudbase
+ [CloudBase Service] 开始登录，邮箱: 3215763265@qq.com
+ GET /auth?mode=signin&redirect=%2Fdashboard%2Fdocuments 200 in 223ms
+ [CloudBase Service] 登录成功
+✅ [CloudBase] 初始化环境: contracthub-2go0kvke215f83c1
+✅ [Refresh Token Manager] Refresh token 已保存，tokenId: c433fd72-40de-4244-a788-fa4775840430, userId: f0df711e69c7e02801fdd39178520381
+ POST /api/auth/login 200 in 6027ms
+[deployment] region=CN, auth=cloudbase
+[Auth Client] Using CloudBase auth client
+ GET /dashboard/documents 200 in 820ms
+ ○ Compiling /api/dashboard/documents ...
+ ✓ Compiled /api/dashboard/documents in 2.2s (1727 modules)
+[deployment] region=CN, auth=cloudbase
+ GET /dashboard/documents 200 in 139ms
+ GET /api/dashboard/documents 200 in 4212ms
+ ○ Compiling /dashboard/team ...
+ ✓ Compiled /dashboard/team in 2.9s (2298 modules)
+[deployment] region=CN, auth=cloudbase
+ GET /dashboard/team 200 in 3939ms
+ ○ Compiling /dashboard/settings ...
+ ✓ Compiled /dashboard/billing in 7.6s (2367 modules)
+[deployment] region=CN, auth=cloudbase
+ ✓ Compiled in 875ms (591 modules)
+ ✓ Compiled in 945ms (591 modules)
+ ✓ Compiled in 908ms (591 modules)
+ ✓ Compiled in 867ms (591 modules)
+ ✓ Compiled in 815ms (591 modules)
+ ✓ Compiled in 948ms (591 modules)
+ ✓ Compiled in 641ms (591 modules)
+ ✓ Compiled in 753ms (591 modules)
+ ✓ Compiled in 1439ms (591 modules)
+ ✓ Compiled in 1067ms (591 modules)
+ ✓ Compiled in 1297ms (591 modules)
+ ✓ Compiled in 1616ms (591 modules)
+ ✓ Compiled in 945ms (591 modules)
+ ✓ Compiled in 2.9s (1728 modules)
+ ✓ Compiled in 4.8s (1728 modules)
+ ✓ Compiled in 963ms (591 modules)
+ ✓ Compiled in 1225ms (591 modules)
+ ✓ Compiled in 1066ms (591 modules)
+ ✓ Compiled in 1266ms (591 modules)
+ ✓ Compiled in 1082ms (591 modules)
+ ✓ Compiled in 938ms (591 modules)
+ ✓ Compiled in 1162ms (591 modules)
+ ✓ Compiled in 880ms (591 modules)
+ ✓ Compiled in 1466ms (591 modules)
+ ✓ Compiled in 1247ms (591 modules)
+ ✓ Compiled in 1110ms (591 modules)
+ ✓ Compiled in 1338ms (591 modules)
+ ✓ Compiled in 952ms (591 modules)
+ ✓ Compiled in 883ms (591 modules)
+ ✓ Compiled in 1633ms (591 modules)
+ ✓ Compiled in 4s (591 modules)
+ ✓ Compiled in 1487ms (591 modules)
+ ✓ Compiled in 1118ms (591 modules)
+ ✓ Compiled in 906ms (591 modules)
+ ✓ Compiled in 1043ms (591 modules)
+ ✓ Compiled in 774ms (591 modules)
+ ✓ Compiled in 2.6s (1728 modules)
+ ✓ Compiled in 1360ms (591 modules)
+ ✓ Compiled in 1202ms (591 modules)
+ ✓ Compiled in 1061ms (591 modules)
+ ✓ Compiled in 1923ms (591 modules)
+ ✓ Compiled in 1037ms (591 modules)
+ ✓ Compiled in 1401ms (591 modules)
+ ✓ Compiled in 1114ms (591 modules)
+ ✓ Compiled in 1117ms (591 modules)
+ ✓ Compiled in 1149ms (591 modules)
+ ✓ Compiled in 946ms (591 modules)
+ ✓ Compiled in 2.2s (1728 modules)
+ ✓ Compiled in 1212ms (591 modules)
+ ✓ Compiled in 1006ms (591 modules)
+ ✓ Compiled in 2s (591 modules)

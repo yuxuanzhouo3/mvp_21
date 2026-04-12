@@ -44,6 +44,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   batchOrganizeDashboardDocuments,
@@ -51,6 +57,7 @@ import {
   createDashboardDocumentShare,
   deleteDashboardDocument,
   downloadDashboardDocument,
+  downloadDashboardDocumentByFormat,
   revokeDashboardDocumentShare,
   updateDashboardDocument,
   uploadDashboardDocument,
@@ -212,10 +219,17 @@ export function DocumentLibrary({ documents, onDocumentsChanged }: DocumentLibra
   const allVisibleUploadsSelected =
     visibleUploadedIds.length > 0 && visibleUploadedIds.every((id) => selectedUploadedIds.includes(id));
 
-  const handleDownload = async (documentId: string) => {
+  const handleDownload = async (
+    documentId: string,
+    format: "pdf" | "word" | "html" = "pdf",
+  ) => {
     try {
       setDownloadingId(documentId);
-      await downloadDashboardDocument(documentId);
+      if (format === "pdf") {
+        await downloadDashboardDocument(documentId);
+      } else {
+        await downloadDashboardDocumentByFormat(documentId, format);
+      }
     } catch (error) {
       console.error("[DocumentLibrary] Failed to download document:", error);
       toast.error(isEn ? "Failed to download document." : "下载文档失败。");
@@ -615,9 +629,30 @@ export function DocumentLibrary({ documents, onDocumentsChanged }: DocumentLibra
                             <Eye className="h-4 w-4" />
                           </Link>
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => void handleDownload(doc.id)} disabled={downloadingId === doc.id}>
-                          <Download className="h-4 w-4" />
-                        </Button>
+                        {doc.sourceKind === "contract" ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" disabled={downloadingId === doc.id}>
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => void handleDownload(doc.id, "pdf")}>
+                                {isEn ? "Download PDF" : "下载 PDF"}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => void handleDownload(doc.id, "word")}>
+                                {isEn ? "Download Word" : "下载 Word"}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => void handleDownload(doc.id, "html")}>
+                                {isEn ? "Download HTML" : "下载 HTML"}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : (
+                          <Button variant="ghost" size="icon" onClick={() => void handleDownload(doc.id)} disabled={downloadingId === doc.id}>
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button variant="ghost" size="icon" onClick={() => openShareDialog(doc)} disabled={sharingId === doc.id}>
                           <Copy className="h-4 w-4" />
                         </Button>

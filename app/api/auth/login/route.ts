@@ -8,6 +8,7 @@ import {
 } from "@/lib/account/server-profile";
 import { loginUser } from "@/lib/cloudbase/cloudbase-service";
 import { isChinaRegion } from "@/lib/config/region";
+import { assertSupabaseRuntimeEnv } from "@/lib/config/supabase-runtime";
 import { accountLockout } from "@/lib/security/account-lockout";
 import { logSecurityEvent } from "@/lib/utils/logger";
 
@@ -26,9 +27,17 @@ function getClientIp(request: NextRequest) {
 }
 
 function createIntlAuthClient() {
+  const env = assertSupabaseRuntimeEnv({
+    context: "auth-login-intl",
+  });
+
+  if (!env.url || !env.anonKey) {
+    throw new Error("Supabase auth is not configured");
+  }
+
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key",
+    env.url,
+    env.anonKey,
     {
       auth: {
         autoRefreshToken: false,

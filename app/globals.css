@@ -140,6 +140,8 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   * {
@@ -152,6 +154,7 @@
 
   body {
     @apply bg-background text-foreground antialiased overflow-x-hidden;
+    min-height: 100dvh;
     background-image:
       radial-gradient(
         circle at 0% 0%,
@@ -163,6 +166,24 @@
         color-mix(in oklch, var(--accent) 10%, transparent),
         transparent 26%
       );
+  }
+
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  p,
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    overflow-wrap: anywhere;
   }
 
   ::selection {

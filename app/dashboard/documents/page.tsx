@@ -13,6 +13,8 @@ import { getDashboardDocuments } from "@/lib/dashboard/client";
 import type { DashboardDocumentsData } from "@/lib/dashboard/types";
 import { useTranslations } from "@/lib/i18n";
 
+export const dynamic = "force-dynamic";
+
 export default function DocumentsPage() {
   const { language } = useLanguage();
   const t = useTranslations(language);

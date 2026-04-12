@@ -15,6 +15,7 @@ import {
   getPaymentRecordById,
   getPaymentRecordForUserByReference,
 } from "@/lib/payment/subscription-payment-sync";
+import { observeOperationalMetric } from "@/lib/monitoring/operational-observability";
 import { paymentRateLimit } from "@/lib/security/rate-limit";
 import { logBusinessEvent, logError, logSecurityEvent } from "@/lib/utils/logger";
 
@@ -106,10 +107,28 @@ async function handlePaymentConfirm(request: NextRequest) {
   const operationId = `payment_confirm_${Date.now()}_${Math.random()
     .toString(36)
     .slice(2, 11)}`;
+  const startedAt = Date.now();
+  const observe = (
+    outcome: "success" | "failure" | "rejected",
+    statusCode: number,
+    meta?: Record<string, unknown>,
+    userId?: string,
+  ) => {
+    observeOperationalMetric({
+      chain: "payment_confirm",
+      outcome,
+      statusCode,
+      operationId,
+      userId,
+      durationMs: Date.now() - startedAt,
+      metadata: meta,
+    });
+  };
 
   try {
     const authResult = await requireAuth(request);
     if (!authResult) {
+      observe("rejected", 401, { reason: "auth_required" });
       return createAuthErrorResponse();
     }
 
@@ -124,6 +143,7 @@ async function handlePaymentConfirm(request: NextRequest) {
     ].filter(Boolean);
 
     if (!rawReferences.length) {
+      observe("rejected", 400, { reason: "missing_reference" }, user.id);
       return NextResponse.json(
         { success: false, error: "Missing required payment reference" },
         { status: 400 },
@@ -150,6 +170,12 @@ async function handlePaymentConfirm(request: NextRequest) {
         operationId,
         references: rawReferences,
       });
+      observe(
+        "rejected",
+        404,
+        { reason: "payment_not_found", references: rawReferences },
+        user.id,
+      );
       return NextResponse.json(
         { success: false, error: "Payment record not found" },
         { status: 404 },
@@ -167,6 +193,12 @@ async function handlePaymentConfirm(request: NextRequest) {
           references: rawReferences,
         },
       );
+      observe(
+        "rejected",
+        403,
+        { reason: "forbidden", paymentOwnerId: payment.user_id, references: rawReferences },
+        user.id,
+      );
       return NextResponse.json(
         { success: false, error: "Forbidden" },
         { status: 403 },
@@ -181,6 +213,16 @@ async function handlePaymentConfirm(request: NextRequest) {
         transactionId:
           payment.transaction_id || payment.order_id || payment.out_trade_no,
       });
+      observe(
+        "success",
+        200,
+        {
+          reason: "idempotent_replay",
+          paymentId: payment.id || payment._id,
+          subscriptionId: payment.subscription_id,
+        },
+        user.id,
+      );
 
       return NextResponse.json({
         success: true,
@@ -223,6 +265,17 @@ async function handlePaymentConfirm(request: NextRequest) {
         reference,
         method: payment.payment_method,
       });
+      observe(
+        "rejected",
+        400,
+        {
+          reason: "provider_rejected",
+          paymentId: payment.id || payment._id,
+          reference,
+          method: payment.payment_method,
+        },
+        user.id,
+      );
       return NextResponse.json(
         { success: false, error: "Payment confirmation failed" },
         { status: 400 },
@@ -247,6 +300,17 @@ async function handlePaymentConfirm(request: NextRequest) {
       planType: syncResult.metadata.planType,
       billingCycle: syncResult.metadata.billingCycle,
     });
+    observe(
+      "success",
+      200,
+      {
+        reason: "confirmed",
+        paymentId: syncResult.paymentId,
+        subscriptionId: syncResult.subscriptionId,
+        method: payment.payment_method,
+      },
+      user.id,
+    );
 
     return NextResponse.json({
       success: true,
@@ -261,6 +325,10 @@ async function handlePaymentConfirm(request: NextRequest) {
       },
     });
   } catch (error) {
+    observe("failure", 500, {
+      reason: "exception",
+      error: error instanceof Error ? error.message : String(error),
+    });
     logError(
       "payment_confirm_error",
       error instanceof Error ? error : new Error(String(error)),

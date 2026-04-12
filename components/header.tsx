@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { FileText, Menu, X } from "lucide-react";
 
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -16,6 +17,7 @@ import { useTranslations } from "@/lib/i18n";
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
   const { language, setLanguage } = useLanguage();
   const t = useTranslations(language);
   const appName = getAppDisplayName();
@@ -32,6 +34,46 @@ export function Header() {
 
     return () => {
       document.body.style.overflow = originalOverflow;
+    };
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setMobileMenuOpen(false);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [pathname, mobileMenuOpen]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) {
+      return;
+    }
+
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [mobileMenuOpen]);
 
@@ -118,7 +160,7 @@ export function Header() {
       {mobileMenuOpen ? (
         <div
           id="mobile-nav-panel"
-          className="max-h-[calc(100dvh-4rem)] overflow-y-auto border-t border-border bg-background pb-[max(env(safe-area-inset-bottom),1rem)] md:hidden"
+          className="max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-t border-border bg-background pb-[max(env(safe-area-inset-bottom),1rem)] shadow-lg md:hidden"
         >
           <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 px-4 py-4 md:px-6">
             <Link

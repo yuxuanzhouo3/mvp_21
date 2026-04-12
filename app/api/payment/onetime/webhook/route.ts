@@ -1,8 +1,9 @@
-// app/api/payment/onetime/webhook/route.ts - 一次性支付Webhook处理
+﻿// app/api/payment/onetime/webhook/route.ts - 一次性支付Webhook处理
 import { NextRequest, NextResponse } from "next/server";
 import { isChinaRegion } from "@/lib/config/region";
 import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
 import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
+import { ensureOnetimeMembershipApplied } from "@/lib/payment/onetime-membership-sync";
 import { logInfo, logError, logWarn, logBusinessEvent } from "@/lib/utils/logger";
 
 /**
@@ -16,282 +17,25 @@ import { logInfo, logError, logWarn, logBusinessEvent } from "@/lib/utils/logger
 async function extendMembership(
   userId: string,
   days: number,
-  transactionId: string
+  transactionId: string,
 ): Promise<boolean> {
-  console.log("🔥🔥🔥 [WEBHOOK extendMembership] CALLED - Starting membership extension", {
+  const result = await ensureOnetimeMembershipApplied({
     userId,
     days,
     transactionId,
-    isChinaRegion: isChinaRegion(),
+    source: "onetime-webhook",
   });
 
-  try {
-    if (isChinaRegion()) {
-      // CloudBase 用户
-      const db = getDatabase();
-      const webUsersCollection = db.collection("web_users");
-      const subscriptionsCollection = db.collection("subscriptions");
-
-      // 🔐 步骤1：幂等性检查 - 检查这个 transaction_id 是否已经处理过
-      try {
-        const existingRecord = await subscriptionsCollection
-          .where({
-            user_id: userId,
-            transaction_id: transactionId,
-          })
-          .get();
-
-        if (existingRecord.data && existingRecord.data.length > 0) {
-          logInfo("Transaction already processed (idempotent check passed)", {
-            userId,
-            transactionId,
-            existingExpiresAt: existingRecord.data[0].current_period_end,
-          });
-          return true; // 已处理过，直接返回成功
-        }
-      } catch (error) {
-        logWarn("Error checking idempotent status in CloudBase", {
-          userId,
-          transactionId,
-        });
-        // 继续处理，不因为检查失败而中断流程
-      }
-
-      // 步骤2：获取用户当前会员到期时间（从 subscriptions 源数据读取）
-      let currentExpiresAt: Date | null = null;
-      let subscriptionId: string | null = null;
-
-      try {
-        const existingSubscription = await subscriptionsCollection
-          .where({
-            user_id: userId,
-            plan_id: "pro",
-          })
-          .get();
-
-        if (existingSubscription.data && existingSubscription.data.length > 0) {
-          const subscription = existingSubscription.data[0];
-          currentExpiresAt = new Date(subscription.current_period_end);
-          subscriptionId = subscription._id;
-        }
-      } catch (error) {
-        logWarn("Error fetching existing subscription from CloudBase", {
-          userId,
-          transactionId,
-        });
-      }
-
-      // 步骤3：计算新的到期时间
-      const now = new Date();
-      let newExpiresAt: Date;
-
-      if (currentExpiresAt && currentExpiresAt > now) {
-        // 如果当前还有有效会员，从现有到期时间延长
-        newExpiresAt = new Date(currentExpiresAt);
-        newExpiresAt.setDate(newExpiresAt.getDate() + days);
-        logInfo("Extending existing membership in CloudBase webhook", {
-          userId,
-          currentExpiresAt: currentExpiresAt.toISOString(),
-          daysToAdd: days,
-          newExpiresAt: newExpiresAt.toISOString(),
-        });
-      } else {
-        // 如果没有有效会员或已过期，从现在开始计算
-        newExpiresAt = new Date();
-        newExpiresAt.setDate(newExpiresAt.getDate() + days);
-        logInfo("Creating new membership in CloudBase webhook", {
-          userId,
-          daysToAdd: days,
-          newExpiresAt: newExpiresAt.toISOString(),
-        });
-      }
-
-      // 步骤4：FIRST - 更新或创建 subscriptions 记录（源数据优先）
-      try {
-        const currentDate = new Date();
-
-        if (subscriptionId) {
-          // 更新现有订阅记录
-          await subscriptionsCollection.doc(subscriptionId).update({
-            current_period_end: newExpiresAt.toISOString(),
-            transaction_id: transactionId,
-            updated_at: currentDate.toISOString(),
-          });
-
-          logInfo(
-            "Updated subscription record in CloudBase webhook (source of truth)",
-            {
-              userId,
-              subscriptionId,
-              transactionId,
-              expiresAt: newExpiresAt.toISOString(),
-            }
-          );
-        } else {
-          // 如果没有订阅记录，创建新记录
-          await subscriptionsCollection.add({
-            user_id: userId,
-            plan_id: "pro",
-            status: "active",
-            current_period_start: currentDate.toISOString(),
-            current_period_end: newExpiresAt.toISOString(),
-            cancel_at_period_end: false,
-            payment_method: "onetime",
-            transaction_id: transactionId,
-            created_at: currentDate.toISOString(),
-            updated_at: currentDate.toISOString(),
-          });
-
-          logInfo(
-            "Created subscription record in CloudBase webhook (source of truth)",
-            {
-              userId,
-              transactionId,
-              expiresAt: newExpiresAt.toISOString(),
-            }
-          );
-        }
-      } catch (subscriptionError) {
-        logError(
-          "Error managing CloudBase subscription record in webhook",
-          subscriptionError as Error,
-          {
-            userId,
-            transactionId,
-          }
-        );
-        return false; // 源数据更新失败，中断流程
-      }
-
-      // 步骤5：SECOND - 同步到 web_users（派生数据）
-      try {
-        const updateResult = await webUsersCollection.doc(userId).update({
-          membership_expires_at: newExpiresAt.toISOString(),
-          pro: true,
-          updated_at: new Date().toISOString(),
-        });
-
-        if (updateResult.updated === 0) {
-          logError("Failed to update CloudBase user profile", undefined, {
-            userId,
-            newExpiresAt: newExpiresAt.toISOString(),
-            transactionId,
-          });
-          return false;
-        }
-
-        logInfo("Synced membership time to web_users (derived data)", {
-          userId,
-          membershipExpiresAt: newExpiresAt.toISOString(),
-        });
-      } catch (updateError) {
-        logError("Error updating CloudBase membership", updateError as Error, {
-          userId,
-          newExpiresAt: newExpiresAt.toISOString(),
-          transactionId,
-        });
-        return false;
-      }
-
-      logBusinessEvent("membership_extended_cloudbase_webhook", userId, {
-        transactionId,
-        daysAdded: days,
-        newExpiresAt: newExpiresAt.toISOString(),
-      });
-
-      return true;
-    } else {
-      // Supabase 用户 - 从 auth user metadata 读取和更新（保持原样，国外版）
-      // 🔐 SUPABASE 幂等性检查：确保相同 transaction_id 或 provider_subscription_id 不会被重复处理
-      try {
-        const { data: existingByTransaction } = await supabaseAdmin
-          .from("subscriptions")
-          .select("id")
-          .or(
-            `transaction_id.eq.${transactionId},provider_subscription_id.eq.${transactionId}`
-          )
-          .maybeSingle();
-
-        if (existingByTransaction && existingByTransaction.id) {
-          logInfo(
-            "Transaction already processed in subscriptions (idempotent check passed)",
-            {
-              userId,
-              transactionId,
-              subscriptionId: existingByTransaction.id,
-            }
-          );
-          return true; // 已处理过，直接返回成功
-        }
-      } catch (idempotentErr) {
-        logWarn(
-          "Error checking idempotent status in Supabase subscriptions for webhook",
-          {
-            userId,
-            transactionId,
-            error: idempotentErr,
-          }
-        );
-      }
-      const {
-        data: { user: authUser },
-        error: fetchError,
-      } = await supabaseAdmin.auth.admin.getUserById(userId);
-
-      if (fetchError || !authUser) {
-        logError(
-          "Error fetching user from Supabase auth",
-          fetchError as Error | undefined,
-          { userId }
-        );
-        return false;
-      }
-
-      const now = new Date();
-      let newExpiresAt: Date;
-      const currentMembershipExpires =
-        authUser.user_metadata?.membership_expires_at;
-
-      if (
-        currentMembershipExpires &&
-        new Date(currentMembershipExpires) > now
-      ) {
-        newExpiresAt = new Date(currentMembershipExpires);
-        newExpiresAt.setDate(newExpiresAt.getDate() + days);
-      } else {
-        newExpiresAt = new Date();
-        newExpiresAt.setDate(newExpiresAt.getDate() + days);
-      }
-
-      const { error: updateError } =
-        await supabaseAdmin.auth.admin.updateUserById(userId, {
-          user_metadata: {
-            ...(authUser.user_metadata || {}),
-            pro: true,
-            subscription_plan: "pro",
-            subscription_status: "active",
-            membership_expires_at: newExpiresAt.toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-        });
-
-      if (updateError) {
-        logError("Error updating user profile", updateError, { userId });
-        return false;
-      }
-
-      logBusinessEvent("membership_extended_via_webhook", userId, {
-        transactionId,
-        daysAdded: days,
-        newExpiresAt: newExpiresAt.toISOString(),
-      });
-
-      return true;
-    }
-  } catch (error) {
-    logError("Error extending membership", error as Error, { userId, days });
-    return false;
+  if (!result.success) {
+    logWarn("Unified onetime membership sync failed in webhook", {
+      userId,
+      days,
+      transactionId,
+      reason: result.reason,
+    });
   }
+
+  return result.success;
 }
 
 /**
@@ -1054,3 +798,4 @@ export async function POST(request: NextRequest) {
     return handlePayPalWebhook(request);
   }
 }
+

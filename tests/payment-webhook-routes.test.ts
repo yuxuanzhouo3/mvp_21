@@ -7,6 +7,7 @@ const mockConstructEvent: any = jest.fn();
 const mockLogBusinessEvent: any = jest.fn();
 const mockLogError: any = jest.fn();
 const mockLogSecurityEvent: any = jest.fn();
+const mockObserveOperationalMetric: any = jest.fn();
 
 jest.mock("@/lib/payment/webhook-handler", () => ({
   WebhookHandler: {
@@ -24,6 +25,10 @@ jest.mock("@/lib/utils/logger", () => ({
   logBusinessEvent: (...args: unknown[]) => mockLogBusinessEvent(...args),
   logError: (...args: unknown[]) => mockLogError(...args),
   logSecurityEvent: (...args: unknown[]) => mockLogSecurityEvent(...args),
+}));
+
+jest.mock("@/lib/monitoring/operational-observability", () => ({
+  observeOperationalMetric: (...args: unknown[]) => mockObserveOperationalMetric(...args),
 }));
 
 jest.mock("stripe", () => ({
@@ -77,6 +82,14 @@ describe("payment webhook route coverage", () => {
     expect(response.status).toBe(401);
     expect(payload).toEqual({ error: "Invalid signature" });
     expect(mockWebhookProcess).not.toHaveBeenCalled();
+    expect(mockObserveOperationalMetric).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chain: "payment_webhook",
+        scope: "stripe",
+        outcome: "rejected",
+        statusCode: 401,
+      }),
+    );
   });
 
   test("stripe webhook forwards verified events into the unified handler", async () => {
@@ -108,6 +121,14 @@ describe("payment webhook route coverage", () => {
 
     expect(response.status).toBe(200);
     expect(payload).toEqual({ status: "success" });
+    expect(mockObserveOperationalMetric).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chain: "payment_webhook",
+        scope: "stripe",
+        outcome: "success",
+        statusCode: 200,
+      }),
+    );
     expect(mockWebhookProcess).toHaveBeenCalledWith(
       "stripe",
       "checkout.session.completed",
@@ -143,6 +164,14 @@ describe("payment webhook route coverage", () => {
 
     expect(response.status).toBe(200);
     expect(payload).toEqual({ status: "success" });
+    expect(mockObserveOperationalMetric).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chain: "payment_webhook",
+        scope: "paypal",
+        outcome: "success",
+        statusCode: 200,
+      }),
+    );
     expect(mockWebhookProcess).toHaveBeenCalledWith(
       "paypal",
       "PAYMENT.CAPTURE.COMPLETED",

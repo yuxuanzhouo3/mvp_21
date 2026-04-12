@@ -82,6 +82,36 @@ function normalizeActiveCompanyProfile(
   };
 }
 
+async function readGenerateErrorMessage(
+  response: Response,
+  isEn: boolean,
+): Promise<string | null> {
+  const contentType = response.headers.get("content-type") || "";
+  const isJson = contentType.toLowerCase().includes("application/json");
+
+  if (isJson) {
+    const payload = (await response.json().catch(() => null)) as
+      | Record<string, any>
+      | null;
+    const message = payload?.error?.message;
+    return typeof message === "string" && message.trim() ? message.trim() : null;
+  }
+
+  const rawText = (await response.text().catch(() => "")) || "";
+  const normalized = rawText.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.startsWith("<")) {
+    return isEn
+      ? `Request failed (${response.status}). The server returned a non-JSON error page.`
+      : `请求失败（${response.status}）。服务器返回了非 JSON 错误页。`;
+  }
+
+  return normalized.slice(0, 240);
+}
+
 function AnalyzePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -206,11 +236,35 @@ function AnalyzePageContent() {
           templateId,
         }),
       });
-      const result = await response.json();
 
-      if (!result.success) {
+      if (!response.ok) {
+        if (response.status === 504) {
+          throw new Error(
+            isEn
+              ? "Generation timed out. Please retry, or shorten the contract facts before generating."
+              : "生成超时。请重试，或先精简合同事实后再生成。",
+          );
+        }
+
+        const message = await readGenerateErrorMessage(response, isEn);
         throw new Error(
-          result.error?.message || (isEn ? "Generation failed" : "生成失败"),
+          message ||
+            (isEn
+              ? `Generation failed (${response.status})`
+              : `生成失败（${response.status}）`),
+        );
+      }
+
+      const result = (await response.json().catch(() => null)) as
+        | Record<string, any>
+        | null;
+      if (!result?.success) {
+        throw new Error(
+          typeof result?.error?.message === "string"
+            ? result.error.message
+            : isEn
+              ? "Generation failed"
+              : "生成失败",
         );
       }
 

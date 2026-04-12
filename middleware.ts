@@ -170,7 +170,7 @@ export async function middleware(request: NextRequest) {
 
     // 开发环境支持调试模式
     if (debugParam && isDevelopment) {
-      console.log(`� 调试模式启用: ${debugParam}`);
+      console.log(`调试模式启用: ${debugParam}`);
 
       // 根据debug参数设置模拟的地理位置
       switch (debugParam.toLowerCase()) {

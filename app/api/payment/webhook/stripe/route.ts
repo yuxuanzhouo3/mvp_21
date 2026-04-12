@@ -7,6 +7,7 @@ import {
   logBusinessEvent,
   logError,
 } from "../../../../../lib/utils/logger";
+import { observeOperationalMetric } from "@/lib/monitoring/operational-observability";
 
 // Stripe Webhook 必须在 Node.js Runtime 下运行（SDK 需要 Node 环境）
 export const runtime = "nodejs";
@@ -33,6 +34,22 @@ async function handleStripeWebhook(request: NextRequest) {
   const operationId = `stripe_webhook_${Date.now()}_${Math.random()
     .toString(36)
     .substr(2, 9)}`;
+  const startedAt = Date.now();
+  const observe = (
+    outcome: "success" | "failure" | "rejected",
+    statusCode: number,
+    meta?: Record<string, unknown>,
+  ) => {
+    observeOperationalMetric({
+      chain: "payment_webhook",
+      scope: "stripe",
+      outcome,
+      statusCode,
+      operationId,
+      durationMs: Date.now() - startedAt,
+      metadata: meta,
+    });
+  };
 
   try {
     const body = await request.text();
@@ -66,6 +83,10 @@ async function handleStripeWebhook(request: NextRequest) {
           userAgent: request.headers.get("user-agent"),
         }
       );
+      observe("rejected", 401, {
+        reason: "invalid_signature",
+        signaturePresent: !!signature,
+      });
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
@@ -98,6 +119,11 @@ async function handleStripeWebhook(request: NextRequest) {
         eventId,
         livemode,
       });
+      observe("success", 200, {
+        eventType,
+        eventId,
+        livemode,
+      });
       return NextResponse.json({ status: "success" });
     } else {
       logError("webhook_processing_failed", undefined, {
@@ -107,9 +133,19 @@ async function handleStripeWebhook(request: NextRequest) {
         eventId,
         livemode,
       });
+      observe("failure", 500, {
+        reason: "handler_failed",
+        eventType,
+        eventId,
+        livemode,
+      });
       return NextResponse.json({ error: "Processing failed" }, { status: 500 });
     }
   } catch (error) {
+    observe("failure", 500, {
+      reason: "exception",
+      error: error instanceof Error ? error.message : String(error),
+    });
     logError(
       "webhook_processing_error",
       error instanceof Error ? error : new Error(String(error)),

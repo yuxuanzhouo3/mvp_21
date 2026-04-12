@@ -12,6 +12,7 @@ import {
 } from "@/lib/auth/refresh-token-manager";
 import { signJwt } from "@/lib/auth/jwt";
 import { isChinaRegion } from "@/lib/config/region";
+import { assertSupabaseRuntimeEnv } from "@/lib/config/supabase-runtime";
 import { logSecurityEvent } from "@/lib/utils/logger";
 
 const refreshSchema = z.object({
@@ -50,9 +51,17 @@ function clearAuthTokenCookies(response: NextResponse) {
 }
 
 function createIntlAuthClient() {
+  const env = assertSupabaseRuntimeEnv({
+    context: "auth-refresh-intl",
+  });
+
+  if (!env.url || !env.anonKey) {
+    throw new Error("Supabase auth is not configured");
+  }
+
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key",
+    env.url,
+    env.anonKey,
     {
       auth: {
         autoRefreshToken: false,

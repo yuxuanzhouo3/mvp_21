@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { generateContract } from "@/lib/ai";
+import { ContractAIError, generateContract } from "@/lib/ai";
 import { type AIAnalysisResult } from "@/lib/ai/types";
 import {
   loadChinaAccountProfile,
@@ -15,6 +15,39 @@ import { buildMembershipEntitlements } from "@/lib/membership/policy";
 function t(zh: string, en: string) {
   return isChinaRegion() ? zh : en;
 }
+
+function getAiErrorMessage(error: ContractAIError): string {
+  switch (error.code) {
+    case "AI_KEY_UNAVAILABLE":
+    case "AI_NOT_CONFIGURED":
+      return t(
+        "DASHSCOPE_API_KEY 密钥不可用，请联系管理员检查配置。",
+        "DASHSCOPE_API_KEY is unavailable. Please ask the administrator to check the configuration.",
+      );
+    case "AI_AUTH_FAILED":
+      return t(
+        "DASHSCOPE_API_KEY 密钥不可用，请检查 API Key 配置。",
+        "DASHSCOPE_API_KEY is unavailable. Please check the API key configuration.",
+      );
+    case "AI_RATE_LIMITED":
+      return t(
+        "AI 服务当前请求较多，请稍后重试。",
+        "AI service is currently rate-limited. Please try again shortly.",
+      );
+    case "AI_TIMEOUT":
+      return t(
+        "AI 生成超时，请稍后重试或精简输入后再生成。",
+        "AI generation timed out. Please retry, or shorten the input before generating.",
+      );
+    default:
+      return t(
+        "AI 服务暂时不可用，请稍后重试。",
+        "AI service is temporarily unavailable. Please try again later.",
+      );
+  }
+}
+
+export const maxDuration = 300;
 
 async function requireCurrentUser(request: NextRequest) {
   const { token, error: tokenError } = extractTokenFromRequest(request);
@@ -184,6 +217,27 @@ export async function POST(request: NextRequest) {
       data: contract,
     });
   } catch (error) {
+    if (error instanceof ContractAIError) {
+      console.error("Generate contract AI error:", {
+        code: error.code,
+        status: error.status,
+        provider: error.provider,
+        message: error.message,
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: error.code,
+            message: getAiErrorMessage(error),
+            provider: error.provider,
+          },
+        },
+        { status: error.status },
+      );
+    }
+
     console.error("Generate contract failed:", error);
 
     if (error instanceof Error && error.message.includes("API")) {

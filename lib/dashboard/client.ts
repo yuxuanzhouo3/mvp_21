@@ -208,9 +208,17 @@ export async function uploadDashboardDocument(payload: {
 }
 
 export async function downloadDashboardDocument(documentId: string): Promise<void> {
+  await downloadDashboardDocumentByFormat(documentId);
+}
+
+export async function downloadDashboardDocumentByFormat(
+  documentId: string,
+  format: "pdf" | "word" | "html" = "pdf",
+): Promise<void> {
+  const extension = format === "word" ? "doc" : format;
   await downloadAuthenticatedFile(
-    `/api/dashboard/documents/${documentId}/download`,
-    `document-${documentId.replace(/[:/\\]/g, "-")}`,
+    `/api/dashboard/documents/${documentId}/download?format=${format}`,
+    `document-${documentId.replace(/[:/\\]/g, "-")}.${extension}`,
   );
 }
 

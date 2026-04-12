@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { normalizeContractEnhancementMeta } from "@/lib/contracts/enhancements";
 import {
+  buildContractDocumentHtml,
   buildContractHtml,
   normalizeContractContent,
   sanitizeDownloadFileName,
@@ -797,8 +798,12 @@ export async function revokeDashboardDocumentShareLink(
 export async function buildDashboardDocumentDownload(
   userId: string,
   documentId: string,
+  options?: {
+    format?: "pdf" | "word" | "html";
+  },
 ): Promise<{ fileName: string; buffer: Buffer; contentType: string } | null> {
   const reference = decodeDashboardDocumentId(documentId);
+  const format = options?.format || "pdf";
 
   if (reference.sourceKind === "uploaded") {
     const document = await getWorkspaceDocumentById(reference.rawId);
@@ -824,9 +829,31 @@ export async function buildDashboardDocumentDownload(
     return null;
   }
 
+  const fileStem = sanitizeDownloadFileName(content.title || contract.title || "contract");
+  const renderedHtml =
+    typeof contract.metadata?.editorHtml === "string" ? contract.metadata.editorHtml : null;
+  const bodyHtml = buildContractHtml(content, { renderedHtml });
+  const documentHtml = buildContractDocumentHtml(content.title || contract.title || "Contract", bodyHtml);
+
+  if (format === "word") {
+    return {
+      fileName: `${fileStem}.doc`,
+      buffer: Buffer.from(documentHtml, "utf8"),
+      contentType: "application/msword; charset=utf-8",
+    };
+  }
+
+  if (format === "html") {
+    return {
+      fileName: `${fileStem}.html`,
+      buffer: Buffer.from(documentHtml, "utf8"),
+      contentType: "text/html; charset=utf-8",
+    };
+  }
+
   const pdfBuffer = await buildContractPdfBuffer(content);
   return {
-    fileName: `${sanitizeDownloadFileName(content.title || contract.title || "contract")}.pdf`,
+    fileName: `${fileStem}.pdf`,
     buffer: pdfBuffer,
     contentType: "application/pdf",
   };

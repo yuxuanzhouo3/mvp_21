@@ -139,11 +139,11 @@ function loadChineseFontBuffer() {
 async function buildModernPdfBuffer(
   contract: ContractContent,
   language: SupportedLanguage,
+  chineseFontBuffer?: Buffer | null,
 ) {
   const pdfDoc = await PDFDocument.create();
   pdfDoc.registerFontkit(fontkit);
 
-  const chineseFontBuffer = loadChineseFontBuffer();
   const font =
     chineseFontBuffer && language === "zh"
       ? await pdfDoc.embedFont(chineseFontBuffer, { subset: true })
@@ -199,12 +199,18 @@ export async function buildContractPdfBuffer(
   },
 ) {
   const language = resolvePreferredLanguage(options?.language);
+  const chineseFontBuffer = language === "zh" ? loadChineseFontBuffer() : null;
+
+  if (language === "zh" && !chineseFontBuffer) {
+    // Avoid rendering Chinese with Helvetica (which lacks CJK glyphs).
+    // Fall back to the legacy PDF writer that uses STSong-Light.
+    return buildLegacyContractPdfBuffer(contract, { language });
+  }
 
   try {
-    return await buildModernPdfBuffer(contract, language);
+    return await buildModernPdfBuffer(contract, language, chineseFontBuffer);
   } catch (error) {
     console.error("[contracts/pdf] Modern PDF generation failed, fallback to legacy writer:", error);
     return buildLegacyContractPdfBuffer(contract, { language });
   }
 }
-

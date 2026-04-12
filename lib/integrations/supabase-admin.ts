@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { isInternationalDeployment } from "@/lib/config/deployment.config";
+import { assertSupabaseRuntimeEnv } from "@/lib/config/supabase-runtime";
 
 // Server-side Supabase client with service-role access for admin operations.
 // Do not import this module into client components.
@@ -11,9 +12,13 @@ export function getSupabaseAdmin() {
     return supabaseAdminInstance;
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+  const env = assertSupabaseRuntimeEnv({
+    context: "supabase-admin",
+    requireServiceRole: true,
+  });
+  const supabaseUrl = env.url;
+  const serviceRoleKey = env.serviceRoleKey;
+  const anonKey = env.anonKey;
 
   if (isInternationalDeployment() && process.env.NODE_ENV === "production" && !supabaseUrl) {
     console.warn(
@@ -27,9 +32,18 @@ export function getSupabaseAdmin() {
     );
   }
 
+  const fallbackUrl = env.strictMode ? "" : "https://placeholder.supabase.co";
+  const fallbackKey = env.strictMode ? "" : "placeholder-key";
+
+  if ((!supabaseUrl || !serviceRoleKey) && env.strictMode) {
+    throw new Error(
+      "[supabase-admin] Supabase admin initialization blocked: missing URL or SERVICE_ROLE key.",
+    );
+  }
+
   supabaseAdminInstance = createClient(
-    supabaseUrl || "https://placeholder.supabase.co",
-    serviceRoleKey || anonKey || "placeholder-key",
+    supabaseUrl || fallbackUrl,
+    serviceRoleKey || anonKey || fallbackKey,
     {
       auth: { persistSession: false },
     },

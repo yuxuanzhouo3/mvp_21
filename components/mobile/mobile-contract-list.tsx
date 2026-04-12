@@ -141,7 +141,7 @@ export function MobileContractList() {
   }
 
   return (
-    <div className="pb-20">
+    <div className="pb-[calc(5rem+env(safe-area-inset-bottom))]">
       <div className="sticky top-0 z-40 border-b border-border bg-background">
         <div className="px-4 py-4">
           <div className="mb-4 flex items-center gap-3">

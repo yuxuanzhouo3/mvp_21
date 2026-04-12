@@ -10,6 +10,7 @@ const mockPaymentRateLimit: any = jest.fn();
 const mockLogBusinessEvent: any = jest.fn();
 const mockLogError: any = jest.fn();
 const mockLogSecurityEvent: any = jest.fn();
+const mockObserveOperationalMetric: any = jest.fn();
 
 const mockPayPalConfirmPayment: any = jest.fn();
 const mockStripeConfirmPayment: any = jest.fn();
@@ -38,6 +39,10 @@ jest.mock("@/lib/utils/logger", () => ({
   logBusinessEvent: (...args: unknown[]) => mockLogBusinessEvent(...args),
   logError: (...args: unknown[]) => mockLogError(...args),
   logSecurityEvent: (...args: unknown[]) => mockLogSecurityEvent(...args),
+}));
+
+jest.mock("@/lib/monitoring/operational-observability", () => ({
+  observeOperationalMetric: (...args: unknown[]) => mockObserveOperationalMetric(...args),
 }));
 
 jest.mock(
@@ -111,6 +116,13 @@ describe("payment confirm route coverage", () => {
     expect(response.status).toBe(401);
     expect(payload).toEqual({ success: false, error: "Unauthorized" });
     expect(mockCreateAuthErrorResponse).toHaveBeenCalled();
+    expect(mockObserveOperationalMetric).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chain: "payment_confirm",
+        outcome: "rejected",
+        statusCode: 401,
+      }),
+    );
   });
 
   test("blocks confirmation when the payment belongs to another user", async () => {
@@ -158,6 +170,13 @@ describe("payment confirm route coverage", () => {
     expect(response.status).toBe(400);
     expect(payload).toEqual({ success: false, error: "Payment confirmation failed" });
     expect(mockApplySubscriptionPaymentSuccess).not.toHaveBeenCalled();
+    expect(mockObserveOperationalMetric).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chain: "payment_confirm",
+        outcome: "rejected",
+        statusCode: 400,
+      }),
+    );
   });
 
   test("returns the stored result for already completed payments without re-confirming upstream", async () => {
@@ -186,6 +205,13 @@ describe("payment confirm route coverage", () => {
     expect(response.status).toBe(200);
     expect(mockPayPalConfirmPayment).not.toHaveBeenCalled();
     expect(mockApplySubscriptionPaymentSuccess).not.toHaveBeenCalled();
+    expect(mockObserveOperationalMetric).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chain: "payment_confirm",
+        outcome: "success",
+        statusCode: 200,
+      }),
+    );
     expect(payload).toEqual({
       success: true,
       transactionId: "paypal-capture-1",
@@ -235,6 +261,13 @@ describe("payment confirm route coverage", () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
+    expect(mockObserveOperationalMetric).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chain: "payment_confirm",
+        outcome: "success",
+        statusCode: 200,
+      }),
+    );
     expect(mockApplySubscriptionPaymentSuccess).toHaveBeenCalledWith({
       payment: expect.objectContaining({
         id: "payment-1",

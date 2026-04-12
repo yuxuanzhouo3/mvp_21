@@ -101,6 +101,21 @@ function mapProviderError(error: unknown, provider: AIProvider): ContractAIError
     );
   }
 
+  if (
+    status === 408 ||
+    status === 504 ||
+    normalizedMessage.includes("timeout") ||
+    normalizedMessage.includes("timed out") ||
+    normalizedMessage.includes("etimedout")
+  ) {
+    return new ContractAIError(
+      `AI provider timeout: ${message}`,
+      "AI_TIMEOUT",
+      504,
+      provider,
+    );
+  }
+
   if (status === 401 || status === 403) {
     return new ContractAIError(
       `DashScope API key is unavailable: ${message}`,
