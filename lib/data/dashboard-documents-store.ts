@@ -7,6 +7,7 @@ import {
   normalizeContractContent,
   sanitizeDownloadFileName,
 } from "@/lib/contracts/format";
+import { buildContractExportSignatures } from "@/lib/contracts/export-signatures";
 import { buildContractPdfBuffer } from "@/lib/contracts/pdf";
 import { getContractById, listContracts } from "@/lib/data/contracts-store";
 import type { UnifiedContractRecord } from "@/lib/data/unified-models";
@@ -832,7 +833,11 @@ export async function buildDashboardDocumentDownload(
   const fileStem = sanitizeDownloadFileName(content.title || contract.title || "contract");
   const renderedHtml =
     typeof contract.metadata?.editorHtml === "string" ? contract.metadata.editorHtml : null;
-  const bodyHtml = buildContractHtml(content, { renderedHtml });
+  const exportSignatures = buildContractExportSignatures(contract);
+  const bodyHtml = buildContractHtml(content, {
+    renderedHtml,
+    signatures: exportSignatures,
+  });
   const documentHtml = buildContractDocumentHtml(content.title || contract.title || "Contract", bodyHtml);
 
   if (format === "word") {
@@ -851,7 +856,9 @@ export async function buildDashboardDocumentDownload(
     };
   }
 
-  const pdfBuffer = await buildContractPdfBuffer(content);
+  const pdfBuffer = await buildContractPdfBuffer(content, {
+    signatures: exportSignatures,
+  });
   return {
     fileName: `${fileStem}.pdf`,
     buffer: pdfBuffer,

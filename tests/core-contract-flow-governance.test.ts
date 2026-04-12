@@ -29,10 +29,11 @@ describe("core contract flow governance", () => {
     expect(contractDetailRoute).toContain("Invalid JSON body.");
     expect(contractDetailRoute).toContain("Request body must be an object.");
 
-    expect(contractDetailRoute).toContain('body.action === "start_signing"');
-    expect(contractDetailRoute).toContain('body.action === "confirm_sender"');
-    expect(contractDetailRoute).toContain('body.action === "confirm_counterparty"');
-    expect(contractDetailRoute).toContain('body.action === "send_reminder"');
+    expect(contractDetailRoute).toContain("const CONTRACT_ACTIONS");
+    expect(contractDetailRoute).toContain('"start_signing"');
+    expect(contractDetailRoute).toContain('"confirm_sender"');
+    expect(contractDetailRoute).toContain('"confirm_counterparty"');
+    expect(contractDetailRoute).toContain('"send_reminder"');
 
     expect(contractExportRoute).toContain('format === "pdf"');
     expect(contractExportRoute).toContain('"Content-Type": "application/pdf"');

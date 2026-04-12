@@ -11,6 +11,7 @@ const mockSanitizeDownloadFileName: any = jest.fn();
 const mockBuildContractPdfBuffer: any = jest.fn();
 const mockObserveOperationalMetric: any = jest.fn();
 const mockLogError: any = jest.fn();
+const mockBuildContractExportSignatures: any = jest.fn();
 
 jest.mock("@/lib/auth/auth-utils", () => ({
   extractTokenFromRequest: (...args: unknown[]) => mockExtractTokenFromRequest(...args),
@@ -30,6 +31,11 @@ jest.mock("@/lib/contracts/format", () => ({
 
 jest.mock("@/lib/contracts/pdf", () => ({
   buildContractPdfBuffer: (...args: unknown[]) => mockBuildContractPdfBuffer(...args),
+}));
+
+jest.mock("@/lib/contracts/export-signatures", () => ({
+  buildContractExportSignatures: (...args: unknown[]) =>
+    mockBuildContractExportSignatures(...args),
 }));
 
 jest.mock("@/lib/monitoring/operational-observability", () => ({
@@ -90,6 +96,15 @@ describe("contract export observability", () => {
       sections: [],
     });
     mockSanitizeDownloadFileName.mockReturnValue("demo-contract");
+    const signatures = {
+      sender: {
+        role: "sender",
+        signerName: "Alice",
+        createdAt: "2026-04-12T08:00:00.000Z",
+        method: "draw",
+      },
+    };
+    mockBuildContractExportSignatures.mockReturnValue(signatures);
     mockBuildContractHtml.mockReturnValue("<main>demo</main>");
     mockBuildContractDocumentHtml.mockReturnValue("<html><main>demo</main></html>");
 
@@ -105,6 +120,12 @@ describe("contract export observability", () => {
         outcome: "success",
         statusCode: 200,
         userId: "user-1",
+      }),
+    );
+    expect(mockBuildContractHtml).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Demo Contract", sections: [] }),
+      expect.objectContaining({
+        signatures,
       }),
     );
   });
@@ -131,6 +152,21 @@ describe("contract export observability", () => {
       sections: [],
     });
     mockSanitizeDownloadFileName.mockReturnValue("demo-contract");
+    const signatures = {
+      sender: {
+        role: "sender",
+        signerName: "Alice",
+        createdAt: "2026-04-12T08:00:00.000Z",
+        method: "draw",
+      },
+      counterparty: {
+        role: "counterparty",
+        signerName: "Bob",
+        createdAt: "2026-04-12T09:00:00.000Z",
+        method: "type",
+      },
+    };
+    mockBuildContractExportSignatures.mockReturnValue(signatures);
     mockBuildContractPdfBuffer.mockRejectedValue(new Error("pdf failed"));
 
     const response = await GET(
@@ -144,6 +180,12 @@ describe("contract export observability", () => {
         chain: "contract_export",
         outcome: "failure",
         statusCode: 500,
+      }),
+    );
+    expect(mockBuildContractPdfBuffer).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Demo Contract", sections: [] }),
+      expect.objectContaining({
+        signatures,
       }),
     );
     expect(mockLogError).toHaveBeenCalled();

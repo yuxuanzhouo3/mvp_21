@@ -257,13 +257,25 @@ describe("mainline simulated e2e regression", () => {
       new NextRequest(`http://localhost/api/contracts/${contractId}`, {
         method: "PUT",
         body: JSON.stringify({
+          action: "confirm_sender",
+          note: "e2e simulated sender confirm",
+        }),
+      }),
+      { params: Promise.resolve({ id: contractId }) },
+    );
+    expect(confirmResponse.status).toBe(200);
+
+    const confirmCounterpartyResponse = await updateContractPut(
+      new NextRequest(`http://localhost/api/contracts/${contractId}`, {
+        method: "PUT",
+        body: JSON.stringify({
           action: "confirm_counterparty",
           note: "e2e simulated confirm",
         }),
       }),
       { params: Promise.resolve({ id: contractId }) },
     );
-    expect(confirmResponse.status).toBe(200);
+    expect(confirmCounterpartyResponse.status).toBe(200);
 
     const exportResponse = await exportContractGet(
       new NextRequest(
@@ -323,4 +335,3 @@ describe("mainline simulated e2e regression", () => {
     expect(verifyPayload.data.status).toBe("verified");
   });
 });
-

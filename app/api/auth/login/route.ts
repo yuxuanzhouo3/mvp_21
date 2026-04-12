@@ -12,10 +12,35 @@ import { assertSupabaseRuntimeEnv } from "@/lib/config/supabase-runtime";
 import { accountLockout } from "@/lib/security/account-lockout";
 import { logSecurityEvent } from "@/lib/utils/logger";
 
-const loginSchema = z.object({
-  email: z.string().email("Invalid email format"),
-  password: z.string().min(1, "Password is required"),
-});
+const chinaPhoneRegex = /^1[3-9]\d{9}$/;
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const loginSchema = z
+  .object({
+    identifier: z.string().trim().optional(),
+    email: z.string().trim().optional(),
+    phone: z.string().trim().optional(),
+    password: z.string().min(1, "Password is required"),
+  })
+  .superRefine((value, ctx) => {
+    const identifier = value.identifier || value.email || value.phone;
+    if (!identifier) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Email or phone is required",
+        path: ["identifier"],
+      });
+      return;
+    }
+
+    if (!emailRegex.test(identifier) && !chinaPhoneRegex.test(identifier)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Invalid email or phone format",
+        path: ["identifier"],
+      });
+    }
+  });
 
 function getClientIp(request: NextRequest) {
   const forwarded = request.headers.get("x-forwarded-for");
@@ -88,11 +113,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid input" }, { status: 400 });
     }
 
-    const { email, password } = validationResult.data;
-    const lockoutStatus = accountLockout.isLocked(email);
+    const { password } = validationResult.data;
+    const loginIdentifierRaw =
+      validationResult.data.identifier ||
+      validationResult.data.email ||
+      validationResult.data.phone ||
+      "";
+    const loginIdentifier = loginIdentifierRaw.trim();
+    const loginWithPhone = chinaPhoneRegex.test(loginIdentifier);
+    const normalizedLoginIdentifier = loginWithPhone
+      ? loginIdentifier
+      : loginIdentifier.toLowerCase();
+    const lockoutKey = loginWithPhone
+      ? `phone:${normalizedLoginIdentifier}`
+      : normalizedLoginIdentifier;
+    const lockoutStatus = accountLockout.isLocked(lockoutKey);
     if (lockoutStatus.locked) {
       logSecurityEvent("login_blocked_locked_account", undefined, clientIP, {
-        email,
+        identifier: lockoutKey,
       });
       return NextResponse.json(
         { error: "Account is temporarily locked" },
@@ -104,15 +142,17 @@ export async function POST(request: NextRequest) {
       const userAgent = request.headers.get("user-agent") || undefined;
       const ipAddress = clientIP !== "unknown" ? clientIP : undefined;
 
-      const result = await loginUser(email, password, {
+      const result = await loginUser(normalizedLoginIdentifier, password, {
         deviceInfo: `${userAgent}`,
         ipAddress,
         userAgent,
       });
 
       if (!result.success || !result.userId) {
-        accountLockout.recordFailedAttempt(email, clientIP);
-        logSecurityEvent("login_failed", undefined, clientIP, { email });
+        accountLockout.recordFailedAttempt(lockoutKey, clientIP);
+        logSecurityEvent("login_failed", undefined, clientIP, {
+          identifier: lockoutKey,
+        });
         return NextResponse.json(
           { error: result.error || "Login failed" },
           { status: 401 },
@@ -120,16 +160,20 @@ export async function POST(request: NextRequest) {
       }
 
       const profile = await loadChinaAccountProfile(result.userId);
-      accountLockout.recordSuccessfulLogin(email);
-      logSecurityEvent("login_success", result.userId, clientIP, { email });
+      accountLockout.recordSuccessfulLogin(lockoutKey);
+      logSecurityEvent("login_success", result.userId, clientIP, {
+        identifier: lockoutKey,
+        identifierType: loginWithPhone ? "phone" : "email",
+      });
 
       const response = NextResponse.json({
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
         user: profile || {
           id: result.userId,
-          email: result.email || email,
+          email: result.email || (loginWithPhone ? "" : normalizedLoginIdentifier),
           name: result.name || "",
+          phone: result.phone || (loginWithPhone ? normalizedLoginIdentifier : ""),
           avatar: "",
           subscription_plan: "free",
           subscription_status: "inactive",
@@ -148,6 +192,13 @@ export async function POST(request: NextRequest) {
       return response;
     }
 
+    if (loginWithPhone) {
+      return NextResponse.json(
+        { error: "Phone number login is only available in CN deployment" },
+        { status: 400 },
+      );
+    }
+
     if (
       !process.env.NEXT_PUBLIC_SUPABASE_URL ||
       !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -163,14 +214,14 @@ export async function POST(request: NextRequest) {
       data: { session, user },
       error,
     } = await supabase.auth.signInWithPassword({
-      email,
+      email: normalizedLoginIdentifier,
       password,
     });
 
     if (error || !session || !user) {
-      accountLockout.recordFailedAttempt(email, clientIP);
+      accountLockout.recordFailedAttempt(lockoutKey, clientIP);
       logSecurityEvent("login_failed", undefined, clientIP, {
-        email,
+        email: normalizedLoginIdentifier,
         region: "INTL",
         error: error?.message,
       });
@@ -183,9 +234,9 @@ export async function POST(request: NextRequest) {
 
     const profile = await loadIntlAccountProfile(user.id, user);
 
-    accountLockout.recordSuccessfulLogin(email);
+    accountLockout.recordSuccessfulLogin(lockoutKey);
     logSecurityEvent("login_success", user.id, clientIP, {
-      email,
+      email: normalizedLoginIdentifier,
       region: "INTL",
     });
 
@@ -193,8 +244,8 @@ export async function POST(request: NextRequest) {
       accessToken: session.access_token,
       refreshToken: session.refresh_token,
       user: profile || {
-        id: user.id,
-        email: user.email || email,
+          id: user.id,
+          email: user.email || normalizedLoginIdentifier,
         name:
           user.user_metadata?.displayName ||
           user.user_metadata?.full_name ||

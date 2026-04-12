@@ -6,15 +6,9 @@ import {
   Archive,
   ArchiveRestore,
   ArrowLeft,
-  CheckCheck,
   Download,
-  Eye,
   FileText,
-  FileType2,
-  History,
   Loader2,
-  PencilLine,
-  RotateCcw,
   Send,
   ShieldCheck,
 } from "lucide-react";
@@ -37,13 +31,11 @@ import {
   type ContractDetail,
   getContractForCurrentUser,
 } from "@/lib/contracts/client";
-import { normalizeContractEnhancementMeta } from "@/lib/contracts/enhancements";
 import {
-  buildContractHtml,
-  getContractVersionHistory,
-  normalizeContractContent,
-  type ContractVersionEntry,
-} from "@/lib/contracts/format";
+  getAvailableContractActions,
+  normalizeContractEnhancementMeta,
+  type ContractWorkflowAction,
+} from "@/lib/contracts/enhancements";
 
 function formatDate(value?: string, locale = "zh-CN") {
   if (!value) return "-";
@@ -73,14 +65,6 @@ function normalizePartyName(party: Record<string, unknown>) {
   return hit || "-";
 }
 
-type WorkflowAction =
-  | "archive"
-  | "unarchive"
-  | "start_signing"
-  | "confirm_sender"
-  | "confirm_counterparty"
-  | "send_reminder";
-
 export default function ContractDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -91,10 +75,10 @@ export default function ContractDetailPage() {
 
   const [contractRecord, setContractRecord] = useState<ContractDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isActing, setIsActing] = useState<ContractWorkflowAction | null>(null);
   const [isDownloadingHtml, setIsDownloadingHtml] = useState(false);
   const [isDownloadingWord, setIsDownloadingWord] = useState(false);
-  const [isPrintingPdf, setIsPrintingPdf] = useState(false);
-  const [isActing, setIsActing] = useState<WorkflowAction | null>(null);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   const contractId = typeof params?.id === "string" ? params.id : "";
   const backHref = flowContext === "dashboard" ? "/dashboard/contracts" : "/contracts";
@@ -139,24 +123,6 @@ export default function ContractDetailPage() {
     };
   }, [backHref, contractId, isEn, router]);
 
-  const contractContent = useMemo(
-    () => normalizeContractContent(contractRecord?.content),
-    [contractRecord?.content],
-  );
-
-  const renderedHtml = useMemo(() => {
-    if (!contractContent) return "";
-    const editorHtml =
-      typeof contractRecord?.metadata?.editorHtml === "string"
-        ? contractRecord.metadata.editorHtml
-        : null;
-
-    return buildContractHtml(contractContent, {
-      language: isEn ? "en" : "zh",
-      renderedHtml: editorHtml,
-    });
-  }, [contractContent, contractRecord?.metadata, isEn]);
-
   const enhancement = useMemo(
     () =>
       contractRecord
@@ -165,95 +131,23 @@ export default function ContractDetailPage() {
     [contractRecord],
   );
 
-  const versionHistory = useMemo(() => {
-    const versions = getContractVersionHistory(contractRecord?.metadata);
-    if (versions.length > 0) {
-      return versions;
-    }
+  const availableActions = useMemo(
+    () => (contractRecord ? getAvailableContractActions(contractRecord) : []),
+    [contractRecord],
+  );
 
-    if (!contractRecord) {
-      return [] as ContractVersionEntry[];
-    }
+  const handleAction = async (action: ContractWorkflowAction, note?: string) => {
+    if (!contractId || !contractRecord) return;
 
-    const baseTitle = contractRecord.title || (isEn ? "Untitled Contract" : "未命名合同");
-    const fallback: ContractVersionEntry[] = [
-      {
-        id: `${contractRecord.id}-created`,
-        action: "draft_created",
-        label: isEn ? "Draft created" : "草稿创建",
-        createdAt: contractRecord.createdAt || contractRecord.updatedAt || new Date().toISOString(),
-        title: baseTitle,
-        summary: isEn ? "The contract record was created." : "已创建合同草稿记录。",
-      },
-    ];
-
-    if (
-      contractRecord.updatedAt &&
-      contractRecord.createdAt &&
-      contractRecord.updatedAt !== contractRecord.createdAt
-    ) {
-      fallback.unshift({
-        id: `${contractRecord.id}-updated`,
-        action: "draft_saved",
-        label: isEn ? "Latest update" : "最近更新",
-        createdAt: contractRecord.updatedAt,
-        title: baseTitle,
-        summary: isEn ? "The contract content was updated later." : "合同内容在后续被更新过。",
-      });
-    }
-
-    return fallback;
-  }, [contractRecord, isEn]);
-
-  const handleDownloadHtml = async () => {
-    if (!contractId) return;
-    try {
-      setIsDownloadingHtml(true);
-      await downloadContractForCurrentUser(contractId, "html");
-    } catch (error) {
-      console.error("[ContractDetailPage] Failed to download HTML:", error);
-      toast.error(isEn ? "Failed to download HTML." : "下载 HTML 失败。");
-    } finally {
-      setIsDownloadingHtml(false);
-    }
-  };
-
-  const handleDownloadWord = async () => {
-    if (!contractId) return;
-    try {
-      setIsDownloadingWord(true);
-      await downloadContractForCurrentUser(contractId, "word");
-    } catch (error) {
-      console.error("[ContractDetailPage] Failed to export Word:", error);
-      toast.error(isEn ? "Failed to export Word." : "导出 Word 失败。");
-    } finally {
-      setIsDownloadingWord(false);
-    }
-  };
-
-  const handleExportPdf = async () => {
-    if (!contractId) return;
-    try {
-      setIsPrintingPdf(true);
-      await downloadContractForCurrentUser(contractId, "pdf");
-    } catch (error) {
-      console.error("[ContractDetailPage] Failed to export PDF:", error);
+    const allowedActions = new Set(getAvailableContractActions(contractRecord));
+    if (!allowedActions.has(action)) {
       toast.error(
-        error instanceof Error && error.message === "PRINT_WINDOW_BLOCKED"
-          ? isEn
-            ? "Please allow pop-ups so the print window can open."
-            : "请允许弹窗，以便打开 PDF 打印窗口。"
-          : isEn
-            ? "Failed to export PDF."
-            : "导出 PDF 失败。",
+        isEn
+          ? "This action is not available in the current signing status."
+          : "当前签署状态下不允许执行该动作。",
       );
-    } finally {
-      setIsPrintingPdf(false);
+      return;
     }
-  };
-
-  const handleAction = async (action: WorkflowAction, note?: string) => {
-    if (!contractId) return;
 
     try {
       setIsActing(action);
@@ -268,7 +162,30 @@ export default function ContractDetailPage() {
     }
   };
 
-  if (isLoading || !contractRecord) {
+  const handleDownload = async (format: "html" | "word" | "pdf") => {
+    if (!contractId) return;
+
+    const setFlag =
+      format === "html"
+        ? setIsDownloadingHtml
+        : format === "word"
+          ? setIsDownloadingWord
+          : setIsDownloadingPdf;
+
+    try {
+      setFlag(true);
+      await downloadContractForCurrentUser(contractId, format);
+    } catch (error) {
+      console.error(`[ContractDetailPage] Failed to export ${format}:`, error);
+      toast.error(
+        isEn ? `Failed to export ${format.toUpperCase()}.` : `导出 ${format.toUpperCase()} 失败。`,
+      );
+    } finally {
+      setFlag(false);
+    }
+  };
+
+  if (isLoading || !contractRecord || !enhancement) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -278,6 +195,10 @@ export default function ContractDetailPage() {
 
   const partyNames = contractRecord.parties.map(normalizePartyName);
   const baseTitle = contractRecord.title || (isEn ? "Untitled Contract" : "未命名合同");
+  const signPageHref =
+    flowContext === "dashboard"
+      ? `/dashboard/contracts/${contractRecord.id}/sign`
+      : `/dashboard/contracts/${contractRecord.id}/sign`;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
@@ -294,60 +215,33 @@ export default function ContractDetailPage() {
               <h1 className="text-3xl font-bold">{baseTitle}</h1>
               <Badge variant="secondary">{contractRecord.status}</Badge>
               {contractRecord.region ? <Badge variant="outline">{contractRecord.region}</Badge> : null}
-              {enhancement?.archivedAt ? (
+              {enhancement.archivedAt ? (
                 <Badge variant="outline">{isEn ? "Archived" : "已归档"}</Badge>
               ) : null}
             </div>
             <p className="text-sm text-muted-foreground">
-              {isEn ? "Created" : "创建于"}{" "}
-              {formatDate(contractRecord.createdAt || contractRecord.updatedAt, isEn ? "en-US" : "zh-CN")}
+              {isEn ? "Created" : "创建于"} {formatDate(contractRecord.createdAt || contractRecord.updatedAt, isEn ? "en-US" : "zh-CN")}
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={() =>
-                router.push(
-                  flowContext === "dashboard"
-                    ? `/create/analyze?id=${contractRecord.id}&ctx=dashboard`
-                    : `/create/analyze?id=${contractRecord.id}`,
-                )
-              }
-            >
-              <RotateCcw className="mr-2 h-4 w-4" />
-              {isEn ? "Re-enter Analysis" : "重新进入分析"}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() =>
-                router.push(
-                  flowContext === "dashboard"
-                    ? `/create/edit?id=${contractRecord.id}&ctx=dashboard`
-                    : `/create/edit?id=${contractRecord.id}`,
-                )
-              }
-            >
-              <PencilLine className="mr-2 h-4 w-4" />
-              {isEn ? "Edit Draft" : "继续编辑"}
-            </Button>
-            <Button variant="outline" onClick={handleExportPdf} disabled={isPrintingPdf || !contractContent}>
-              {isPrintingPdf ? (
+            <Button variant="outline" onClick={() => void handleDownload("pdf")} disabled={isDownloadingPdf}>
+              {isDownloadingPdf ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <Download className="mr-2 h-4 w-4" />
               )}
               {isEn ? "Export PDF" : "导出 PDF"}
             </Button>
-            <Button variant="outline" onClick={handleDownloadWord} disabled={isDownloadingWord || !contractContent}>
+            <Button variant="outline" onClick={() => void handleDownload("word")} disabled={isDownloadingWord}>
               {isDownloadingWord ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <FileType2 className="mr-2 h-4 w-4" />
+                <Download className="mr-2 h-4 w-4" />
               )}
               {isEn ? "Export Word" : "导出 Word"}
             </Button>
-            <Button onClick={handleDownloadHtml} disabled={isDownloadingHtml || !contractContent}>
+            <Button onClick={() => void handleDownload("html")} disabled={isDownloadingHtml}>
               {isDownloadingHtml ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -388,33 +282,30 @@ export default function ContractDetailPage() {
                 </CardTitle>
                 <CardDescription>
                   {isEn
-                    ? "Launch signing, confirm both parties, send reminders, and retain the final electronic copy."
-                    : "支持发起签署、双方确认、提醒催办与签署完成后的电子版留存。"}
+                    ? "Only actions valid for the current state are shown below."
+                    : "下方仅展示当前状态允许执行的操作。"}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap gap-2">
-                  <Badge>{enhancement?.signFlow.status || "draft"}</Badge>
-                  {enhancement?.signFlow.finalCopy ? (
+                  <Badge>{enhancement.signFlow.status}</Badge>
+                  {enhancement.signFlow.finalCopy ? (
                     <Badge variant="outline">{isEn ? "Final copy retained" : "电子版已留存"}</Badge>
                   ) : null}
                 </div>
 
                 <div className="space-y-3">
-                  {enhancement?.signFlow.participants.map((participant) => (
-                    <div
-                      key={participant.role}
-                      className="rounded-xl border border-border/70 bg-muted/20 p-3"
-                    >
+                  {enhancement.signFlow.participants.map((participant) => (
+                    <div key={participant.role} className="rounded-xl border border-border/70 bg-muted/20 p-3">
                       <div className="flex items-center justify-between gap-2">
                         <div className="font-medium">
                           {participant.role === "sender"
                             ? isEn
                               ? "Sender"
-                              : "甲方/发起方"
+                              : "发起方"
                             : isEn
                               ? "Counterparty"
-                              : "乙方/对方"}
+                              : "对方"}
                         </div>
                         <Badge variant={participant.status === "confirmed" ? "secondary" : "outline"}>
                           {participant.status === "confirmed"
@@ -437,93 +328,109 @@ export default function ContractDetailPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => handleAction("start_signing", isEn ? "Signing package launched" : "已发起签署")}
-                    disabled={isActing !== null}
-                  >
-                    {isActing === "start_signing" ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
+                  {availableActions.includes("start_signing") ? (
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        handleAction(
+                          "start_signing",
+                          isEn ? "Signing package launched" : "已发起签署",
+                        )
+                      }
+                      disabled={isActing !== null}
+                    >
+                      {isActing === "start_signing" ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="mr-2 h-4 w-4" />
+                      )}
+                      {isEn ? "Launch Signing" : "发起签署"}
+                    </Button>
+                  ) : null}
+
+                  {availableActions.includes("confirm_sender") ? (
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        handleAction(
+                          "confirm_sender",
+                          isEn ? "Sender confirmed" : "发起方已确认",
+                        )
+                      }
+                      disabled={isActing !== null}
+                    >
+                      {isEn ? "Sender Confirm" : "发起方确认"}
+                    </Button>
+                  ) : null}
+
+                  {availableActions.includes("confirm_counterparty") ? (
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        handleAction(
+                          "confirm_counterparty",
+                          isEn
+                            ? "Counterparty confirmed and final copy retained"
+                            : "对方已确认，电子版已留存",
+                        )
+                      }
+                      disabled={isActing !== null}
+                    >
+                      {isEn ? "Counterparty Confirm" : "对方确认"}
+                    </Button>
+                  ) : null}
+
+                  {availableActions.includes("send_reminder") ? (
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        handleAction(
+                          "send_reminder",
+                          isEn ? "Reminder sent to pending signers" : "已向待签署方发送提醒",
+                        )
+                      }
+                      disabled={isActing !== null}
+                    >
                       <Send className="mr-2 h-4 w-4" />
-                    )}
-                    {isEn ? "Launch Signing" : "发起签署"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => handleAction("confirm_sender", isEn ? "Sender confirmed" : "发起方已确认")}
-                    disabled={isActing !== null}
-                  >
-                    <CheckCheck className="mr-2 h-4 w-4" />
-                    {isEn ? "Sender Confirm" : "发起方确认"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      handleAction(
-                        "confirm_counterparty",
-                        isEn ? "Counterparty confirmed and final copy retained" : "对方已确认，电子版已留存",
-                      )
-                    }
-                    disabled={isActing !== null}
-                  >
-                    <ShieldCheck className="mr-2 h-4 w-4" />
-                    {isEn ? "Counterparty Confirm" : "对方确认"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => handleAction("send_reminder", isEn ? "Reminder sent to pending signers" : "已向待签署方发送提醒")}
-                    disabled={isActing !== null}
-                  >
-                    <Send className="mr-2 h-4 w-4" />
-                    {isEn ? "Send Reminder" : "发送提醒"}
-                  </Button>
+                      {isEn ? "Send Reminder" : "发送提醒"}
+                    </Button>
+                  ) : null}
                 </div>
 
-                {enhancement?.signFlow.finalCopy ? (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-                    <div className="font-medium">
-                      {isEn ? "Retained electronic copy" : "留存电子版"}
-                    </div>
-                    <div className="mt-2">{enhancement.signFlow.finalCopy.filename}</div>
-                    <div className="mt-1 text-xs">
-                      {formatDate(
-                        enhancement.signFlow.finalCopy.createdAt,
-                        isEn ? "en-US" : "zh-CN",
-                      )}
-                    </div>
-                  </div>
-                ) : null}
+                <Button variant="outline" className="w-full" onClick={() => router.push(signPageHref)}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  {isEn ? "Open Unified Sign Page" : "进入统一签署页"}
+                </Button>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>{isEn ? "Contract Actions" : "合同操作"}</CardTitle>
+                <CardTitle>{isEn ? "Archive" : "归档"}</CardTitle>
               </CardHeader>
-              <CardContent className="grid gap-2">
+              <CardContent>
                 <Button
                   variant="outline"
                   onClick={() =>
                     handleAction(
-                      enhancement?.archivedAt ? "unarchive" : "archive",
-                      enhancement?.archivedAt
+                      enhancement.archivedAt ? "unarchive" : "archive",
+                      enhancement.archivedAt
                         ? isEn
                           ? "Restored to active list"
                           : "已恢复到活跃列表"
                         : isEn
                           ? "Archived from contract center"
-                          : "已归档到合同中心",
+                          : "已从合同中心归档",
                     )
                   }
                   disabled={isActing !== null}
                 >
-                  {enhancement?.archivedAt ? (
+                  {enhancement.archivedAt ? (
                     <ArchiveRestore className="mr-2 h-4 w-4" />
                   ) : (
                     <Archive className="mr-2 h-4 w-4" />
                   )}
-                  {enhancement?.archivedAt
+                  {enhancement.archivedAt
                     ? isEn
                       ? "Restore Contract"
                       : "恢复合同"
@@ -533,147 +440,80 @@ export default function ContractDetailPage() {
                 </Button>
               </CardContent>
             </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>{isEn ? "Evidence & Audit Trail" : "签署证据与审计痕迹"}</CardTitle>
-                <CardDescription>
-                  {isEn
-                    ? "Every reminder, confirmation, archive action, and retained final copy appears here."
-                    : "提醒、确认、归档与电子版留存都会保存在这里，便于后续审计。"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {enhancement?.signFlow.evidence.length ? (
-                  enhancement.signFlow.evidence.map((item) => (
-                    <div
-                      key={item.id}
-                      className="rounded-xl border border-border/70 bg-muted/20 p-3"
-                    >
-                      <div className="font-medium">{item.label}</div>
-                      <div className="mt-1 text-sm text-muted-foreground">{item.description}</div>
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        {formatDate(item.createdAt, isEn ? "en-US" : "zh-CN")}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
-                    {isEn ? "No evidence records yet." : "暂时还没有签署证据记录。"}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </div>
 
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <History className="h-4 w-4 text-primary" />
-                  {isEn ? "Operation Timeline" : "操作时间线"}
-                </CardTitle>
+                <CardTitle>{isEn ? "Operation Timeline" : "操作时间线"}</CardTitle>
                 <CardDescription>
                   {isEn
-                    ? "Version milestones plus explicit operation logs for archive and signing actions."
-                    : "除版本节点外，也展示归档和电子签署流程的操作日志。"}
+                    ? "Action logs from archive and signing operations."
+                    : "归档与签署流程的操作日志。"}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {(enhancement?.operationLogs.length
-                  ? enhancement.operationLogs
-                  : versionHistory
-                ).map((entry: any, index) => (
-                  <div key={entry.id || `${entry.label}-${index}`} className="relative pl-6">
-                    {index < (enhancement?.operationLogs.length || versionHistory.length) - 1 ? (
-                      <span className="absolute left-[7px] top-6 h-[calc(100%+12px)] w-px bg-border" />
-                    ) : null}
-                    <span className="absolute left-0 top-1.5 h-4 w-4 rounded-full border-2 border-primary bg-background" />
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium">{entry.label}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatDate(entry.createdAt, isEn ? "en-US" : "zh-CN")}
-                      </p>
-                      {"actor" in entry ? (
-                        <p className="text-xs text-muted-foreground">
-                          {isEn ? "Actor" : "操作人"}: {entry.actor}
-                        </p>
-                      ) : null}
-                      <p className="text-sm text-foreground">
-                        {"description" in entry ? entry.description : entry.summary}
+              <CardContent className="space-y-3">
+                {enhancement.operationLogs.length ? (
+                  enhancement.operationLogs.map((entry) => (
+                    <div key={entry.id} className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium">{entry.label}</p>
+                        <Badge variant="outline">{entry.action}</Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">{entry.description}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {entry.actor} · {formatDate(entry.createdAt, isEn ? "en-US" : "zh-CN")}
                       </p>
                     </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+                    {isEn ? "No operation logs yet." : "暂无操作日志。"}
                   </div>
-                ))}
+                )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>{isEn ? "Source Snapshot" : "原始来源"}</CardTitle>
+                <CardTitle>{isEn ? "Evidence Records" : "证据记录"}</CardTitle>
                 <CardDescription>
                   {isEn
-                    ? "Conversation text or imported source used to build this draft."
-                    : "生成合同时使用的原始对话、导入内容或分析结果。"}
+                    ? "Reminders, confirmations, and retained final copy are listed here."
+                    : "提醒、确认和最终电子版留存会展示在这里。"}
                 </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {enhancement.signFlow.evidence.length ? (
+                  enhancement.signFlow.evidence.map((item) => (
+                    <div key={item.id} className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium">{item.label}</p>
+                        <Badge variant="outline">{item.type}</Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {formatDate(item.createdAt, isEn ? "en-US" : "zh-CN")}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+                    {isEn ? "No evidence records yet." : "暂无证据记录。"}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{isEn ? "Source Snapshot" : "来源快照"}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="max-h-64 overflow-auto rounded-lg border bg-muted/30 p-3 text-sm whitespace-pre-wrap text-muted-foreground">
-                  {contractRecord.sourceContent || (isEn ? "No source content stored." : "暂无原始来源内容。")}
+                  {contractRecord.sourceContent ||
+                    (isEn ? "No source content stored." : "暂无来源内容。")}
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Eye className="h-5 w-5 text-primary" />
-                  {isEn ? "Contract Preview" : "合同预览"}
-                </CardTitle>
-                <CardDescription>
-                  {contractContent
-                    ? isEn
-                      ? "The preview reflects the latest saved draft and can be exported as HTML, Word, or PDF."
-                      : "这里展示最新保存的合同内容，并支持 HTML、Word、PDF 导出。"
-                    : isEn
-                      ? "The record exists, but the formal contract body has not been generated yet."
-                      : "合同记录已存在，但正式正文尚未生成。"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {contractContent ? (
-                  <div className="overflow-hidden rounded-xl border bg-white">
-                    <div className="border-b bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                      <FileText className="mr-2 inline h-4 w-4" />
-                      {isEn ? "Saved Contract Content" : "已保存的合同内容"}
-                    </div>
-                    <div
-                      className="max-h-[900px] overflow-auto p-6"
-                      style={{ fontFamily: '"SimSun", "Songti SC", serif', lineHeight: 1.8 }}
-                      dangerouslySetInnerHTML={{ __html: renderedHtml }}
-                    />
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed p-10 text-center">
-                    <p className="text-muted-foreground">
-                      {isEn
-                        ? "Generate the contract body first, then return here to review the saved document."
-                        : "请先生成合同正文，生成后即可回到这里查看正式内容。"}
-                    </p>
-                    <Button
-                      className="mt-4"
-                      onClick={() =>
-                        router.push(
-                          flowContext === "dashboard"
-                            ? `/create/analyze?id=${contractRecord.id}&ctx=dashboard`
-                            : `/create/analyze?id=${contractRecord.id}`,
-                        )
-                      }
-                    >
-                      {isEn ? "Go to Generate" : "前往生成合同"}
-                    </Button>
-                  </div>
-                )}
               </CardContent>
             </Card>
           </div>

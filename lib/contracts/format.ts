@@ -1,6 +1,10 @@
 ﻿import { getContractTypeDisplayName } from "@/lib/ai/prompts/generate";
 import type { AIAnalysisResult, ContractContent, ContractSection } from "@/lib/ai/types";
 import { isChinaRegion } from "@/lib/config/region";
+import type {
+  ContractExportSignatureRecord,
+  ContractExportSignatures,
+} from "@/lib/contracts/export-signatures";
 
 type SupportedLanguage = "zh" | "en";
 export type ContractVersionAction = "draft_created" | "analysis_generated" | "draft_saved";
@@ -25,6 +29,138 @@ function escapeHtml(value: string): string {
 
 function formatRichText(value: string): string {
   return escapeHtml(value).replace(/\n/g, "<br />");
+}
+
+function sanitizeSignatureImageDataUrl(value?: string) {
+  if (!value) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (/^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=]+$/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  return undefined;
+}
+
+function formatSignatureDate(value: string | undefined, language: SupportedLanguage) {
+  if (!value) {
+    return language === "en" ? "Not signed yet" : "未签署";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(language === "en" ? "en-US" : "zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function normalizeSignatureMethodLabel(
+  method: string | undefined,
+  language: SupportedLanguage,
+) {
+  if (!method) {
+    return language === "en" ? "Not specified" : "未标注";
+  }
+
+  if (method === "draw") {
+    return language === "en" ? "Handwritten" : "手写签名";
+  }
+  if (method === "type") {
+    return language === "en" ? "Typed signature" : "输入签名";
+  }
+  if (method === "upload") {
+    return language === "en" ? "Uploaded signature image" : "上传签名图";
+  }
+  if (method === "confirmation") {
+    return language === "en" ? "Confirmation record" : "确认记录";
+  }
+  return method;
+}
+
+function buildPartySignatureHtml(args: {
+  language: SupportedLanguage;
+  title: string;
+  signature?: ContractExportSignatureRecord;
+}) {
+  const { language, title, signature } = args;
+  const labels = {
+    signer: language === "en" ? "Signer" : "签署人",
+    date: language === "en" ? "Signed At" : "签署时间",
+    method: language === "en" ? "Method" : "签署方式",
+    source: language === "en" ? "Source" : "来源",
+    unsigned: language === "en" ? "Pending signature" : "待签署",
+    dateBlank: language === "en" ? "_______ / _____ / _____" : "_______年___月___日",
+  };
+  const imageDataUrl = sanitizeSignatureImageDataUrl(signature?.imageDataUrl);
+  const signerName = signature?.signerName || (language === "en" ? "-" : "未签署");
+
+  let html = `<div style="width:48%;border:1px solid #d1d5db;border-radius:10px;padding:14px 16px;">`;
+  html += `<p style="margin:0 0 8px 0;"><strong>${escapeHtml(title)}</strong></p>`;
+
+  if (signature) {
+    html += `<p style="margin:0 0 6px 0;"><strong>${labels.signer}:</strong> ${escapeHtml(signerName)}</p>`;
+    if (imageDataUrl) {
+      html += `<div style="margin:8px 0 10px 0;border:1px solid #e5e7eb;background:#fff;padding:8px;border-radius:8px;">`;
+      html += `<img src="${imageDataUrl}" alt="${escapeHtml(title)} signature" style="max-width:100%;max-height:88px;object-fit:contain;" />`;
+      html += `</div>`;
+    } else if (signature.typedName) {
+      html += `<p style="margin:8px 0 10px 0;font-size:24px;font-family:serif;">${escapeHtml(signature.typedName)}</p>`;
+    } else {
+      html += `<p style="margin:8px 0 10px 0;border-bottom:1px solid #111827;width:220px;"></p>`;
+    }
+
+    html += `<p style="margin:0 0 4px 0;"><strong>${labels.date}:</strong> ${escapeHtml(formatSignatureDate(signature.createdAt, language))}</p>`;
+    html += `<p style="margin:0 0 4px 0;"><strong>${labels.method}:</strong> ${escapeHtml(normalizeSignatureMethodLabel(signature.method, language))}</p>`;
+    html += `<p style="margin:0;"><strong>${labels.source}:</strong> ${escapeHtml(signature.source || "-")}</p>`;
+  } else {
+    html += `<p style="margin:0 0 10px 0;color:#6b7280;">${labels.unsigned}</p>`;
+    html += `<p style="margin:8px 0 10px 0;border-bottom:1px solid #111827;width:220px;"></p>`;
+    html += `<p style="margin:0;"><strong>${labels.date}:</strong> ${labels.dateBlank}</p>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+function buildSignatureSectionHtml(
+  language: SupportedLanguage,
+  signatures?: ContractExportSignatures,
+) {
+  const labels = {
+    title: language === "en" ? "Signature Records" : "电子签署记录",
+    partyA: language === "en" ? "Party A (Sender)" : "甲方（发起方）",
+    partyB: language === "en" ? "Party B (Counterparty)" : "乙方（对方）",
+  };
+
+  let html = `<div style="margin-top:48px;">`;
+  html += `<h2 style="margin:0 0 12px 0;">${labels.title}</h2>`;
+  html += `<div style="display:flex;justify-content:space-between;gap:16px;align-items:stretch;">`;
+  html += buildPartySignatureHtml({
+    language,
+    title: labels.partyA,
+    signature: signatures?.sender,
+  });
+  html += buildPartySignatureHtml({
+    language,
+    title: labels.partyB,
+    signature: signatures?.counterparty,
+  });
+  html += `</div>`;
+  html += `</div>`;
+  return html;
 }
 
 function encodePdfHexString(value: string): string {
@@ -214,49 +350,34 @@ export function buildContractHtml(
   options?: {
     language?: SupportedLanguage;
     renderedHtml?: string | null;
+    signatures?: ContractExportSignatures;
   },
 ): string {
-  if (options?.renderedHtml && options.renderedHtml.trim()) {
-    return options.renderedHtml;
-  }
-
   const language = options?.language || "zh";
   const labels = {
     disclaimer: language === "en" ? "Disclaimer" : "声明",
-    partyASign: language === "en" ? "Party A (Signature)" : "甲方（签字/盖章）",
-    partyBSign: language === "en" ? "Party B (Signature)" : "乙方（签字/盖章）",
-    date: language === "en" ? "Date" : "日期",
-    emptyDate: language === "en" ? "_______ / _____ / _____" : "_______年___月___日",
   };
+  let html = "";
 
-  const sections = [...contract.sections].sort((left, right) => left.order - right.order);
-  let html = `<h1 style="text-align:center;margin-bottom:24px;">${escapeHtml(contract.title)}</h1>\n\n`;
+  if (options?.renderedHtml && options.renderedHtml.trim()) {
+    html = options.renderedHtml;
+  } else {
+    const sections = [...contract.sections].sort((left, right) => left.order - right.order);
+    html = `<h1 style="text-align:center;margin-bottom:24px;">${escapeHtml(contract.title)}</h1>\n\n`;
 
-  sections.forEach((section) => {
-    html += `<h2 style="margin-top:20px;margin-bottom:12px;">${escapeHtml(section.title)}</h2>\n`;
-    html += `<p style="text-indent:2em;line-height:1.8;">${formatRichText(section.content)}</p>\n\n`;
-  });
+    sections.forEach((section) => {
+      html += `<h2 style="margin-top:20px;margin-bottom:12px;">${escapeHtml(section.title)}</h2>\n`;
+      html += `<p style="text-indent:2em;line-height:1.8;">${formatRichText(section.content)}</p>\n\n`;
+    });
 
-  if (contract.disclaimer) {
-    html += `<div style="margin-top:32px;padding:16px;background:#f5f5f5;border-radius:8px;">`;
-    html += `<p style="color:#666;font-size:14px;"><strong>${labels.disclaimer}:</strong> ${formatRichText(contract.disclaimer)}</p>`;
-    html += `</div>\n\n`;
+    if (contract.disclaimer) {
+      html += `<div style="margin-top:32px;padding:16px;background:#f5f5f5;border-radius:8px;">`;
+      html += `<p style="color:#666;font-size:14px;"><strong>${labels.disclaimer}:</strong> ${formatRichText(contract.disclaimer)}</p>`;
+      html += `</div>\n\n`;
+    }
   }
 
-  html += `<div style="margin-top:48px;">`;
-  html += `<div style="display:flex;justify-content:space-between;gap:24px;">`;
-  html += `<div style="width:45%;">`;
-  html += `<p><strong>${labels.partyASign}</strong></p>`;
-  html += `<p style="margin-top:40px;border-bottom:1px solid #000;width:200px;"></p>`;
-  html += `<p style="margin-top:16px;"><strong>${labels.date}:</strong> ${labels.emptyDate}</p>`;
-  html += `</div>`;
-  html += `<div style="width:45%;">`;
-  html += `<p><strong>${labels.partyBSign}</strong></p>`;
-  html += `<p style="margin-top:40px;border-bottom:1px solid #000;width:200px;"></p>`;
-  html += `<p style="margin-top:16px;"><strong>${labels.date}:</strong> ${labels.emptyDate}</p>`;
-  html += `</div>`;
-  html += `</div>`;
-  html += `</div>`;
+  html += buildSignatureSectionHtml(language, options?.signatures);
 
   return html;
 }
@@ -292,16 +413,24 @@ ${bodyHtml}
 </html>`;
 }
 
-function buildPdfTextLines(contract: ContractContent, language: SupportedLanguage) {
+function buildPdfTextLines(
+  contract: ContractContent,
+  language: SupportedLanguage,
+  signatures?: ContractExportSignatures,
+) {
   const labels = {
     generatedAt: language === "en" ? "Generated At" : "生成时间",
     type: language === "en" ? "Contract Type" : "合同类型",
     legalBasis: language === "en" ? "Legal Basis" : "法律依据",
     disclaimer: language === "en" ? "Disclaimer" : "声明",
-    signatures: language === "en" ? "Signature Blocks" : "签署栏",
-    partyA: language === "en" ? "Party A" : "甲方",
-    partyB: language === "en" ? "Party B" : "乙方",
-    signDate: language === "en" ? "Date" : "日期",
+    signatures: language === "en" ? "Signature Records" : "电子签署记录",
+    partyA: language === "en" ? "Party A (Sender)" : "甲方（发起方）",
+    partyB: language === "en" ? "Party B (Counterparty)" : "乙方（对方）",
+    signer: language === "en" ? "Signer" : "签署人",
+    signDate: language === "en" ? "Signed At" : "签署时间",
+    method: language === "en" ? "Method" : "签署方式",
+    source: language === "en" ? "Source" : "来源",
+    unsigned: language === "en" ? "Pending signature" : "待签署",
     blankDate: language === "en" ? "_______ / _____ / _____" : "_______年___月___日",
   };
   const lines: string[] = [];
@@ -339,12 +468,28 @@ function buildPdfTextLines(contract: ContractContent, language: SupportedLanguag
     lines.push("");
   }
 
+  const appendParty = (
+    title: string,
+    signature: ContractExportSignatureRecord | undefined,
+  ) => {
+    lines.push(title);
+    if (!signature) {
+      lines.push(`${labels.signer}: ${labels.unsigned}`);
+      lines.push(`${labels.signDate}: ${labels.blankDate}`);
+      lines.push("");
+      return;
+    }
+
+    lines.push(`${labels.signer}: ${signature.signerName}`);
+    lines.push(`${labels.signDate}: ${formatSignatureDate(signature.createdAt, language)}`);
+    lines.push(`${labels.method}: ${normalizeSignatureMethodLabel(signature.method, language)}`);
+    lines.push(`${labels.source}: ${signature.source || "-"}`);
+    lines.push("");
+  };
+
   lines.push(labels.signatures);
-  lines.push(`${labels.partyA}: ______________________________`);
-  lines.push(`${labels.signDate}: ${labels.blankDate}`);
-  lines.push("");
-  lines.push(`${labels.partyB}: ______________________________`);
-  lines.push(`${labels.signDate}: ${labels.blankDate}`);
+  appendParty(labels.partyA, signatures?.sender);
+  appendParty(labels.partyB, signatures?.counterparty);
 
   return lines;
 }
@@ -430,10 +575,11 @@ export function buildContractPdfBuffer(
   contract: ContractContent,
   options?: {
     language?: SupportedLanguage;
+    signatures?: ContractExportSignatures;
   },
 ) {
   const streams = buildPdfContentStreams(
-    buildPdfTextLines(contract, options?.language || "zh"),
+    buildPdfTextLines(contract, options?.language || "zh", options?.signatures),
   );
   const fontObjectId = 3 + streams.length * 2;
   const descendantFontObjectId = fontObjectId + 1;

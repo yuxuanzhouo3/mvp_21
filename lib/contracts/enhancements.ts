@@ -70,6 +70,25 @@ export interface ContractEnhancementMeta {
   signFlow: ContractSignFlow;
 }
 
+export type ContractWorkflowAction =
+  | "archive"
+  | "unarchive"
+  | "start_signing"
+  | "confirm_sender"
+  | "confirm_counterparty"
+  | "send_reminder";
+
+export interface ContractActionValidationResult {
+  allowed: boolean;
+  code?: string;
+}
+
+const CN_REGION = isChinaRegion();
+
+function localeText(en: string, zh: string) {
+  return CN_REGION ? zh : en;
+}
+
 function ensureRecord(value: unknown): Record<string, unknown> {
   if (typeof value === "object" && value !== null && !Array.isArray(value)) {
     return value as Record<string, unknown>;
@@ -86,65 +105,36 @@ function buildId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-const CN_REGION = isChinaRegion();
+function normalizeActionType(value: unknown): ContractActionType {
+  if (
+    value === "updated" ||
+    value === "archived" ||
+    value === "unarchived" ||
+    value === "signing_started" ||
+    value === "sender_confirmed" ||
+    value === "counterparty_confirmed" ||
+    value === "reminder_sent" ||
+    value === "final_copy_ready"
+  ) {
+    return value;
+  }
 
-function localeText(en: string, zh: string) {
-  return CN_REGION ? zh : en;
+  return "updated";
 }
 
-const LEGACY_TEXT_MAP: Record<string, string> = {
-  Updated: "已更新",
-  Evidence: "证据",
-  System: "系统",
-  "Pending Signer": "待签署方",
-  Sender: "发起方",
-  Counterparty: "对方",
-  Signer: "签署方",
-  "Current User": "当前用户",
-  "Signed final copy retained": "签署最终电子版已留存",
-  "Contract archived": "合同已归档",
-  "Contract moved to archive": "合同已移入归档",
-  "Archive snapshot": "归档快照",
-  "Contract restored": "合同已恢复",
-  "Contract restored from archive": "合同已从归档中恢复",
-  "Signing launched": "签署流程已发起",
-  "Signing workflow has been initiated": "已发起签署流程",
-  "Signing package prepared": "签署材料已准备完成",
-  "Waiting for sender confirmation": "等待发起方确认",
-  "Sender confirmed": "发起方已确认",
-  "Sender finished confirmation": "发起方已完成确认",
-  "Sender confirmation evidence": "发起方确认凭证",
-  "Sender confirmation timestamp retained": "发起方确认时间戳已留存",
-  "All parties confirmed": "双方已完成确认",
-  "Counterparty completed final confirmation": "对方已完成最终确认",
-  "Final electronic copy retained": "最终电子版已留存",
-  "A retained electronic version is now available for download and audit": "留存电子版已可下载并用于审计",
-  "Counterparty confirmation evidence": "对方确认凭证",
-  "Counterparty confirmation timestamp retained": "对方确认时间戳已留存",
-  "Signing reminder sent": "签署提醒已发送",
-  "Reminder sent to all pending signers": "已向所有待签署方发送提醒",
-  "Reminder dispatch record": "提醒发送记录",
-  "Reminder dispatch retained for audit": "提醒发送信息已留存用于审计",
-  "Contract updated": "合同已更新",
-  "Signed electronic copy retained for later review": "签署电子版已留存，可用于后续查验",
-};
-
-function localizeLegacyText(value: string) {
-  if (!CN_REGION) {
+function normalizeEvidenceType(value: unknown): ContractEvidenceRecord["type"] {
+  if (
+    value === "confirmation" ||
+    value === "reminder" ||
+    value === "archive" ||
+    value === "final_copy" ||
+    value === "update" ||
+    value === "signature"
+  ) {
     return value;
   }
 
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return value;
-  }
-
-  if (trimmed.startsWith("Reminder sent to ") && trimmed.endsWith(".")) {
-    const target = trimmed.slice("Reminder sent to ".length, -1);
-    return `已向${target}发送提醒。`;
-  }
-
-  return LEGACY_TEXT_MAP[trimmed] || value;
+  return "update";
 }
 
 function normalizeParticipant(
@@ -169,7 +159,17 @@ function normalizeParticipant(
   };
 }
 
-function buildParticipants(contract: UnifiedContractRecord) {
+function buildParticipants(contract?: UnifiedContractRecord): ContractSigningParticipant[] {
+  const fallbackSender = localeText("Sender", "发起方");
+  const fallbackCounterparty = localeText("Counterparty", "对方");
+
+  if (!contract) {
+    return [
+      { role: "sender", name: fallbackSender, status: "pending" },
+      { role: "counterparty", name: fallbackCounterparty, status: "pending" },
+    ];
+  }
+
   const partyNames = ensureArray<unknown>(contract.parties)
     .map((party) => {
       const record = ensureRecord(party);
@@ -186,21 +186,21 @@ function buildParticipants(contract: UnifiedContractRecord) {
         candidates.find(
           (candidate): candidate is string =>
             typeof candidate === "string" && candidate.trim().length > 0,
-        ) || localeText("Pending Signer", "待签署方")
+        ) || localeText("Pending signer", "待签署方")
       );
     })
     .slice(0, 2);
 
   return [
     {
-      role: "sender" as const,
-      name: partyNames[0] || localeText("Sender", "发起方"),
-      status: "pending" as const,
+      role: "sender",
+      name: partyNames[0] || fallbackSender,
+      status: "pending",
     },
     {
-      role: "counterparty" as const,
-      name: partyNames[1] || localeText("Counterparty", "对方"),
-      status: "pending" as const,
+      role: "counterparty",
+      name: partyNames[1] || fallbackCounterparty,
+      status: "pending",
     },
   ];
 }
@@ -211,7 +211,20 @@ export function normalizeContractEnhancementMeta(
 ): ContractEnhancementMeta {
   const source = ensureRecord(metadata);
   const signFlowSource = ensureRecord(source.signFlow);
-  const defaultParticipants = contract ? buildParticipants(contract) : [];
+  const defaultParticipants = buildParticipants(contract);
+
+  const participantsSource = ensureArray<unknown>(signFlowSource.participants);
+  const participants = (participantsSource.length ? participantsSource : defaultParticipants).map(
+    (participant, index) =>
+      normalizeParticipant(
+        participant,
+        index === 0 ? "sender" : "counterparty",
+        defaultParticipants[index]?.name || localeText("Signer", "签署方"),
+      ),
+  );
+
+  const finalCopySource = ensureRecord(signFlowSource.finalCopy);
+  const hasFinalCopy = Object.keys(finalCopySource).length > 0;
 
   return {
     archivedAt:
@@ -223,16 +236,16 @@ export function normalizeContractEnhancementMeta(
         typeof entry.id === "string" && entry.id.trim()
           ? entry.id
           : buildId("log"),
-      action: (entry.action as ContractActionType) || "updated",
+      action: normalizeActionType(entry.action),
       label:
         typeof entry.label === "string" && entry.label.trim()
-          ? localizeLegacyText(entry.label)
+          ? entry.label
           : localeText("Updated", "已更新"),
       description:
-        typeof entry.description === "string" ? localizeLegacyText(entry.description) : "",
+        typeof entry.description === "string" ? entry.description : "",
       actor:
-        typeof entry.actor === "string"
-          ? localizeLegacyText(entry.actor)
+        typeof entry.actor === "string" && entry.actor.trim()
+          ? entry.actor
           : localeText("System", "系统"),
       createdAt:
         typeof entry.createdAt === "string"
@@ -255,83 +268,59 @@ export function normalizeContractEnhancementMeta(
           ? signFlowSource.completedAt
           : undefined,
       reminderCount:
-        typeof signFlowSource.reminderCount === "number"
+        typeof signFlowSource.reminderCount === "number" && Number.isFinite(signFlowSource.reminderCount)
           ? signFlowSource.reminderCount
           : 0,
-      reminders: ensureArray<Record<string, unknown>>(signFlowSource.reminders).map(
-        (reminder) => ({
-          id:
-            typeof reminder.id === "string" && reminder.id.trim()
-              ? reminder.id
-              : buildId("reminder"),
-          target:
-            typeof reminder.target === "string" ? reminder.target : "all_signers",
-          note:
-            typeof reminder.note === "string"
-              ? localizeLegacyText(reminder.note)
-              : undefined,
-          sentAt:
-            typeof reminder.sentAt === "string"
-              ? reminder.sentAt
-              : new Date().toISOString(),
-        }),
-      ),
-      evidence: ensureArray<Record<string, unknown>>(signFlowSource.evidence).map(
-        (evidence) => ({
-          id:
-            typeof evidence.id === "string" && evidence.id.trim()
-              ? evidence.id
-              : buildId("evidence"),
-          label:
-            typeof evidence.label === "string"
-              ? localizeLegacyText(evidence.label)
-              : localeText("Evidence", "证据"),
-          description:
-            typeof evidence.description === "string"
-              ? localizeLegacyText(evidence.description)
-              : "",
-          createdAt:
-            typeof evidence.createdAt === "string"
-              ? evidence.createdAt
-              : new Date().toISOString(),
-          type:
-            evidence.type === "confirmation" ||
-            evidence.type === "reminder" ||
-            evidence.type === "archive" ||
-            evidence.type === "final_copy" ||
-            evidence.type === "signature"
-              ? evidence.type
-              : "update",
-        }),
-      ),
-      participants: (
-        ensureArray(signFlowSource.participants).length
-          ? ensureArray(signFlowSource.participants)
-          : defaultParticipants
-      ).map((participant, index) =>
-        normalizeParticipant(
-          participant,
-          index === 0 ? "sender" : "counterparty",
-          defaultParticipants[index]?.name || localeText("Signer", "签署方"),
-        ),
-      ),
-      finalCopy:
-        typeof signFlowSource.finalCopy === "object" && signFlowSource.finalCopy !== null
-          ? {
-              createdAt:
-                typeof ensureRecord(signFlowSource.finalCopy).createdAt === "string"
-                  ? String(ensureRecord(signFlowSource.finalCopy).createdAt)
-                  : new Date().toISOString(),
-              filename:
-                typeof ensureRecord(signFlowSource.finalCopy).filename === "string"
-                  ? String(ensureRecord(signFlowSource.finalCopy).filename)
-                  : localeText("contract-final.pdf", "合同-最终版.pdf"),
-              note:
-                typeof ensureRecord(signFlowSource.finalCopy).note === "string"
-                  ? localizeLegacyText(String(ensureRecord(signFlowSource.finalCopy).note))
-                  : localeText("Signed final copy retained", "签署最终电子版已留存"),
-            }
-          : undefined,
+      reminders: ensureArray<Record<string, unknown>>(signFlowSource.reminders).map((reminder) => ({
+        id:
+          typeof reminder.id === "string" && reminder.id.trim()
+            ? reminder.id
+            : buildId("reminder"),
+        target:
+          typeof reminder.target === "string" && reminder.target.trim()
+            ? reminder.target
+            : "all_signers",
+        note:
+          typeof reminder.note === "string" ? reminder.note : undefined,
+        sentAt:
+          typeof reminder.sentAt === "string"
+            ? reminder.sentAt
+            : new Date().toISOString(),
+      })),
+      evidence: ensureArray<Record<string, unknown>>(signFlowSource.evidence).map((evidence) => ({
+        id:
+          typeof evidence.id === "string" && evidence.id.trim()
+            ? evidence.id
+            : buildId("evidence"),
+        label:
+          typeof evidence.label === "string" && evidence.label.trim()
+            ? evidence.label
+            : localeText("Evidence", "证据"),
+        description:
+          typeof evidence.description === "string" ? evidence.description : "",
+        createdAt:
+          typeof evidence.createdAt === "string"
+            ? evidence.createdAt
+            : new Date().toISOString(),
+        type: normalizeEvidenceType(evidence.type),
+      })),
+      participants,
+      finalCopy: hasFinalCopy
+        ? {
+            createdAt:
+              typeof finalCopySource.createdAt === "string"
+                ? finalCopySource.createdAt
+                : new Date().toISOString(),
+            filename:
+              typeof finalCopySource.filename === "string" && finalCopySource.filename.trim()
+                ? finalCopySource.filename
+                : "contract-final.pdf",
+            note:
+              typeof finalCopySource.note === "string" && finalCopySource.note.trim()
+                ? finalCopySource.note
+                : localeText("Signed final copy retained", "签署最终版已留存"),
+          }
+        : undefined,
     },
   };
 }
@@ -350,9 +339,69 @@ function appendUniqueEvidence(
   return [nextEvidence, ...evidence].slice(0, 20);
 }
 
+export function getAvailableContractActions(
+  contract: UnifiedContractRecord,
+): ContractWorkflowAction[] {
+  const enhancement = normalizeContractEnhancementMeta(contract.metadata, contract);
+
+  if (enhancement.archivedAt) {
+    return ["unarchive"];
+  }
+
+  const actions: ContractWorkflowAction[] = ["archive"];
+
+  if (enhancement.signFlow.status === "draft") {
+    actions.push("start_signing");
+  } else if (enhancement.signFlow.status === "awaiting_sender") {
+    actions.push("confirm_sender", "send_reminder");
+  } else if (enhancement.signFlow.status === "awaiting_counterparty") {
+    actions.push("confirm_counterparty", "send_reminder");
+  }
+
+  return actions;
+}
+
+export function validateContractAction(
+  contract: UnifiedContractRecord,
+  action: ContractWorkflowAction,
+): ContractActionValidationResult {
+  const enhancement = normalizeContractEnhancementMeta(contract.metadata, contract);
+  const availableActions = getAvailableContractActions(contract);
+
+  if (availableActions.includes(action)) {
+    return { allowed: true };
+  }
+
+  if (enhancement.archivedAt && action !== "unarchive") {
+    return { allowed: false, code: "CONTRACT_ARCHIVED_RESTORE_REQUIRED" };
+  }
+
+  if (action === "archive" && enhancement.archivedAt) {
+    return { allowed: false, code: "CONTRACT_ALREADY_ARCHIVED" };
+  }
+
+  if (action === "unarchive" && !enhancement.archivedAt) {
+    return { allowed: false, code: "CONTRACT_NOT_ARCHIVED" };
+  }
+
+  if (action === "start_signing") {
+    return { allowed: false, code: "SIGNFLOW_ALREADY_STARTED" };
+  }
+
+  if (action === "confirm_sender") {
+    return { allowed: false, code: "SIGNFLOW_INVALID_SENDER_STEP" };
+  }
+
+  if (action === "confirm_counterparty") {
+    return { allowed: false, code: "SIGNFLOW_INVALID_COUNTERPARTY_STEP" };
+  }
+
+  return { allowed: false, code: "SIGNFLOW_INVALID_REMINDER_STEP" };
+}
+
 export function applyContractAction(
   contract: UnifiedContractRecord,
-  action: "archive" | "unarchive" | "start_signing" | "confirm_sender" | "confirm_counterparty" | "send_reminder",
+  action: ContractWorkflowAction,
   actor: string,
   note?: string,
 ) {
@@ -427,6 +476,8 @@ export function applyContractAction(
   if (action === "start_signing") {
     next.signFlow.status = "awaiting_sender";
     next.signFlow.initiatedAt = now;
+    next.signFlow.completedAt = undefined;
+    next.signFlow.finalCopy = undefined;
     next.signFlow.participants = next.signFlow.participants.map((participant, index) => ({
       ...participant,
       status: "pending",
@@ -436,8 +487,8 @@ export function applyContractAction(
     status = "pending";
     addLog(
       "signing_started",
-      localeText("Signing launched", "签署流程已发起"),
-      note || localeText("Signing workflow has been initiated", "已发起签署流程"),
+      localeText("Signing launched", "签署已发起"),
+      note || localeText("Signing workflow has been initiated", "签署流程已启动"),
     );
     addEvidence(
       "update",
@@ -476,7 +527,12 @@ export function applyContractAction(
     next.signFlow.finalCopy = {
       createdAt: now,
       filename: `${contract.title || localeText("contract", "合同")}${localeText("-signed.pdf", "-已签署.pdf")}`,
-      note: note || localeText("Signed electronic copy retained for later review", "签署电子版已留存，可用于后续查验"),
+      note:
+        note ||
+        localeText(
+          "Signed electronic copy retained for later review",
+          "签署电子版已留存，可用于后续查验",
+        ),
     };
     status = "completed";
     addLog(
@@ -487,7 +543,10 @@ export function applyContractAction(
     addLog(
       "final_copy_ready",
       localeText("Final electronic copy retained", "最终电子版已留存"),
-      localeText("A retained electronic version is now available for download and audit", "留存电子版已可下载并用于审计"),
+      localeText(
+        "A retained electronic version is now available for download and audit",
+        "留存电子版已可下载并用于审计",
+      ),
     );
     addEvidence(
       "confirmation",
@@ -502,7 +561,7 @@ export function applyContractAction(
   }
 
   if (action === "send_reminder") {
-    const reminder = {
+    const reminder: ContractReminderRecord = {
       id: buildId("reminder"),
       target: "all_signers",
       note,

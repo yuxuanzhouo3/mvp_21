@@ -8,6 +8,7 @@ import {
   normalizeContractContent,
   sanitizeDownloadFileName,
 } from "@/lib/contracts/format";
+import { buildContractExportSignatures } from "@/lib/contracts/export-signatures";
 import { buildContractPdfBuffer } from "@/lib/contracts/pdf";
 import { observeOperationalMetric } from "@/lib/monitoring/operational-observability";
 import { logError } from "@/lib/utils/logger";
@@ -121,10 +122,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
       typeof contract.metadata?.editorHtml === "string"
         ? contract.metadata.editorHtml
         : null;
+    const exportSignatures = buildContractExportSignatures(contract);
     const fileStem = sanitizeDownloadFileName(content.title || contract.title || "contract");
 
     if (format === "pdf") {
-      const pdfBuffer = await buildContractPdfBuffer(content);
+      const pdfBuffer = await buildContractPdfBuffer(content, {
+        signatures: exportSignatures,
+      });
       observe("success", 200, { format: "pdf", contractId: id }, auth.user.id);
       return new NextResponse(new Uint8Array(pdfBuffer), {
         status: 200,
@@ -138,6 +142,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const bodyHtml = buildContractHtml(content, {
       renderedHtml,
+      signatures: exportSignatures,
     });
     const documentHtml = buildContractDocumentHtml(content.title || contract.title, bodyHtml);
     const responseConfig =

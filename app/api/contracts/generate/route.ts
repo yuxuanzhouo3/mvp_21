@@ -16,6 +16,11 @@ function t(zh: string, en: string) {
   return isChinaRegion() ? zh : en;
 }
 
+function parsePositiveInt(raw: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(String(raw || ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 function getAiErrorMessage(error: ContractAIError): string {
   switch (error.code) {
     case "AI_KEY_UNAVAILABLE":
@@ -203,6 +208,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const aiTimeBudgetMs = parsePositiveInt(
+      process.env.AI_GENERATE_TIME_BUDGET_MS,
+      50_000,
+    );
     const contract = await generateContract({
       analysisResult,
       templateId,
@@ -210,12 +219,15 @@ export async function POST(request: NextRequest) {
       templateContent: resolvedTemplateContent,
       templateVersion: resolvedTemplateVersion,
       customFields,
+      timeBudgetMs: aiTimeBudgetMs,
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: contract,
     });
+    response.headers.set("X-AI-Time-Budget-Ms", String(aiTimeBudgetMs));
+    return response;
   } catch (error) {
     if (error instanceof ContractAIError) {
       console.error("Generate contract AI error:", {

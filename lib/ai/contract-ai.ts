@@ -209,6 +209,89 @@ function normalizeNumber(value: unknown, fallback = 0) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function clampNumber(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+) {
+  const parsed =
+    typeof value === "number" && Number.isFinite(value)
+      ? value
+      : fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function parsePositiveInt(raw: string | undefined) {
+  const value = Number.parseInt(String(raw || ""), 10);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function truncateText(value: string, maxLength: number) {
+  if (!value || value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength)}...`;
+}
+
+function compactAnalysisForGeneration(analysis: AIAnalysisResult) {
+  return {
+    contractType: analysis.contractType,
+    confidence: Math.max(0, Math.min(1, normalizeNumber(analysis.confidence, 0.8))),
+    partyA: {
+      name: normalizeString(analysis.partyA?.name),
+      role: normalizeString(analysis.partyA?.role),
+      company: normalizeString(analysis.partyA?.company),
+      position: normalizeString(analysis.partyA?.position),
+      contact: normalizeString(analysis.partyA?.contact),
+      identified: Boolean(analysis.partyA?.identified),
+    },
+    partyB: {
+      name: normalizeString(analysis.partyB?.name),
+      role: normalizeString(analysis.partyB?.role),
+      company: normalizeString(analysis.partyB?.company),
+      position: normalizeString(analysis.partyB?.position),
+      contact: normalizeString(analysis.partyB?.contact),
+      identified: Boolean(analysis.partyB?.identified),
+    },
+    keyTerms: (analysis.keyTerms || []).slice(0, 24).map((term) => ({
+      type: normalizeString(term.type),
+      label: normalizeString(term.label),
+      value: truncateText(normalizeString(term.value), 240),
+      source: truncateText(normalizeString(term.source), 240),
+      confidence: Math.max(0, Math.min(1, normalizeNumber(term.confidence, 0.75))),
+      riskLevel: term.riskLevel,
+      riskNote: truncateText(normalizeString(term.riskNote), 160),
+      suggestion: truncateText(normalizeString(term.suggestion), 160),
+    })),
+    summary: truncateText(normalizeString(analysis.summary), 1000),
+    riskAlerts: (analysis.riskAlerts || []).slice(0, 12).map((alert) => ({
+      severity: alert.severity,
+      issue: truncateText(normalizeString(alert.issue), 220),
+      impact: truncateText(normalizeString(alert.impact), 220),
+      suggestion: truncateText(normalizeString(alert.suggestion), 220),
+    })),
+    missingInfo: (analysis.missingInfo || []).slice(0, 12).map((item) => ({
+      item: truncateText(normalizeString(item.item), 120),
+      importance: item.importance,
+      defaultSuggestion: truncateText(normalizeString(item.defaultSuggestion), 200),
+    })),
+    professionalAdvice: (analysis.professionalAdvice || [])
+      .slice(0, 8)
+      .map((item) => truncateText(normalizeString(item), 220))
+      .filter(Boolean),
+    scenario: analysis.scenario
+      ? {
+          type: truncateText(normalizeString(analysis.scenario.type), 120),
+          description: truncateText(normalizeString(analysis.scenario.description), 260),
+          negotiationStatus: truncateText(normalizeString(analysis.scenario.negotiationStatus), 120),
+          powerBalance: truncateText(normalizeString(analysis.scenario.powerBalance), 120),
+        }
+      : undefined,
+  };
+}
+
 function normalizeParty(value: unknown): PartyInfo {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { name: "", role: "", company: "", position: "", contact: "", identified: false };
@@ -347,11 +430,13 @@ async function requestJsonCompletion(
   userPrompt: string,
   temperature: number,
   maxTokens: number,
+  timeoutMs?: number,
 ) {
   let response: Awaited<ReturnType<typeof client.chat.completions.create>>;
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
   try {
-    response = await client.chat.completions.create({
+    const completionPromise = client.chat.completions.create({
       model,
       temperature,
       response_format: { type: "json_object" },
@@ -361,8 +446,34 @@ async function requestJsonCompletion(
         { role: "user", content: userPrompt },
       ],
     });
+
+    const effectiveTimeoutMs = clampNumber(
+      timeoutMs,
+      parsePositiveInt(process.env.AI_PROVIDER_TIMEOUT_MS) || 55_000,
+      5_000,
+      300_000,
+    );
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        reject(
+          new ContractAIError(
+            `AI provider timeout after ${effectiveTimeoutMs}ms`,
+            "AI_TIMEOUT",
+            504,
+            provider,
+          ),
+        );
+      }, effectiveTimeoutMs);
+    });
+
+    response = await Promise.race([completionPromise, timeoutPromise]);
   } catch (error) {
     throw mapProviderError(error, provider);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
   }
 
   const content = response.choices[0]?.message?.content;
@@ -567,34 +678,97 @@ function buildDefaultSections(language: AILanguage, contractType: string) {
 export async function generateContract(
   request: GenerateContractRequest,
 ): Promise<ContractContent> {
+  const startedAt = Date.now();
   const language = resolveLanguage(request.language);
   const contractType = normalizeContractType(request.analysisResult.contractType);
   const expert = getExpertByContractType(contractType);
+  const compactAnalysis = compactAnalysisForGeneration(request.analysisResult);
+  const analysisPayload = JSON.stringify(compactAnalysis);
+  const configuredTimeBudgetMs =
+    parsePositiveInt(process.env.AI_GENERATE_TIME_BUDGET_MS) || 50_000;
+  const timeBudgetMs = clampNumber(
+    request.timeBudgetMs,
+    configuredTimeBudgetMs,
+    10_000,
+    240_000,
+  );
+  const configuredMaxTokens =
+    parsePositiveInt(process.env.AI_GENERATE_MAX_TOKENS) || 2_800;
+  const targetMaxTokens = clampNumber(request.maxTokens, configuredMaxTokens, 1_200, 6_500);
   const prompt = generateContractPrompt(
     expert,
-    JSON.stringify(request.analysisResult, null, 2),
+    analysisPayload,
     contractType,
     language,
   );
 
-  const templatePrompt = request.templateContent?.trim()
+  const normalizedTemplateContent = truncateText(request.templateContent?.trim() || "", 4_000);
+  const templatePrompt = normalizedTemplateContent
     ? language === "zh"
-      ? `\n\n补充要求：请优先参考以下模板的结构与表述，但不得违背分析结果中的真实交易事实。\n模板名称：${request.templateName || getContractTypeDisplayName(contractType, language)}\n模板版本：${request.templateVersion || 1}\n模板正文：\n${request.templateContent}`
-      : `\n\nAdditional instruction: Prefer the structure and drafting style of the template below, but do not contradict the actual transaction facts in the analysis result.\nTemplate name: ${request.templateName || getContractTypeDisplayName(contractType, language)}\nTemplate version: ${request.templateVersion || 1}\nTemplate body:\n${request.templateContent}`
+      ? `\n\n补充要求：请优先参考以下模板的结构与表述，但不得违背分析结果中的真实交易事实。\n模板名称：${request.templateName || getContractTypeDisplayName(contractType, language)}\n模板版本：${request.templateVersion || 1}\n模板正文（若过长已截断）：\n${normalizedTemplateContent}`
+      : `\n\nAdditional instruction: Prefer the structure and drafting style of the template below, but do not contradict the actual transaction facts in the analysis result.\nTemplate name: ${request.templateName || getContractTypeDisplayName(contractType, language)}\nTemplate version: ${request.templateVersion || 1}\nTemplate body (truncated if too long):\n${normalizedTemplateContent}`
     : "";
 
-  const parsed = await runWithProviderFallback(
-    async ({ provider, client, model }) =>
-      requestJsonCompletion(
-        client,
-        provider,
-        model,
-        generateContractSystemPrompt(expert, language),
-        `${prompt}${templatePrompt}`,
-        0.35,
-        6500,
-      ),
-  );
+  const systemPrompt = generateContractSystemPrompt(expert, language);
+  const firstAttemptTimeoutMs = Math.max(8_000, timeBudgetMs - 2_500);
+  const firstAttemptPrompt = `${prompt}${templatePrompt}`;
+
+  let parsed: Record<string, any>;
+  try {
+    parsed = await runWithProviderFallback(
+      async ({ provider, client, model }) =>
+        requestJsonCompletion(
+          client,
+          provider,
+          model,
+          systemPrompt,
+          firstAttemptPrompt,
+          0.35,
+          targetMaxTokens,
+          firstAttemptTimeoutMs,
+        ),
+    );
+  } catch (error) {
+    if (!(error instanceof ContractAIError)) {
+      throw error;
+    }
+
+    const retryable =
+      error.code === "AI_TIMEOUT" || error.code === "AI_RATE_LIMITED";
+    if (!retryable) {
+      throw error;
+    }
+
+    const elapsedMs = Date.now() - startedAt;
+    const remainingMs = timeBudgetMs - elapsedMs;
+    if (remainingMs <= 7_000) {
+      throw error;
+    }
+
+    const retryPromptHint =
+      language === "zh"
+        ? "\n\n性能约束：请在保证关键条款完整的前提下，输出更精简版本，并优先返回可直接编辑的核心条款。"
+        : "\n\nPerformance constraint: return a concise draft that still includes all critical clauses and is directly editable.";
+    const retryMaxTokens = Math.max(
+      1_200,
+      Math.min(targetMaxTokens - 500, Math.floor(targetMaxTokens * 0.75)),
+    );
+    const retryTimeoutMs = Math.max(6_000, remainingMs - 1_000);
+
+    parsed = await runWithProviderFallback(
+      async ({ provider, client, model }) =>
+        requestJsonCompletion(
+          client,
+          provider,
+          model,
+          systemPrompt,
+          `${prompt}${retryPromptHint}`,
+          0.2,
+          retryMaxTokens,
+          retryTimeoutMs,
+        ),
+    );
+  }
 
   const title =
     normalizeString(parsed.title) || getContractTypeDisplayName(contractType, language);

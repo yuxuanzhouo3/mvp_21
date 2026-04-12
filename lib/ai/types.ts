@@ -127,6 +127,8 @@ export interface GenerateContractRequest {
   templateVersion?: number;
   customFields?: Record<string, string>;
   language?: "zh" | "en";
+  timeBudgetMs?: number;
+  maxTokens?: number;
 }
 
 export interface GenerateContractResponse {

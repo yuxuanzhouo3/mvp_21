@@ -45,11 +45,27 @@ function AuthPageContent() {
   const [agreeToPrivacy, setAgreeToPrivacy] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [loginMethod, setLoginMethod] = useState<"password" | "otp">("password");
+  const [cnLoginChannel, setCnLoginChannel] = useState<"email" | "phone">("email");
   const [forgotStep, setForgotStep] = useState<"off" | "request" | "verify" | "reset">("off");
   const [region, setRegion] = useState<RegionType>(isChinaDeployment() ? RegionType.CHINA : RegionType.USA);
   const authActionLockRef = useRef(false);
   const redirectingRef = useRef(false);
   const supportsOtp = true;
+  const smsAvailability = config.availability?.sms;
+  const phoneOtpEnabledInCn =
+    configLoading || smsAvailability?.enabled !== false;
+  const otpMethodAvailable =
+    region === RegionType.CHINA ? phoneOtpEnabledInCn : supportsOtp;
+  const loginMethodOtpLabel =
+    region === RegionType.CHINA ? "验证码登录" : t.auth.sendOtp;
+  const loginIdentifierLabel =
+    region === RegionType.CHINA && cnLoginChannel === "phone" ? "手机号" : t.auth.email;
+  const loginIdentifierPlaceholder =
+    region === RegionType.CHINA && cnLoginChannel === "phone"
+      ? "请输入手机号"
+      : t.auth.enterEmail;
+  const loginIdentifierType =
+    region === RegionType.CHINA && cnLoginChannel === "phone" ? "tel" : "email";
   const thirdPartyUnavailable =
     region !== RegionType.CHINA && !config.features.googleAuth;
 
@@ -68,7 +84,39 @@ function AuthPageContent() {
   }, [requestedRedirect]);
   const postAuthUrl = useMemo(() => buildUrl(postAuthPath), [buildUrl, postAuthPath]);
 
-  useEffect(() => setRegion(isChinaDeployment() ? RegionType.CHINA : RegionType.USA), []);
+  useEffect(() => {
+    setRegion(isChinaDeployment() ? RegionType.CHINA : RegionType.USA);
+  }, []);
+
+  useEffect(() => {
+    if (!configLoading) {
+      setRegion(config.region === "CN" ? RegionType.CHINA : RegionType.USA);
+    }
+  }, [config.region, configLoading]);
+
+  useEffect(() => {
+    if (!otpMethodAvailable && loginMethod === "otp") {
+      setLoginMethod("password");
+      setOtp("");
+      setOtpSent(false);
+    }
+  }, [loginMethod, otpMethodAvailable]);
+
+  useEffect(() => {
+    if (region !== RegionType.CHINA && cnLoginChannel !== "email") {
+      setCnLoginChannel("email");
+      setLoginMethod("password");
+      setOtp("");
+      setOtpSent(false);
+      return;
+    }
+
+    if (region === RegionType.CHINA && cnLoginChannel === "email" && loginMethod === "otp") {
+      setLoginMethod("password");
+      setOtp("");
+      setOtpSent(false);
+    }
+  }, [cnLoginChannel, loginMethod, region]);
 
   const clearFeedback = () => {
     setNotice("");
@@ -163,6 +211,13 @@ function AuthPageContent() {
   const onSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading || !requirePrivacy()) return;
+    if (region === RegionType.CHINA && cnLoginChannel === "phone") {
+      const normalizedPhone = email.trim();
+      if (!/^1[3-9]\d{9}$/.test(normalizedPhone)) {
+        setError("请输入正确的手机号");
+        return;
+      }
+    }
 
     await runLockedAuthAction(async () => {
       clearFeedback();
@@ -181,7 +236,14 @@ function AuthPageContent() {
 
   const onOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loading || !supportsOtp) return;
+    if (loading || !otpMethodAvailable) return;
+    if (region === RegionType.CHINA) {
+      const normalizedPhone = email.trim();
+      if (!/^1[3-9]\d{9}$/.test(normalizedPhone)) {
+        setError("请输入正确的手机号");
+        return;
+      }
+    }
 
     await runLockedAuthAction(async () => {
       clearFeedback();
@@ -191,7 +253,11 @@ function AuthPageContent() {
           const { error: err } = await authClient.signInWithOtp({ email });
           if (err) throw err;
           setOtpSent(true);
-          setNotice(region === RegionType.CHINA ? "验证码已发送到你的手机号。" : t.auth.otpSent);
+          setNotice(
+            region === RegionType.CHINA
+              ? "验证码已发送到你的手机号。"
+              : t.auth.otpSent,
+          );
         } else {
           const { error: err } = await authClient.verifyOtp({ email, token: otp, type: region === RegionType.CHINA ? "sms" : "email" });
           if (err) throw err;
@@ -390,44 +456,264 @@ function AuthPageContent() {
       </form>
     );
 
-  const signInForm =
+  const signInFormEnhanced =
     supportsOtp && forgotStep !== "off" ? forgotForm : (
       <form onSubmit={loginMethod === "password" ? onSignIn : onOtp} className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="signin-email">
-            {loginMethod === "otp" && region === RegionType.CHINA ? "手机号" : t.auth.email}
-          </Label>
-          <Input
-            id="signin-email"
-            type={loginMethod === "otp" && region === RegionType.CHINA ? "tel" : "email"}
-            placeholder={loginMethod === "otp" && region === RegionType.CHINA ? "请输入手机号" : t.auth.enterEmail}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </div>
-        {loginMethod === "password" ? (
+        {region === RegionType.CHINA ? (
           <div className="space-y-2">
-            <Label htmlFor="signin-password">{t.auth.password}</Label>
-            <div className="relative">
-              <Input id="signin-password" type={showPassword ? "text" : "password"} placeholder={t.auth.enterPassword} value={password} onChange={(e) => setPassword(e.target.value)} required />
-              <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
+            <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1">
+              <button
+                type="button"
+                className={`rounded-md px-3 py-2 text-sm font-medium transition ${
+                  cnLoginChannel === "email"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+                onClick={() => {
+                  clearFeedback();
+                  setCnLoginChannel("email");
+                  setLoginMethod("password");
+                  setOtp("");
+                  setOtpSent(false);
+                }}
+              >
+                邮箱登录
+              </button>
+              <button
+                type="button"
+                className={`rounded-md px-3 py-2 text-sm font-medium transition ${
+                  cnLoginChannel === "phone"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+                onClick={() => {
+                  clearFeedback();
+                  setCnLoginChannel("phone");
+                  setLoginMethod("password");
+                  setOtp("");
+                  setOtpSent(false);
+                }}
+              >
+                手机号登录
+              </button>
             </div>
-            {supportsOtp ? (
-              <div className="flex justify-between text-sm">
-                <button type="button" className="text-blue-600 hover:underline" onClick={() => { clearFeedback(); setLoginMethod("otp"); setOtp(""); setOtpSent(false); }}>{t.auth.sendOtp}</button>
-                {region !== RegionType.CHINA ? (
-                  <button type="button" className="text-blue-600 hover:underline" onClick={() => { clearFeedback(); setForgotStep("request"); }}>{t.auth.forgotPassword}</button>
-                ) : null}
+
+            {cnLoginChannel === "phone" ? (
+              <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1">
+                <button
+                  type="button"
+                  className={`rounded-md px-3 py-2 text-sm font-medium transition ${
+                    loginMethod === "password"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                  onClick={() => {
+                    clearFeedback();
+                    setLoginMethod("password");
+                    setOtp("");
+                    setOtpSent(false);
+                  }}
+                >
+                  手机号+密码
+                </button>
+                <button
+                  type="button"
+                  disabled={!otpMethodAvailable}
+                  className={`rounded-md px-3 py-2 text-sm font-medium transition ${
+                    loginMethod === "otp"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                  } ${!otpMethodAvailable ? "cursor-not-allowed opacity-50" : ""}`}
+                  onClick={() => {
+                    if (!otpMethodAvailable) return;
+                    clearFeedback();
+                    setLoginMethod("otp");
+                    setOtp("");
+                    setOtpSent(false);
+                  }}
+                >
+                  {loginMethodOtpLabel}
+                </button>
               </div>
             ) : null}
+
+            {cnLoginChannel === "phone" && !otpMethodAvailable && !configLoading ? (
+              <Alert>
+                <AlertDescription>
+                  SMS OTP sign-in is temporarily unavailable: {smsAvailability?.reason || "SMS service is not fully configured."}
+                </AlertDescription>
+              </Alert>
+            ) : null}
           </div>
+        ) : supportsOtp ? (
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1">
+              <button
+                type="button"
+                className={`rounded-md px-3 py-2 text-sm font-medium transition ${
+                  loginMethod === "password"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+                onClick={() => {
+                  clearFeedback();
+                  setLoginMethod("password");
+                  setOtp("");
+                  setOtpSent(false);
+                }}
+              >
+                {t.auth.usePasswordLogin}
+              </button>
+              <button
+                type="button"
+                disabled={!otpMethodAvailable}
+                className={`rounded-md px-3 py-2 text-sm font-medium transition ${
+                  loginMethod === "otp"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-600 hover:text-gray-900"
+                } ${!otpMethodAvailable ? "cursor-not-allowed opacity-50" : ""}`}
+                onClick={() => {
+                  if (!otpMethodAvailable) return;
+                  clearFeedback();
+                  setLoginMethod("otp");
+                  setOtp("");
+                  setOtpSent(false);
+                }}
+              >
+                {loginMethodOtpLabel}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {loginMethod === "password" ? (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="signin-identifier">{loginIdentifierLabel}</Label>
+              <Input
+                id="signin-identifier"
+                type={loginIdentifierType}
+                placeholder={loginIdentifierPlaceholder}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="signin-password">{t.auth.password}</Label>
+              <div className="relative">
+                <Input id="signin-password" type={showPassword ? "text" : "password"} placeholder={t.auth.enterPassword} value={password} onChange={(e) => setPassword(e.target.value)} required />
+                <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
+              </div>
+              {supportsOtp ? (
+                <div className="flex justify-between text-sm">
+                  {region === RegionType.CHINA ? (
+                    cnLoginChannel === "email" ? (
+                      <button
+                        type="button"
+                        className="text-blue-600 hover:underline"
+                        onClick={() => {
+                          clearFeedback();
+                          setCnLoginChannel("phone");
+                          setLoginMethod("password");
+                          setOtp("");
+                          setOtpSent(false);
+                        }}
+                      >
+                        切换到手机号登录
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-blue-600 hover:underline"
+                        onClick={() => {
+                          clearFeedback();
+                          setCnLoginChannel("email");
+                          setLoginMethod("password");
+                          setOtp("");
+                          setOtpSent(false);
+                        }}
+                      >
+                        切换到邮箱登录
+                      </button>
+                    )
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!otpMethodAvailable}
+                      className={`text-blue-600 hover:underline ${!otpMethodAvailable ? "cursor-not-allowed opacity-50" : ""}`}
+                      onClick={() => {
+                        if (!otpMethodAvailable) return;
+                        clearFeedback();
+                        setLoginMethod("otp");
+                        setOtp("");
+                        setOtpSent(false);
+                      }}
+                    >
+                      {loginMethodOtpLabel}
+                    </button>
+                  )}
+                  {region !== RegionType.CHINA ? (
+                    <button type="button" className="text-blue-600 hover:underline" onClick={() => { clearFeedback(); setForgotStep("request"); }}>{t.auth.forgotPassword}</button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </>
         ) : (
           <div className="space-y-2">
-            <Label htmlFor="signin-otp">{otpSent ? t.auth.verifyOtp : t.auth.sendOtp}</Label>
-            <Input id="signin-otp" type="text" placeholder={otpSent ? t.auth.enterOtp : region === RegionType.CHINA ? "请输入手机号" : t.auth.enterEmail} value={otpSent ? otp : email} onChange={(e) => otpSent ? setOtp(e.target.value) : setEmail(e.target.value)} maxLength={otpSent ? 6 : undefined} required />
-            <div className="text-right text-sm">
-              <button type="button" className="text-blue-600 hover:underline" onClick={() => { clearFeedback(); setLoginMethod("password"); setOtp(""); setOtpSent(false); }}>{t.auth.usePasswordLogin}</button>
+            <Label htmlFor={otpSent ? "signin-otp" : "signin-phone"}>
+              {otpSent ? t.auth.verifyOtp : region === RegionType.CHINA ? "手机号" : t.auth.email}
+            </Label>
+            {otpSent ? (
+              <Input
+                id="signin-otp"
+                type="text"
+                placeholder={t.auth.enterOtp}
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                maxLength={6}
+                required
+              />
+            ) : (
+              <Input
+                id="signin-phone"
+                type={region === RegionType.CHINA ? "tel" : "email"}
+                placeholder={region === RegionType.CHINA ? "请输入手机号" : t.auth.enterEmail}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            )}
+            <div className="flex justify-between text-sm">
+              {otpSent ? (
+                <button
+                  type="button"
+                  className="text-blue-600 hover:underline"
+                  onClick={() => {
+                    clearFeedback();
+                    setOtp("");
+                    setOtpSent(false);
+                  }}
+                >
+                  {t.auth.backToModify}
+                </button>
+              ) : <span />}
+              <button
+                type="button"
+                className="text-blue-600 hover:underline"
+                onClick={() => {
+                  clearFeedback();
+                  setLoginMethod("password");
+                  if (region === RegionType.CHINA) {
+                    setCnLoginChannel("phone");
+                  }
+                  setOtp("");
+                  setOtpSent(false);
+                }}
+              >
+                {region === RegionType.CHINA ? "改用手机号+密码登录" : t.auth.usePasswordLogin}
+              </button>
             </div>
           </div>
         )}
@@ -454,11 +740,11 @@ function AuthPageContent() {
           <CardContent>
             <Tabs value={mode} className="w-full">
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="signin" onClick={() => { clearFeedback(); resetForgot(); setLoginMethod("password"); router.push(buildUrl("/auth", { mode: "signin" })); }}>{t.auth.login}</TabsTrigger>
+                <TabsTrigger value="signin" onClick={() => { clearFeedback(); resetForgot(); setLoginMethod("password"); setCnLoginChannel("email"); router.push(buildUrl("/auth", { mode: "signin" })); }}>{t.auth.login}</TabsTrigger>
                 <TabsTrigger value="signup" onClick={() => { clearFeedback(); resetForgot(); router.push(buildUrl("/auth", { mode: "signup" })); }}>{t.auth.register}</TabsTrigger>
               </TabsList>
               <TabsContent value="signin" className="space-y-6">
-                {signInForm}
+                {signInFormEnhanced}
                 {region !== RegionType.CHINA ? (
                   <>
                     <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-sm"><span className="bg-white px-4 text-gray-500">{t.auth.or}</span></div></div>
@@ -510,3 +796,4 @@ export default function AuthPage() {
     </Suspense>
   );
 }
+

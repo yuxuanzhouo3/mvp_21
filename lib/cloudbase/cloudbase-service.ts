@@ -5,6 +5,20 @@ import { signJwt } from "@/lib/auth/jwt";
 import { createRefreshToken } from "@/lib/auth/refresh-token-manager";
 
 let cachedApp: any = null;
+const CHINA_PHONE_REGEX = /^1[3-9]\d{9}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeLoginIdentifier(identifier: string) {
+  return identifier.trim();
+}
+
+function isChinaMainlandPhone(identifier: string) {
+  return CHINA_PHONE_REGEX.test(identifier);
+}
+
+function isEmailIdentifier(identifier: string) {
+  return EMAIL_REGEX.test(identifier);
+}
 
 function initCloudBase() {
   if (cachedApp) {
@@ -58,13 +72,14 @@ export function extractUserIdFromToken(token: string): string | null {
 }
 
 export async function loginUser(
-  email: string,
+  identifier: string,
   password: string,
   options?: { deviceInfo?: string; ipAddress?: string; userAgent?: string }
 ): Promise<{
   success: boolean;
   userId?: string;
   email?: string;
+  phone?: string;
   name?: string;
   accessToken?: string;
   refreshToken?: string;
@@ -72,29 +87,80 @@ export async function loginUser(
   error?: string;
 }> {
   try {
-    console.log(" [CloudBase Service] 开始登录，邮箱:", email);
+    const normalizedIdentifier = normalizeLoginIdentifier(identifier);
+    const isPhoneLogin = isChinaMainlandPhone(normalizedIdentifier);
+    const isEmailLogin = isEmailIdentifier(normalizedIdentifier);
+
+    if (!normalizedIdentifier || (!isPhoneLogin && !isEmailLogin)) {
+      return {
+        success: false,
+        error: "请输入正确的邮箱或手机号",
+      };
+    }
+
+    console.log(" [CloudBase Service] 开始登录，标识:", normalizedIdentifier);
 
     const app = initCloudBase();
     const db = app.database();
     const usersCollection = db.collection("web_users");
 
-    const userResult = await usersCollection.where({ email }).get();
+    let userResult = await usersCollection
+      .where(
+        isPhoneLogin
+          ? { phone: normalizedIdentifier }
+          : { email: normalizedIdentifier.toLowerCase() }
+      )
+      .limit(1)
+      .get();
+
+    if (
+      !isPhoneLogin &&
+      (!userResult.data || userResult.data.length === 0) &&
+      normalizedIdentifier.toLowerCase() !== normalizedIdentifier
+    ) {
+      userResult = await usersCollection
+        .where({ email: normalizedIdentifier })
+        .limit(1)
+        .get();
+    }
+
+    if ((!userResult.data || userResult.data.length === 0) && isPhoneLogin) {
+      // Backward compatibility: older phone users may only have a synthetic email.
+      const syntheticEmail = `phone_${normalizedIdentifier}@local.phone`;
+      const bySyntheticEmail = await usersCollection
+        .where({ email: syntheticEmail })
+        .limit(1)
+        .get();
+      if (bySyntheticEmail.data && bySyntheticEmail.data.length > 0) {
+        const legacyUser = bySyntheticEmail.data[0];
+        if (!legacyUser.phone) {
+          await usersCollection.doc(legacyUser._id).update({
+            phone: normalizedIdentifier,
+            updated_at: new Date().toISOString(),
+          });
+        }
+        userResult = bySyntheticEmail;
+      }
+    }
 
     if (!userResult.data || userResult.data.length === 0) {
       return {
         success: false,
-        error: "用户不存在或密码错误",
+        error: "账号不存在或密码错误",
       };
     }
 
     const user = userResult.data[0];
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    const isPasswordValid =
+      typeof user.password === "string" &&
+      user.password.length > 0 &&
+      (await bcrypt.compare(password, user.password));
 
     if (!isPasswordValid) {
       return {
         success: false,
-        error: "用户不存在或密码错误",
+        error: "账号不存在或密码错误",
       };
     }
 
@@ -134,6 +200,7 @@ export async function loginUser(
       success: true,
       userId: user._id,
       email: user.email,
+      phone: user.phone,
       name: user.name,
       accessToken,
       refreshToken,
@@ -268,6 +335,7 @@ export async function loginOrCreatePhoneUser(
   success: boolean;
   userId?: string;
   email?: string;
+  phone?: string;
   name?: string;
   accessToken?: string;
   refreshToken?: string;
@@ -275,21 +343,54 @@ export async function loginOrCreatePhoneUser(
   error?: string;
 }> {
   try {
+    const normalizedPhone = normalizeLoginIdentifier(phone);
+    if (!isChinaMainlandPhone(normalizedPhone)) {
+      return {
+        success: false,
+        error: "手机号格式不正确",
+      };
+    }
+
     const app = initCloudBase();
     const db = app.database();
     const usersCollection = db.collection("web_users");
     const now = new Date().toISOString();
-    const syntheticEmail = `phone_${phone}@local.phone`;
+    const syntheticEmail = `phone_${normalizedPhone}@local.phone`;
 
-    const existingUserResult = await usersCollection.where({ phone }).limit(1).get();
+    const existingUserResult = await usersCollection
+      .where({ phone: normalizedPhone })
+      .limit(1)
+      .get();
     let user = existingUserResult.data?.[0];
+
+    if (!user) {
+      const legacyUserResult = await usersCollection
+        .where({ email: syntheticEmail })
+        .limit(1)
+        .get();
+      const legacyUser = legacyUserResult.data?.[0];
+      if (legacyUser) {
+        await usersCollection.doc(legacyUser._id).update({
+          phone: normalizedPhone,
+          updated_at: now,
+        });
+        const refreshedLegacyUser = await usersCollection.doc(legacyUser._id).get();
+        user =
+          refreshedLegacyUser.data?.[0] || {
+            ...legacyUser,
+            phone: normalizedPhone,
+            updated_at: now,
+          };
+      }
+    }
 
     if (!user) {
       const created = await usersCollection.add({
         email: syntheticEmail,
         password: await bcrypt.hash(crypto.randomUUID(), 10),
-        name: `用户${phone.slice(-4)}`,
-        phone,
+        name: `用户${normalizedPhone.slice(-4)}`,
+        phone: normalizedPhone,
+        status: "active",
         pro: false,
         subscription_plan: "free",
         subscription_status: "inactive",
@@ -297,6 +398,8 @@ export async function loginOrCreatePhoneUser(
         login_count: 1,
         last_login_at: now,
         last_login_ip: options?.ipAddress,
+        createdAt: now,
+        updatedAt: now,
         created_at: now,
         updated_at: now,
       });
@@ -305,8 +408,8 @@ export async function loginOrCreatePhoneUser(
       user = createdUserResult.data?.[0] || {
         _id: created.id,
         email: syntheticEmail,
-        name: `用户${phone.slice(-4)}`,
-        phone,
+        name: `用户${normalizedPhone.slice(-4)}`,
+        phone: normalizedPhone,
       };
     } else {
       if (user.status && user.status !== "active") {
@@ -321,6 +424,8 @@ export async function loginOrCreatePhoneUser(
         last_login_at: now,
         last_login_ip: options?.ipAddress,
         login_count: (user.login_count || 0) + 1,
+        phone: user.phone || normalizedPhone,
+        updatedAt: now,
         updated_at: now,
       });
 
@@ -331,6 +436,8 @@ export async function loginOrCreatePhoneUser(
         last_login_at: now,
         last_login_ip: options?.ipAddress,
         login_count: (user.login_count || 0) + 1,
+        phone: user.phone || normalizedPhone,
+        updatedAt: now,
         updated_at: now,
       };
     }
@@ -341,7 +448,7 @@ export async function loginOrCreatePhoneUser(
       {
         userId,
         email,
-        phone,
+        phone: normalizedPhone,
         region: "CN",
       },
       { expiresIn: "1h" }
@@ -366,6 +473,7 @@ export async function loginOrCreatePhoneUser(
       success: true,
       userId,
       email,
+      phone: normalizedPhone,
       name: user.name,
       accessToken,
       refreshToken: refreshTokenRecord.refreshToken,
