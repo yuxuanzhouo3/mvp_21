@@ -277,6 +277,28 @@ export interface RefreshTokenRecord {
   region: string;
 }
 
+export interface EmailVerificationCodeRecord {
+  _id?: string;
+  email: string;
+  code: string;
+  type: "register" | "reset_password";
+  attempts: number;
+  ip_address?: string;
+  created_at: string;
+  expires_at: string;
+  verified: boolean;
+  verified_at?: string;
+}
+
+export interface PasswordResetTokenRecord {
+  _id?: string;
+  email: string;
+  token: string;
+  created_at: string;
+  expires_at: string;
+  used: boolean;
+}
+
 export const CLOUDBASE_COLLECTIONS = {
   WEB_USERS: "web_users",
   COMPANY_PROFILES: "company_profiles",
@@ -291,6 +313,8 @@ export const CLOUDBASE_COLLECTIONS = {
   WECHAT_LOGINS: "wechat_logins",
   SECURITY_LOGS: "security_logs",
   REFRESH_TOKENS: "refresh_tokens",
+  EMAIL_VERIFICATION_CODES: "email_verification_codes",
+  PASSWORD_RESET_TOKENS: "password_reset_tokens",
   ADMIN_AUDIT_LOGS: "admin_audit_logs",
 } as const;
 
@@ -360,6 +384,15 @@ export const CLOUDBASE_INDEXES = {
     { key: { userId: 1, createdAt: -1 } },
     { key: { isRevoked: 1, expiresAt: 1 } },
     { key: { expiresAt: 1 } },
+  ],
+  [CLOUDBASE_COLLECTIONS.EMAIL_VERIFICATION_CODES]: [
+    { key: { email: 1, type: 1, created_at: -1 } },
+    { key: { expires_at: 1 } },
+  ],
+  [CLOUDBASE_COLLECTIONS.PASSWORD_RESET_TOKENS]: [
+    { key: { email: 1, created_at: -1 } },
+    { key: { expires_at: 1 } },
+    { key: { used: 1, expires_at: 1 } },
   ],
   [CLOUDBASE_COLLECTIONS.ADMIN_AUDIT_LOGS]: [
     { key: { created_at: -1 } },

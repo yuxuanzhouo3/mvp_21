@@ -14,6 +14,7 @@ export interface AuthConfig {
   };
   availability?: {
     sms?: { enabled: boolean; reason?: string };
+    wechat?: { enabled: boolean; reason?: string };
     google?: { enabled: boolean; reason?: string };
   };
   appUrl: string | undefined;

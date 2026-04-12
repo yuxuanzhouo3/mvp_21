@@ -17,6 +17,7 @@ import { useTranslations } from "@/lib/i18n";
 import { RegionType } from "@/lib/architecture-modules/core/types";
 import { isChinaDeployment } from "@/lib/config/deployment.config";
 import { useAuthConfig } from "@/lib/hooks/useAuthConfig";
+import { detectClientRuntime, type ClientRuntime } from "@/lib/integrations/wechat-runtime";
 
 function AuthPageContent() {
   const authClient = useMemo(() => getAuthClient(), []);
@@ -35,6 +36,7 @@ function AuthPageContent() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [otp, setOtp] = useState("");
   const [resetOtp, setResetOtp] = useState("");
+  const [resetToken, setResetToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [notice, setNotice] = useState("");
@@ -48,6 +50,7 @@ function AuthPageContent() {
   const [cnLoginChannel, setCnLoginChannel] = useState<"email" | "phone">("email");
   const [forgotStep, setForgotStep] = useState<"off" | "request" | "verify" | "reset">("off");
   const [region, setRegion] = useState<RegionType>(isChinaDeployment() ? RegionType.CHINA : RegionType.USA);
+  const [clientRuntime, setClientRuntime] = useState<ClientRuntime>("web");
   const authActionLockRef = useRef(false);
   const redirectingRef = useRef(false);
   const supportsOtp = true;
@@ -68,6 +71,15 @@ function AuthPageContent() {
     region === RegionType.CHINA && cnLoginChannel === "phone" ? "tel" : "email";
   const thirdPartyUnavailable =
     region !== RegionType.CHINA && !config.features.googleAuth;
+  const isWechatMiniProgramRuntime = clientRuntime === "wechat-mini-program";
+  const isWechatMiniProgramLoginEnabled =
+    region === RegionType.CHINA &&
+    isWechatMiniProgramRuntime &&
+    config.features.wechatAuth;
+  const miniProgramLoginLabel =
+    language === "en" ? "Sign in with WeChat" : "微信登录";
+  const miniProgramLoggingInLabel =
+    language === "en" ? "Signing in with WeChat..." : "正在使用微信登录...";
 
   const buildUrl = useCallback((path: string, extra?: Record<string, string>) => {
     const params = new URLSearchParams();
@@ -95,6 +107,23 @@ function AuthPageContent() {
   }, [config.region, configLoading]);
 
   useEffect(() => {
+    let active = true;
+
+    const resolveRuntime = async () => {
+      const runtime = await detectClientRuntime();
+      if (active) {
+        setClientRuntime(runtime);
+      }
+    };
+
+    void resolveRuntime();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!otpMethodAvailable && loginMethod === "otp") {
       setLoginMethod("password");
       setOtp("");
@@ -117,6 +146,18 @@ function AuthPageContent() {
       setOtpSent(false);
     }
   }, [cnLoginChannel, loginMethod, region]);
+
+  useEffect(() => {
+    if (!isWechatMiniProgramLoginEnabled) {
+      return;
+    }
+
+    setForgotStep("off");
+    setCnLoginChannel("phone");
+    setLoginMethod("otp");
+    setOtp("");
+    setOtpSent(false);
+  }, [isWechatMiniProgramLoginEnabled]);
 
   const clearFeedback = () => {
     setNotice("");
@@ -145,6 +186,7 @@ function AuthPageContent() {
   const resetForgot = () => {
     setForgotStep("off");
     setResetOtp("");
+    setResetToken("");
     setNewPassword("");
     setConfirmNewPassword("");
   };
@@ -271,6 +313,62 @@ function AuthPageContent() {
     });
   };
 
+  const requestMiniProgramLoginCode = useCallback(async () => {
+    if (typeof window === "undefined") {
+      throw new Error("Current runtime does not support WeChat mini program login.");
+    }
+
+    type WechatLoginSuccess = { code?: string; errMsg?: string };
+    type WechatLoginFailure = { errMsg?: string };
+    type WechatApi = {
+      login?: (args: {
+        success?: (result: WechatLoginSuccess) => void;
+        fail?: (error: WechatLoginFailure) => void;
+      }) => void;
+    };
+
+    const wxApi = (window as Window & { wx?: WechatApi }).wx;
+    if (!wxApi?.login) {
+      throw new Error("WeChat mini program API is unavailable in this environment.");
+    }
+
+    return new Promise<string>((resolve, reject) => {
+      wxApi.login?.({
+        success: (result) => {
+          if (result?.code) {
+            resolve(result.code);
+            return;
+          }
+
+          reject(new Error(result?.errMsg || "Failed to get WeChat login code."));
+        },
+        fail: (error) => {
+          reject(new Error(error?.errMsg || "Failed to request WeChat login code."));
+        },
+      });
+    });
+  }, []);
+
+  const onMiniProgramWechatSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading || !requirePrivacy()) return;
+
+    await runLockedAuthAction(async () => {
+      clearFeedback();
+      setLoading(true);
+      try {
+        const code = await requestMiniProgramLoginCode();
+        const { error: err } = await authClient.signInWithWechatMiniProgram({ code });
+        if (err) throw err;
+        goSignedIn();
+      } catch (err) {
+        setError(msg(err) || "微信登录失败，请稍后再试。");
+      } finally {
+        setLoading(false);
+      }
+    });
+  };
+
   const onSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
@@ -331,14 +429,31 @@ function AuthPageContent() {
   const onResetRequest = async (e?: React.FormEvent | React.MouseEvent<HTMLButtonElement>) => {
     e?.preventDefault();
     if (loading) return;
+    setResetToken("");
+    if (!email.trim()) {
+      setError(t.auth.enterEmail);
+      return;
+    }
     clearFeedback();
     setLoading(true);
     try {
-      const { error: err } = await authClient.signInWithOtp({
-        email,
-        options: { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}${buildUrl("/auth", { mode: "signin" })}` },
-      });
-      if (err) throw err;
+      if (region === RegionType.CHINA) {
+        const response = await fetch("/api/auth/send-reset-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim() }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload?.error || t.auth.sendOtpFailed);
+        }
+      } else {
+        const { error: err } = await authClient.signInWithOtp({
+          email,
+          options: { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}${buildUrl("/auth", { mode: "signin" })}` },
+        });
+        if (err) throw err;
+      }
       setForgotStep("verify");
       setNotice(t.auth.otpSent);
     } catch (err) {
@@ -352,11 +467,28 @@ function AuthPageContent() {
     e.preventDefault();
     if (loading) return;
     if (!resetOtp) return void setError(t.auth.enterOtpRequired);
+    if (!email.trim()) return void setError(t.auth.enterEmail);
     clearFeedback();
     setLoading(true);
     try {
-      const { error: err } = await authClient.verifyOtp({ email, token: resetOtp, type: "email" });
-      if (err) throw err;
+      if (region === RegionType.CHINA) {
+        const response = await fetch("/api/auth/verify-reset-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email.trim(),
+            code: resetOtp.trim(),
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload?.resetToken) {
+          throw new Error(payload?.error || t.auth.verifyOtpFailed);
+        }
+        setResetToken(payload.resetToken);
+      } else {
+        const { error: err } = await authClient.verifyOtp({ email, token: resetOtp, type: "email" });
+        if (err) throw err;
+      }
       setResetOtp("");
       setForgotStep("reset");
       setNotice(ui.otpVerifiedSetPassword);
@@ -372,16 +504,38 @@ function AuthPageContent() {
     if (loading) return;
     if (newPassword.length < 6) return void setError(t.auth.passwordTooShort);
     if (newPassword !== confirmNewPassword) return void setError(t.auth.passwordMismatch);
+    if (!email.trim()) return void setError(t.auth.enterEmail);
     clearFeedback();
     setLoading(true);
     try {
-      const { error: err } = await authClient.updateUser({ password: newPassword });
-      if (err) throw err;
-      await authClient.signOut();
+      if (region === RegionType.CHINA) {
+        if (!resetToken) {
+          throw new Error(t.auth.otpInvalid);
+        }
+        const response = await fetch("/api/auth/reset-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email.trim(),
+            resetToken,
+            password: newPassword,
+            confirmPassword: confirmNewPassword,
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload?.error || t.auth.setPasswordFailed);
+        }
+      } else {
+        const { error: err } = await authClient.updateUser({ password: newPassword });
+        if (err) throw err;
+        await authClient.signOut();
+      }
       resetForgot();
       setOtpSent(false);
       setOtp("");
       setLoginMethod("password");
+      setPassword("");
       setNotice(t.auth.passwordResetSuccess);
     } catch (err) {
       setError(msg(err));
@@ -390,17 +544,19 @@ function AuthPageContent() {
     }
   };
 
-  const signInButton = loading
-    ? loginMethod === "password"
-      ? t.auth.loggingIn
-      : otpSent
-        ? t.auth.verifying
-        : t.auth.sending
-    : loginMethod === "password"
-      ? t.auth.signInButton
-      : otpSent
-        ? t.auth.verifyOtp
-        : t.auth.sendOtp;
+  const signInButton = isWechatMiniProgramLoginEnabled
+    ? (loading ? miniProgramLoggingInLabel : miniProgramLoginLabel)
+    : loading
+      ? loginMethod === "password"
+        ? t.auth.loggingIn
+        : otpSent
+          ? t.auth.verifying
+          : t.auth.sending
+      : loginMethod === "password"
+        ? t.auth.signInButton
+        : otpSent
+          ? t.auth.verifyOtp
+          : t.auth.sendOtp;
 
   const privacy = (
     <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
@@ -457,133 +613,40 @@ function AuthPageContent() {
     );
 
   const signInFormEnhanced =
-    supportsOtp && forgotStep !== "off" ? forgotForm : (
+    isWechatMiniProgramLoginEnabled ? (
+      <form onSubmit={onMiniProgramWechatSignIn} className="space-y-4">
+        <Alert>
+          <AlertDescription>
+            {language === "en"
+              ? "Mini program environment detected. Continue with WeChat sign-in."
+              : "检测到小程序环境，请使用微信登录继续。"}
+          </AlertDescription>
+        </Alert>
+        {privacy}
+        <Button type="submit" className="w-full" disabled={loading}>
+          {signInButton}
+        </Button>
+      </form>
+    ) : supportsOtp && forgotStep !== "off" ? forgotForm : (
       <form onSubmit={loginMethod === "password" ? onSignIn : onOtp} className="space-y-4">
         {region === RegionType.CHINA ? (
-          <div className="space-y-2">
-            <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1">
-              <button
-                type="button"
-                className={`rounded-md px-3 py-2 text-sm font-medium transition ${
-                  cnLoginChannel === "email"
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-600 hover:text-gray-900"
-                }`}
-                onClick={() => {
-                  clearFeedback();
-                  setCnLoginChannel("email");
-                  setLoginMethod("password");
-                  setOtp("");
-                  setOtpSent(false);
-                }}
-              >
-                邮箱登录
-              </button>
-              <button
-                type="button"
-                className={`rounded-md px-3 py-2 text-sm font-medium transition ${
-                  cnLoginChannel === "phone"
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-600 hover:text-gray-900"
-                }`}
-                onClick={() => {
-                  clearFeedback();
-                  setCnLoginChannel("phone");
-                  setLoginMethod("password");
-                  setOtp("");
-                  setOtpSent(false);
-                }}
-              >
-                手机号登录
-              </button>
-            </div>
-
-            {cnLoginChannel === "phone" ? (
-              <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1">
-                <button
-                  type="button"
-                  className={`rounded-md px-3 py-2 text-sm font-medium transition ${
-                    loginMethod === "password"
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "text-gray-600 hover:text-gray-900"
-                  }`}
-                  onClick={() => {
-                    clearFeedback();
-                    setLoginMethod("password");
-                    setOtp("");
-                    setOtpSent(false);
-                  }}
-                >
-                  手机号+密码
-                </button>
-                <button
-                  type="button"
-                  disabled={!otpMethodAvailable}
-                  className={`rounded-md px-3 py-2 text-sm font-medium transition ${
-                    loginMethod === "otp"
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "text-gray-600 hover:text-gray-900"
-                  } ${!otpMethodAvailable ? "cursor-not-allowed opacity-50" : ""}`}
-                  onClick={() => {
-                    if (!otpMethodAvailable) return;
-                    clearFeedback();
-                    setLoginMethod("otp");
-                    setOtp("");
-                    setOtpSent(false);
-                  }}
-                >
-                  {loginMethodOtpLabel}
-                </button>
-              </div>
-            ) : null}
-
-            {cnLoginChannel === "phone" && !otpMethodAvailable && !configLoading ? (
-              <Alert>
-                <AlertDescription>
-                  SMS OTP sign-in is temporarily unavailable: {smsAvailability?.reason || "SMS service is not fully configured."}
-                </AlertDescription>
-              </Alert>
-            ) : null}
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+            {cnLoginChannel === "email"
+              ? "当前为邮箱+密码登录，可通过下方文字切换到手机号登录。"
+              : loginMethod === "otp"
+                ? (otpSent
+                    ? "当前为手机号验证码验证，请输入验证码完成登录。"
+                    : "当前为手机号验证码登录。")
+                : "当前为手机号+密码登录，可通过下方文字切换到验证码登录。"}
           </div>
-        ) : supportsOtp ? (
-          <div className="space-y-2">
-            <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1">
-              <button
-                type="button"
-                className={`rounded-md px-3 py-2 text-sm font-medium transition ${
-                  loginMethod === "password"
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-600 hover:text-gray-900"
-                }`}
-                onClick={() => {
-                  clearFeedback();
-                  setLoginMethod("password");
-                  setOtp("");
-                  setOtpSent(false);
-                }}
-              >
-                {t.auth.usePasswordLogin}
-              </button>
-              <button
-                type="button"
-                disabled={!otpMethodAvailable}
-                className={`rounded-md px-3 py-2 text-sm font-medium transition ${
-                  loginMethod === "otp"
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-600 hover:text-gray-900"
-                } ${!otpMethodAvailable ? "cursor-not-allowed opacity-50" : ""}`}
-                onClick={() => {
-                  if (!otpMethodAvailable) return;
-                  clearFeedback();
-                  setLoginMethod("otp");
-                  setOtp("");
-                  setOtpSent(false);
-                }}
-              >
-                {loginMethodOtpLabel}
-              </button>
-            </div>
-          </div>
+        ) : null}
+
+        {region === RegionType.CHINA && cnLoginChannel === "phone" && !otpMethodAvailable && !configLoading ? (
+          <Alert>
+            <AlertDescription>
+              SMS OTP sign-in is temporarily unavailable: {smsAvailability?.reason || "SMS service is not fully configured."}
+            </AlertDescription>
+          </Alert>
         ) : null}
 
         {loginMethod === "password" ? (
@@ -608,35 +671,38 @@ function AuthPageContent() {
               {supportsOtp ? (
                 <div className="flex justify-between text-sm">
                   {region === RegionType.CHINA ? (
-                    cnLoginChannel === "email" ? (
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                       <button
                         type="button"
                         className="text-blue-600 hover:underline"
                         onClick={() => {
                           clearFeedback();
-                          setCnLoginChannel("phone");
+                          setCnLoginChannel(cnLoginChannel === "email" ? "phone" : "email");
                           setLoginMethod("password");
                           setOtp("");
                           setOtpSent(false);
                         }}
                       >
-                        切换到手机号登录
+                        {cnLoginChannel === "email" ? "切换到手机号登录" : "切换到邮箱登录"}
                       </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="text-blue-600 hover:underline"
-                        onClick={() => {
-                          clearFeedback();
-                          setCnLoginChannel("email");
-                          setLoginMethod("password");
-                          setOtp("");
-                          setOtpSent(false);
-                        }}
-                      >
-                        切换到邮箱登录
-                      </button>
-                    )
+
+                      {cnLoginChannel === "phone" ? (
+                        <button
+                          type="button"
+                          disabled={!otpMethodAvailable}
+                          className={`text-blue-600 hover:underline ${!otpMethodAvailable ? "cursor-not-allowed opacity-50" : ""}`}
+                          onClick={() => {
+                            if (!otpMethodAvailable) return;
+                            clearFeedback();
+                            setLoginMethod("otp");
+                            setOtp("");
+                            setOtpSent(false);
+                          }}
+                        >
+                          {loginMethodOtpLabel}
+                        </button>
+                      ) : null}
+                    </div>
                   ) : (
                     <button
                       type="button"
@@ -699,21 +765,49 @@ function AuthPageContent() {
                   {t.auth.backToModify}
                 </button>
               ) : <span />}
-              <button
-                type="button"
-                className="text-blue-600 hover:underline"
-                onClick={() => {
-                  clearFeedback();
-                  setLoginMethod("password");
-                  if (region === RegionType.CHINA) {
-                    setCnLoginChannel("phone");
-                  }
-                  setOtp("");
-                  setOtpSent(false);
-                }}
-              >
-                {region === RegionType.CHINA ? "改用手机号+密码登录" : t.auth.usePasswordLogin}
-              </button>
+              {region === RegionType.CHINA ? (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-right">
+                  <button
+                    type="button"
+                    className="text-blue-600 hover:underline"
+                    onClick={() => {
+                      clearFeedback();
+                      setCnLoginChannel("phone");
+                      setLoginMethod("password");
+                      setOtp("");
+                      setOtpSent(false);
+                    }}
+                  >
+                    改用手机号+密码登录
+                  </button>
+                  <button
+                    type="button"
+                    className="text-blue-600 hover:underline"
+                    onClick={() => {
+                      clearFeedback();
+                      setCnLoginChannel("email");
+                      setLoginMethod("password");
+                      setOtp("");
+                      setOtpSent(false);
+                    }}
+                  >
+                    切换到邮箱登录
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="text-blue-600 hover:underline"
+                  onClick={() => {
+                    clearFeedback();
+                    setLoginMethod("password");
+                    setOtp("");
+                    setOtpSent(false);
+                  }}
+                >
+                  {t.auth.usePasswordLogin}
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -721,7 +815,6 @@ function AuthPageContent() {
         <Button type="submit" className="w-full" disabled={loading}>{signInButton}</Button>
       </form>
     );
-
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-6 sm:px-6 sm:py-12 lg:px-8">
       <div className="w-full max-w-md">
@@ -745,6 +838,18 @@ function AuthPageContent() {
               </TabsList>
               <TabsContent value="signin" className="space-y-6">
                 {signInFormEnhanced}
+                {isWechatMiniProgramRuntime &&
+                region === RegionType.CHINA &&
+                !configLoading &&
+                !config.features.wechatAuth ? (
+                  <Alert>
+                    <AlertDescription>
+                      {language === "en"
+                        ? `WeChat sign-in is not available: ${config.availability?.wechat?.reason || "missing configuration."}`
+                        : `当前未启用微信登录：${config.availability?.wechat?.reason || "配置缺失。"}`}
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
                 {region !== RegionType.CHINA ? (
                   <>
                     <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-sm"><span className="bg-white px-4 text-gray-500">{t.auth.or}</span></div></div>
@@ -796,4 +901,5 @@ export default function AuthPage() {
     </Suspense>
   );
 }
+
 

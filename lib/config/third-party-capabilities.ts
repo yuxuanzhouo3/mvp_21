@@ -2,13 +2,14 @@ import { currentRegion, getPaymentProviders, isAuthFeatureSupported } from "@/li
 import {
   getAppUrl,
   getPayPalMode,
+  getWechatOAuthAppId,
   getWechatPayApiV3Key,
   getWechatPayAppId,
 } from "@/lib/config/runtime-env";
 
 type Region = "CN" | "INTL";
 type PaymentMethod = "stripe" | "paypal" | "wechat" | "alipay";
-type AuthMethod = "sms" | "google";
+type AuthMethod = "sms" | "wechat" | "google";
 
 export interface CapabilityStatus {
   enabled: boolean;
@@ -106,9 +107,26 @@ function getGoogleAuthStatus(region: Region): CapabilityStatus {
   return createStatus(true);
 }
 
+function getWechatAuthStatus(region: Region): CapabilityStatus {
+  if (region !== "CN" || !isAuthFeatureSupported("wechatAuth")) {
+    return createStatus(false, "WeChat sign-in is not supported in this deployment.");
+  }
+
+  if (!isPresent(getWechatOAuthAppId())) {
+    return createStatus(false, "WECHAT_APP_ID or NEXT_PUBLIC_WECHAT_APP_ID is missing.");
+  }
+
+  if (!isPresent(process.env.WECHAT_APP_SECRET)) {
+    return createStatus(false, "WECHAT_APP_SECRET is missing.");
+  }
+
+  return createStatus(true);
+}
+
 export function getPublicAuthConfig(): PublicAuthConfig {
   const region = currentRegion;
   const sms = getSmsAuthStatus(region);
+  const wechat = getWechatAuthStatus(region);
   const google = getGoogleAuthStatus(region);
 
   return {
@@ -116,12 +134,13 @@ export function getPublicAuthConfig(): PublicAuthConfig {
     features: {
       emailAuth: isAuthFeatureSupported("emailAuth"),
       phoneOtpAuth: sms.enabled,
-      wechatAuth: false,
+      wechatAuth: wechat.enabled,
       googleAuth: google.enabled,
       githubAuth: false,
     },
     availability: {
       sms,
+      wechat,
       google,
     },
   };

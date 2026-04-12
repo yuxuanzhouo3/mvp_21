@@ -34,7 +34,7 @@ export const RegionConfig = {
     features: {
       emailAuth: true,
       phoneOtpAuth: isChinaRegion(),
-      wechatAuth: false,
+      wechatAuth: isChinaRegion(),
       googleAuth: isInternationalRegion(),
       githubAuth: false,
     },

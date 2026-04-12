@@ -50,6 +50,13 @@ export interface AuthClient {
     email: string;
     options?: any;
   }): Promise<{ error: Error | null }>;
+  signInWithWechatMiniProgram(params: {
+    code: string;
+    profile?: {
+      nickname?: string;
+      avatar?: string;
+    };
+  }): Promise<AuthResponse>;
   verifyOtp(params: {
     email: string;
     token: string;
@@ -225,6 +232,15 @@ class SupabaseAuthClient implements AuthClient {
             : new Error("Supabase client not initialized"),
       };
     }
+  }
+
+  async signInWithWechatMiniProgram(): Promise<AuthResponse> {
+    return {
+      data: { user: null, session: null },
+      error: new Error(
+        "WeChat mini program login is not supported in the current region.",
+      ),
+    };
   }
 
   async verifyOtp(params: {
@@ -621,6 +637,83 @@ class CloudBaseAuthClient implements AuthClient {
     }
   }
 
+  async signInWithWechatMiniProgram(params: {
+    code: string;
+    profile?: {
+      nickname?: string;
+      avatar?: string;
+    };
+  }): Promise<AuthResponse> {
+    try {
+      const response = await fetch("/api/auth/wechat/mini", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          code: params.code,
+          profile: params.profile,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        return {
+          data: { user: null, session: null },
+          error: new Error(
+            errorData?.error?.message ||
+              errorData?.details ||
+              errorData?.error ||
+              "WeChat mini program login failed",
+          ),
+        };
+      }
+
+      const data = await response.json();
+
+      if (data.accessToken && data.user && typeof window !== "undefined") {
+        try {
+          const { saveAuthState } = await import("@/lib/auth/auth-state-manager");
+
+          saveAuthState(
+            data.accessToken,
+            data.refreshToken || data.accessToken,
+            data.user,
+            data.tokenMeta || {
+              accessTokenExpiresIn: 3600,
+              refreshTokenExpiresIn: 604800,
+            },
+          );
+        } catch (error) {
+          console.error("[CloudBase Auth] Failed to persist WeChat auth state:", error);
+        }
+      }
+
+      const accessToken =
+        data.accessToken || data.token || data.session?.access_token;
+
+      return {
+        data: {
+          user: data.user || null,
+          session:
+            data.session ||
+            (accessToken
+              ? {
+                  access_token: accessToken,
+                  user: data.user || null,
+                }
+              : null),
+        },
+        error: null,
+      };
+    } catch (error) {
+      return {
+        data: { user: null, session: null },
+        error: error as Error,
+      };
+    }
+  }
+
   async verifyOtp(params: {
     email: string;
     token: string;
@@ -895,6 +988,13 @@ export const auth = {
   }) => getAuthClient().signUp(params),
   signInWithOtp: (params: { email: string; options?: any }) =>
     getAuthClient().signInWithOtp(params),
+  signInWithWechatMiniProgram: (params: {
+    code: string;
+    profile?: {
+      nickname?: string;
+      avatar?: string;
+    };
+  }) => getAuthClient().signInWithWechatMiniProgram(params),
   verifyOtp: (params: { email: string; token: string; type: string }) =>
     getAuthClient().verifyOtp(params),
   signOut: () => getAuthClient().signOut(),

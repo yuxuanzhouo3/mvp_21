@@ -46,7 +46,7 @@ function generateConfig(region: DeploymentRegion): DeploymentConfig {
       features: {
         emailAuth: true,
         phoneOtpAuth: isChinaRegion,
-        wechatAuth: false,
+        wechatAuth: isChinaRegion,
         googleAuth: !isChinaRegion,
         githubAuth: false,
       },
