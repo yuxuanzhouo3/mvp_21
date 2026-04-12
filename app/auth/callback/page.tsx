@@ -1,14 +1,7 @@
-"use client";
+﻿"use client";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { saveAuthState } from "@/lib/auth/auth-state-manager";
-import {
-  clearWechatState,
-  extractWechatAuthResponse,
-  getSavedWechatState,
-  validateWechatState,
-} from "@/lib/wechat/oauth";
 import {
   Card,
   CardContent,
@@ -39,115 +32,36 @@ function AuthCallbackContent() {
       ? normalizedRedirect
       : "/dashboard";
 
-  const buildUrl = useCallback((path: string) => {
-    const debug = searchParams.get("debug");
-    if (debug) {
-      return `${path}?debug=${debug}`;
-    }
-    return path;
-  }, [searchParams]);
+  const buildUrl = useCallback(
+    (path: string) => {
+      const debug = searchParams.get("debug");
+      if (debug) {
+        return `${path}?debug=${debug}`;
+      }
+      return path;
+    },
+    [searchParams],
+  );
 
   useEffect(() => {
-    const handleWechatCallback = async (response: any) => {
-      const savedState = getSavedWechatState();
-      if (!validateWechatState(response.state, savedState)) {
-        setError(text.wechatStateInvalid);
-        setLoading(false);
-        return;
-      }
-
-      clearWechatState();
-
-      if (response.error) {
-        setError(`${text.wechatAuthFailed}: ${response.error_description}`);
-        setLoading(false);
-        return;
-      }
-
-      if (!response.code) {
-        setError(text.wechatCodeMissing);
-        setLoading(false);
-        return;
-      }
-
+    const handleAuthCallback = async () => {
       try {
-        const loginResponse = await fetch("/api/auth/wechat", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            code: response.code,
-          }),
-        });
+        const { getAuthClient } = await import("@/lib/auth/client");
+        const sessionResult = await getAuthClient().getSession();
 
-        if (!loginResponse.ok) {
-          const errorData = await loginResponse.json();
-          setError(errorData.details || errorData.error || text.wechatLoginFailed);
+        if (sessionResult.error) {
+          setError(sessionResult.error.message);
           setLoading(false);
           return;
         }
 
-        const loginData = await loginResponse.json();
-
-        if (loginData.success && loginData.accessToken && loginData.refreshToken) {
-          saveAuthState(
-            loginData.accessToken,
-            loginData.refreshToken,
-            {
-              id: loginData.user.id,
-              email: loginData.user.email,
-              name: loginData.user.name,
-              avatar: loginData.user.avatar,
-            },
-            {
-              accessTokenExpiresIn:
-                loginData.tokenMeta?.accessTokenExpiresIn || 3600,
-              refreshTokenExpiresIn:
-                loginData.tokenMeta?.refreshTokenExpiresIn || 604800,
-            },
-          );
+        if (sessionResult.data.session) {
+          router.replace(buildUrl(postAuthPath));
+          return;
         }
 
-        setTimeout(() => {
-          router.replace(buildUrl(postAuthPath));
-        }, 500);
-      } catch (err) {
-        console.error("WeChat login request failed:", err);
-        setError(err instanceof Error ? err.message : text.wechatLoginFailed);
-        setLoading(false);
-      }
-    };
-
-    const handleSupabaseCallback = async () => {
-      const { getAuthClient } = await import("@/lib/auth/client");
-      const sessionResult = await getAuthClient().getSession();
-
-      if (sessionResult.error) {
-        setError(sessionResult.error.message);
-        setLoading(false);
-        return;
-      }
-
-      if (sessionResult.data.session) {
-        router.replace(buildUrl(postAuthPath));
-      } else {
         setError(text.authFailed);
         setLoading(false);
-      }
-    };
-
-    const handleAuthCallback = async () => {
-      try {
-        const wechatResponse = extractWechatAuthResponse(
-          new URLSearchParams(searchParams),
-        );
-
-        if (wechatResponse.code || wechatResponse.error) {
-          await handleWechatCallback(wechatResponse);
-        } else {
-          await handleSupabaseCallback();
-        }
       } catch (err) {
         console.error("Auth callback error:", err);
         setError(err instanceof Error ? err.message : text.callbackError);
@@ -155,8 +69,8 @@ function AuthCallbackContent() {
       }
     };
 
-    handleAuthCallback();
-  }, [buildUrl, postAuthPath, router, searchParams, text]);
+    void handleAuthCallback();
+  }, [buildUrl, postAuthPath, router, text]);
 
   if (loading) {
     return (

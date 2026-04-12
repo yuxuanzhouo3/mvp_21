@@ -34,7 +34,6 @@ import {
 import {
   applyContractActionForCurrentUser,
   downloadContractForCurrentUser,
-  exportContractPdfForCurrentUser,
   type ContractDetail,
   getContractForCurrentUser,
 } from "@/lib/contracts/client";
@@ -210,7 +209,7 @@ export default function ContractDetailPage() {
     if (!contractId) return;
     try {
       setIsDownloadingHtml(true);
-      await downloadContractForCurrentUser(contractId);
+      await downloadContractForCurrentUser(contractId, "html");
     } catch (error) {
       console.error("[ContractDetailPage] Failed to download HTML:", error);
       toast.error(isEn ? "Failed to download HTML." : "下载 HTML 失败。");
@@ -236,7 +235,7 @@ export default function ContractDetailPage() {
     if (!contractId) return;
     try {
       setIsPrintingPdf(true);
-      await exportContractPdfForCurrentUser(contractId);
+      await downloadContractForCurrentUser(contractId, "pdf");
     } catch (error) {
       console.error("[ContractDetailPage] Failed to export PDF:", error);
       toast.error(

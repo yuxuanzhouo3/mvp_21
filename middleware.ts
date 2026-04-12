@@ -3,6 +3,9 @@ import { geoRouter } from "@/lib/architecture-modules/core/geo-router";
 import { RegionType } from "@/lib/architecture-modules/core/types";
 import { csrfProtection } from "@/lib/security/csrf";
 
+const WECHAT_VERIFY_PATH = "/I1yRwv6X3I.txt";
+const WECHAT_VERIFY_CONTENT = "4e8934892f52479d1dd06c4ece98bf58";
+
 // 需要登录才能访问的路由前缀
 const PROTECTED_ROUTES = [
   "/admin",
@@ -27,6 +30,23 @@ const AUTH_ROUTES = ["/auth", "/login", "/signup"];
  */
 export async function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
+
+  // Keep WeChat domain verification deterministic and unauthenticated.
+  if (
+    pathname === WECHAT_VERIFY_PATH &&
+    (request.method === "GET" || request.method === "HEAD")
+  ) {
+    return new NextResponse(
+      request.method === "HEAD" ? null : WECHAT_VERIFY_CONTENT,
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-store",
+        },
+      },
+    );
+  }
 
   // =====================
   // 认证路由保护

@@ -13,6 +13,7 @@ export interface DeploymentConfig {
     provider: "cloudbase" | "supabase";
     features: {
       emailAuth: boolean;
+      phoneOtpAuth: boolean;
       wechatAuth: boolean;
       googleAuth: boolean;
       githubAuth: boolean;
@@ -44,7 +45,8 @@ function generateConfig(region: DeploymentRegion): DeploymentConfig {
       provider: isChinaRegion ? "cloudbase" : "supabase",
       features: {
         emailAuth: true,
-        wechatAuth: isChinaRegion,
+        phoneOtpAuth: isChinaRegion,
+        wechatAuth: false,
         googleAuth: !isChinaRegion,
         githubAuth: false,
       },
@@ -134,4 +136,3 @@ export function isPaymentMethodSupported(
 export function getFullConfig(): DeploymentConfig {
   return deploymentConfig;
 }
-

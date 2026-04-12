@@ -9,9 +9,16 @@ import { useLanguage } from "@/components/language-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  type ContractExportFormat,
   downloadContractForCurrentUser,
   listContractsForCurrentUser,
   type ContractListItem,
@@ -108,10 +115,13 @@ export function MobileContractList() {
     }).format(date);
   };
 
-  async function handleDownload(contractId: string) {
+  async function handleDownload(
+    contractId: string,
+    format: ContractExportFormat,
+  ) {
     try {
       setDownloadingId(contractId);
-      await downloadContractForCurrentUser(contractId, "pdf");
+      await downloadContractForCurrentUser(contractId, format);
       toast.success(isEn ? "Contract downloaded." : "合同已开始下载。");
     } catch (downloadError) {
       console.error("[MobileContractList] Failed to download contract:", downloadError);
@@ -251,15 +261,38 @@ export function MobileContractList() {
                           {isEn ? "Sign" : "签署"}
                         </Link>
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        disabled={downloadingId === contract.id}
-                        onClick={() => void handleDownload(contract.id)}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            disabled={downloadingId === contract.id}
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            disabled={downloadingId === contract.id}
+                            onClick={() => void handleDownload(contract.id, "pdf")}
+                          >
+                            {isEn ? "Download PDF" : "下载 PDF"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={downloadingId === contract.id}
+                            onClick={() => void handleDownload(contract.id, "word")}
+                          >
+                            {isEn ? "Download Word" : "下载 Word"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={downloadingId === contract.id}
+                            onClick={() => void handleDownload(contract.id, "html")}
+                          >
+                            {isEn ? "Download HTML" : "下载 HTML"}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                       <Button
                         variant="ghost"
                         size="icon"

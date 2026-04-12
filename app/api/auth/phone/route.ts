@@ -1,20 +1,14 @@
-/**
+﻿/**
  * 手机验证码登录 API
  * POST /api/auth/phone
  */
 
 import { NextRequest, NextResponse } from "next/server";
 
-import {
-  verifyVerificationCode,
-} from "@/lib/auth/verification-code-store";
+import { verifyVerificationCode } from "@/lib/auth/verification-code-store";
 import { loadChinaAccountProfile } from "@/lib/account/server-profile";
 import { loginOrCreatePhoneUser } from "@/lib/cloudbase/cloudbase-service";
 import { isChinaRegion } from "@/lib/config/region";
-
-function verifyCode(phone: string, code: string) {
-  return verifyVerificationCode(phone, code, { allowAnyInDevelopment: true });
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,7 +20,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { phone, code } = body;
+    const phone = String(body?.phone || "").trim();
+    const code = String(body?.code || "").trim();
 
     if (!phone || !code) {
       return NextResponse.json(
@@ -43,7 +38,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!verifyCode(phone, code)) {
+    if (!verifyVerificationCode(phone, code)) {
       return NextResponse.json(
         { success: false, error: { message: "验证码错误或已过期" } },
         { status: 400 },
@@ -73,8 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
     const profile =
-      (await loadChinaAccountProfile(result.userId)) ||
-      {
+      (await loadChinaAccountProfile(result.userId)) || {
         id: result.userId,
         email: result.email || `phone_${phone}@local.phone`,
         name: result.name || `用户${phone.slice(-4)}`,

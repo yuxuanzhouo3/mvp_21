@@ -427,11 +427,12 @@ export const en = {
     usa: "USA",
     unknown: "Unknown",
     or: "or",
-    wechatLogin: "WeChat Login (Coming Soon)",
-    wechatRegister: "WeChat Register (Coming Soon)",
+    wechatLogin: "Phone OTP Login",
+    wechatRegister: "Phone OTP Sign Up",
     googleLogin: "Login with Google",
     googleRegister: "Register with Google",
-    domesticLoginNote: "Domestic users are recommended to use email login",
+    domesticLoginNote:
+      "Domestic users are recommended to use email or phone OTP login",
     domesticRegisterNote:
       "Domestic users are recommended to use email registration",
     debugDomesticLogin: "Debug Mode: Simulating domestic user login",

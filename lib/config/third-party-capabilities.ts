@@ -2,14 +2,13 @@ import { currentRegion, getPaymentProviders, isAuthFeatureSupported } from "@/li
 import {
   getAppUrl,
   getPayPalMode,
-  getWechatOAuthAppId,
   getWechatPayApiV3Key,
   getWechatPayAppId,
 } from "@/lib/config/runtime-env";
 
 type Region = "CN" | "INTL";
 type PaymentMethod = "stripe" | "paypal" | "wechat" | "alipay";
-type AuthMethod = "wechat" | "google";
+type AuthMethod = "sms" | "google";
 
 export interface CapabilityStatus {
   enabled: boolean;
@@ -20,6 +19,7 @@ export interface PublicAuthConfig {
   region: Region;
   features: {
     emailAuth: boolean;
+    phoneOtpAuth: boolean;
     wechatAuth: boolean;
     googleAuth: boolean;
     githubAuth: boolean;
@@ -58,17 +58,29 @@ function createStatus(enabled: boolean, reason?: string): CapabilityStatus {
   return enabled ? { enabled: true } : { enabled: false, reason };
 }
 
-function getWechatAuthStatus(region: Region): CapabilityStatus {
-  if (region !== "CN" || !isAuthFeatureSupported("wechatAuth")) {
-    return createStatus(false, "WeChat sign-in is not supported in this deployment.");
+function getSmsAuthStatus(region: Region): CapabilityStatus {
+  if (region !== "CN" || !isAuthFeatureSupported("phoneOtpAuth")) {
+    return createStatus(false, "SMS OTP sign-in is not supported in this deployment.");
   }
 
-  if (!isPresent(getWechatOAuthAppId())) {
-    return createStatus(false, "NEXT_PUBLIC_WECHAT_APP_ID or WECHAT_APP_ID is missing.");
+  if (!isPresent(process.env.TENCENT_SMS_APP_ID)) {
+    return createStatus(false, "TENCENT_SMS_APP_ID is missing.");
   }
 
-  if (!looksLikeUrl(getAppUrl())) {
-    return createStatus(false, "APP_URL or NEXT_PUBLIC_APP_URL is missing or invalid.");
+  if (!isPresent(process.env.TENCENT_SMS_SIGN_NAME)) {
+    return createStatus(false, "TENCENT_SMS_SIGN_NAME is missing.");
+  }
+
+  if (!isPresent(process.env.TENCENT_SMS_TEMPLATE_ID)) {
+    return createStatus(false, "TENCENT_SMS_TEMPLATE_ID is missing.");
+  }
+
+  if (!isPresent(process.env.TENCENT_SMS_SECRET_ID)) {
+    return createStatus(false, "TENCENT_SMS_SECRET_ID is missing.");
+  }
+
+  if (!isPresent(process.env.TENCENT_SMS_SECRET_KEY)) {
+    return createStatus(false, "TENCENT_SMS_SECRET_KEY is missing.");
   }
 
   return createStatus(true);
@@ -96,19 +108,20 @@ function getGoogleAuthStatus(region: Region): CapabilityStatus {
 
 export function getPublicAuthConfig(): PublicAuthConfig {
   const region = currentRegion;
-  const wechat = getWechatAuthStatus(region);
+  const sms = getSmsAuthStatus(region);
   const google = getGoogleAuthStatus(region);
 
   return {
     region,
     features: {
       emailAuth: isAuthFeatureSupported("emailAuth"),
-      wechatAuth: wechat.enabled,
+      phoneOtpAuth: sms.enabled,
+      wechatAuth: false,
       googleAuth: google.enabled,
       githubAuth: false,
     },
     availability: {
-      wechat,
+      sms,
       google,
     },
   };

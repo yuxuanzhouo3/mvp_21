@@ -291,7 +291,7 @@ class MemoryDatabaseAdapter implements DatabaseAdapter {
 export function createDatabaseAdapter(): DatabaseAdapter {
   throw new Error(
     "❌ createDatabaseAdapter() 已弃用。请直接使用 CloudBase SDK 的集合数据库 API。" +
-    "参考：lib/database/adapter.ts 中的注释或 app/api/auth/wechat/route.ts 中的实现"
+    "参考：lib/database/adapter.ts 中的注释或 app/api/auth/phone/route.ts 中的实现"
   );
 }
 
@@ -308,6 +308,6 @@ let dbInstance: DatabaseAdapter | null = null;
 export function getDatabase(): DatabaseAdapter {
   throw new Error(
     "❌ getDatabase() 已弃用。请直接使用 CloudBase SDK 的集合数据库 API。" +
-    "参考：lib/database/adapter.ts 中 createDatabaseAdapter() 的注释或 app/api/auth/wechat/route.ts 中的实现"
+    "参考：lib/database/adapter.ts 中 createDatabaseAdapter() 的注释或 app/api/auth/phone/route.ts 中的实现"
   );
 }

@@ -7,19 +7,18 @@ export interface AuthConfig {
   authProvider: "cloudbase" | "supabase";
   features: {
     emailAuth: boolean;
+    phoneOtpAuth: boolean;
     wechatAuth: boolean;
     googleAuth: boolean;
     githubAuth: boolean;
   };
   availability?: {
-    wechat?: { enabled: boolean; reason?: string };
+    sms?: { enabled: boolean; reason?: string };
     google?: { enabled: boolean; reason?: string };
   };
-  wechatAppId: string | undefined;
   appUrl: string | undefined;
   supabaseUrl: string | undefined;
   supabaseAnonKey: string | undefined;
-  wechatCloudbaseId: string | undefined;
 }
 
 export function useAuthConfig() {
@@ -29,15 +28,14 @@ export function useAuthConfig() {
     authProvider: "cloudbase",
     features: {
       emailAuth: true,
-      wechatAuth: true,
+      phoneOtpAuth: true,
+      wechatAuth: false,
       googleAuth: false,
       githubAuth: false,
     },
-    wechatAppId: undefined,
     appUrl: undefined,
     supabaseUrl: undefined,
     supabaseAnonKey: undefined,
-    wechatCloudbaseId: undefined,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

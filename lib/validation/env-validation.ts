@@ -19,6 +19,12 @@ const envSchema = z.object({
   NEXT_PUBLIC_WECHAT_APP_ID: z.string().min(1).optional(),
   WECHAT_APP_ID: z.string().min(1).optional(),
   WECHAT_APP_SECRET: z.string().min(1).optional(),
+  TENCENT_SMS_APP_ID: z.string().min(1).optional(),
+  TENCENT_SMS_SIGN_NAME: z.string().min(1).optional(),
+  TENCENT_SMS_TEMPLATE_ID: z.string().min(1).optional(),
+  TENCENT_SMS_SECRET_ID: z.string().min(1).optional(),
+  TENCENT_SMS_SECRET_KEY: z.string().min(1).optional(),
+  TENCENT_SMS_REGION: z.string().min(1).optional(),
 
   // Supabase配置
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
@@ -169,6 +175,36 @@ export function validateEnvironment():
           "CLOUDBASE_SECRET_KEY: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
         );
       }
+
+      if (!envData.TENCENT_SMS_APP_ID) {
+        conditionalErrors.push(
+          "TENCENT_SMS_APP_ID: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+        );
+      }
+
+      if (!envData.TENCENT_SMS_SIGN_NAME) {
+        conditionalErrors.push(
+          "TENCENT_SMS_SIGN_NAME: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+        );
+      }
+
+      if (!envData.TENCENT_SMS_TEMPLATE_ID) {
+        conditionalErrors.push(
+          "TENCENT_SMS_TEMPLATE_ID: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+        );
+      }
+
+      if (!envData.TENCENT_SMS_SECRET_ID) {
+        conditionalErrors.push(
+          "TENCENT_SMS_SECRET_ID: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+        );
+      }
+
+      if (!envData.TENCENT_SMS_SECRET_KEY) {
+        conditionalErrors.push(
+          "TENCENT_SMS_SECRET_KEY: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+        );
+      }
     }
 
     if (
@@ -238,6 +274,8 @@ export function checkSensitiveDataExposure(): {
     "DASHSCOPE_API_KEY",
     "AI_GATEWAY_API_KEY",
     "SUPABASE_SERVICE_ROLE_KEY",
+    "TENCENT_SMS_SECRET_ID",
+    "TENCENT_SMS_SECRET_KEY",
     "SENTRY_DSN", // 虽然DSN是公开的，但仍需检查
   ];
 

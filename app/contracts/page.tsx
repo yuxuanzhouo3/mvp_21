@@ -7,6 +7,7 @@ import {
   Download,
   Eye,
   FileText,
+  FileType2,
   Loader2,
   Plus,
   Search,
@@ -29,6 +30,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -39,6 +46,7 @@ import {
 } from "@/components/ui/select";
 import {
   applyContractActionForCurrentUser,
+  type ContractExportFormat,
   deleteContractForCurrentUser,
   downloadContractForCurrentUser,
   listContractsForCurrentUser,
@@ -250,10 +258,13 @@ export default function ContractsPage() {
     }
   };
 
-  const handleDownload = async (contract: ContractListItem) => {
+  const handleDownload = async (
+    contract: ContractListItem,
+    format: ContractExportFormat,
+  ) => {
     try {
       setDownloadingId(contract.id);
-      await downloadContractForCurrentUser(contract.id);
+      await downloadContractForCurrentUser(contract.id, format);
     } catch (downloadError) {
       console.error("[ContractsPage] Failed to download contract:", downloadError);
       toast.error(isEn ? "Failed to download the contract." : "下载合同失败，请稍后重试。");
@@ -497,15 +508,45 @@ export default function ContractsPage() {
                     <Eye className="mr-1 h-4 w-4" />
                     {content.viewAction}
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void handleDownload(contract)}
-                    disabled={downloadingId === contract.id}
-                  >
-                    <Download className="mr-1 h-4 w-4" />
-                    {content.downloadAction}
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={downloadingId === contract.id}
+                      >
+                        {downloadingId === contract.id ? (
+                          <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="mr-1 h-4 w-4" />
+                        )}
+                        {content.downloadAction}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        disabled={downloadingId === contract.id}
+                        onClick={() => void handleDownload(contract, "pdf")}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        {isEn ? "Download PDF" : "下载 PDF"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={downloadingId === contract.id}
+                        onClick={() => void handleDownload(contract, "word")}
+                      >
+                        <FileType2 className="mr-2 h-4 w-4" />
+                        {isEn ? "Download Word" : "下载 Word"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={downloadingId === contract.id}
+                        onClick={() => void handleDownload(contract, "html")}
+                      >
+                        <FileText className="mr-2 h-4 w-4" />
+                        {isEn ? "Download HTML" : "下载 HTML"}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   <Button
                     variant="outline"
                     size="sm"

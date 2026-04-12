@@ -522,15 +522,10 @@ class CloudBaseAuthClient implements AuthClient {
     provider: string;
     options?: any;
   }): Promise<{ data: any; error: Error | null }> {
-    if (params.provider === "wechat") {
-      await this.toDefaultLoginPage?.(params.options?.redirectTo);
-      return { data: null, error: null };
-    }
-
     return {
       data: null,
       error: new Error(
-        "Only WeChat OAuth is supported in China region. Please use WeChat login.",
+        `OAuth provider "${params.provider}" is not supported in China region.`,
       ),
     };
   }
@@ -593,21 +588,112 @@ class CloudBaseAuthClient implements AuthClient {
     }
   }
 
-  async signInWithOtp(): Promise<{ error: Error | null }> {
-    return {
-      error: new Error(
-        "OTP is not supported in China region. Please use WeChat login.",
-      ),
-    };
+  async signInWithOtp(params: {
+    email: string;
+    options?: any;
+  }): Promise<{ error: Error | null }> {
+    try {
+      const response = await fetch("/api/auth/sms/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone: params.email }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        return {
+          error: new Error(
+            errorData?.error?.message ||
+              errorData?.details ||
+              errorData?.error ||
+              "Failed to send SMS code",
+          ),
+        };
+      }
+
+      return { error: null };
+    } catch (error) {
+      return {
+        error: error as Error,
+      };
+    }
   }
 
-  async verifyOtp(): Promise<AuthResponse> {
-    return {
-      data: { user: null, session: null },
-      error: new Error(
-        "OTP is not supported in China region. Please use WeChat login.",
-      ),
-    };
+  async verifyOtp(params: {
+    email: string;
+    token: string;
+    type: string;
+  }): Promise<AuthResponse> {
+    try {
+      const response = await fetch("/api/auth/phone", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          phone: params.email,
+          code: params.token,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        return {
+          data: { user: null, session: null },
+          error: new Error(
+            errorData?.error?.message ||
+              errorData?.details ||
+              errorData?.error ||
+              "OTP verification failed",
+          ),
+        };
+      }
+
+      const data = await response.json();
+
+      if (data.accessToken && data.user && typeof window !== "undefined") {
+        try {
+          const { saveAuthState } = await import("@/lib/auth/auth-state-manager");
+
+          saveAuthState(
+            data.accessToken,
+            data.refreshToken || data.accessToken,
+            data.user,
+            data.tokenMeta || {
+              accessTokenExpiresIn: 3600,
+              refreshTokenExpiresIn: 604800,
+            },
+          );
+        } catch (error) {
+          console.error("[CloudBase Auth] Failed to persist phone OTP auth state:", error);
+        }
+      }
+
+      const accessToken =
+        data.accessToken || data.token || data.session?.access_token;
+
+      return {
+        data: {
+          user: data.user || null,
+          session:
+            data.session ||
+            (accessToken
+              ? {
+                  access_token: accessToken,
+                  user: data.user || null,
+                }
+              : null),
+        },
+        error: null,
+      };
+    } catch (error) {
+      return {
+        data: { user: null, session: null },
+        error: error as Error,
+      };
+    }
   }
 
   async signOut(): Promise<{ error: Error | null }> {

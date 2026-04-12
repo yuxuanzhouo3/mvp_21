@@ -2,7 +2,7 @@
  * 认证服务适配器
  *
  * 根据 DEPLOY_REGION 环境变量选择使用哪个认证服务提供商：
- * - CN（中国）：使用腾讯云 CloudBase + 微信登录
+ * - CN（中国）：使用腾讯云 CloudBase + 邮箱/手机号验证码登录
  * - INTL（国际）：使用 Supabase Auth + OAuth
  */
 
@@ -43,11 +43,6 @@ export interface AuthAdapter {
    * 邮箱密码注册（仅国际版支持）
    */
   signUpWithEmail?(email: string, password: string): Promise<AuthResponse>;
-
-  /**
-   * 微信登录（使用授权码，仅中国版支持）
-   */
-  signInWithWechat?(code: string): Promise<AuthResponse>;
 
   /**
    * 跳转到腾讯云默认登录页面（仅中国版支持）
@@ -243,22 +238,6 @@ export function isAuthFeatureSupported(
 class CloudBaseAuthAdapter implements AuthAdapter {
   constructor() {
     console.log("🔐 CloudBase 认证适配器（国内版）已初始化");
-  }
-
-  async signInWithWechat(code: string): Promise<AuthResponse> {
-    try {
-      const response = await fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "login_wechat", code }),
-      });
-      const data = await response.json();
-      return data.success
-        ? { user: data.user }
-        : { user: null, error: new Error(data.message) };
-    } catch (error) {
-      return { user: null, error: error as Error };
-    }
   }
 
   async signInWithEmail(

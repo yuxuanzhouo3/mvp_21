@@ -7,6 +7,7 @@ import {
   Download,
   Eye,
   FileText,
+  FileType2,
   Loader2,
   MoreVertical,
   Plus,
@@ -45,6 +46,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 import {
+  type ContractExportFormat,
   deleteContractForCurrentUser,
   downloadContractForCurrentUser,
   listContractsForCurrentUser,
@@ -238,10 +240,13 @@ export function ContractList() {
     }
   };
 
-  const handleDownload = async (contract: ContractListItem) => {
+  const handleDownload = async (
+    contract: ContractListItem,
+    format: ContractExportFormat,
+  ) => {
     try {
       setDownloadingId(contract.id);
-      await downloadContractForCurrentUser(contract.id);
+      await downloadContractForCurrentUser(contract.id, format);
     } catch (downloadError) {
       console.error("[ContractList] Failed to download contract:", downloadError);
       toast.error(isEn ? "Failed to download the contract." : "下载合同失败，请稍后重试。");
@@ -358,10 +363,24 @@ export function ContractList() {
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           disabled={downloadingId === contract.id}
-                          onClick={() => void handleDownload(contract)}
+                          onClick={() => void handleDownload(contract, "pdf")}
                         >
                           <Download className="mr-2 h-4 w-4" />
-                          {content.downloadAction}
+                          {isEn ? "Download PDF" : "下载 PDF"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={downloadingId === contract.id}
+                          onClick={() => void handleDownload(contract, "word")}
+                        >
+                          <FileType2 className="mr-2 h-4 w-4" />
+                          {isEn ? "Download Word" : "下载 Word"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={downloadingId === contract.id}
+                          onClick={() => void handleDownload(contract, "html")}
+                        >
+                          <FileText className="mr-2 h-4 w-4" />
+                          {isEn ? "Download HTML" : "下载 HTML"}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"

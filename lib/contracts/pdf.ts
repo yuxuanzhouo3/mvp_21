@@ -1,4 +1,4 @@
-import "server-only";
+﻿import "server-only";
 
 import fs from "node:fs";
 
@@ -11,12 +11,48 @@ import { buildContractPdfBuffer as buildLegacyContractPdfBuffer } from "@/lib/co
 
 type SupportedLanguage = "zh" | "en";
 
-function resolvePreferredLanguage(language?: SupportedLanguage): SupportedLanguage {
+function hasCjkCharacters(value: string): boolean {
+  return /[\u3400-\u9FFF]/.test(value);
+}
+
+function collectContractText(contract: ContractContent): string {
+  const sectionsText = contract.sections
+    .map((section) => `${section.title}\n${section.content}`)
+    .join("\n");
+
+  return [
+    contract.title,
+    contract.contractType || "",
+    contract.legalBasis || "",
+    contract.disclaimer || "",
+    sectionsText,
+  ].join("\n");
+}
+
+function resolvePreferredLanguage(
+  contract: ContractContent,
+  language?: SupportedLanguage,
+): SupportedLanguage {
   if (language) {
     return language;
   }
 
+  if (hasCjkCharacters(collectContractText(contract))) {
+    return "zh";
+  }
+
   return isChinaRegion() ? "zh" : "en";
+}
+
+function normalizePdfText(value: string): string {
+  return value
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function buildPdfTextLines(contract: ContractContent, language: SupportedLanguage) {
@@ -33,17 +69,19 @@ function buildPdfTextLines(contract: ContractContent, language: SupportedLanguag
   };
   const lines: string[] = [];
 
-  lines.push(contract.title || (language === "en" ? "Contract Draft" : "合同草稿"));
+  lines.push(
+    normalizePdfText(contract.title || (language === "en" ? "Contract Draft" : "合同草稿")),
+  );
   lines.push("");
   lines.push(
     `${labels.generatedAt}: ${new Date().toLocaleString(language === "en" ? "en-US" : "zh-CN")}`,
   );
 
   if (contract.contractType) {
-    lines.push(`${labels.type}: ${contract.contractType}`);
+    lines.push(`${labels.type}: ${normalizePdfText(String(contract.contractType))}`);
   }
   if (contract.legalBasis) {
-    lines.push(`${labels.legalBasis}: ${contract.legalBasis}`);
+    lines.push(`${labels.legalBasis}: ${normalizePdfText(contract.legalBasis)}`);
   }
 
   lines.push("");
@@ -51,9 +89,9 @@ function buildPdfTextLines(contract: ContractContent, language: SupportedLanguag
   [...contract.sections]
     .sort((left, right) => left.order - right.order)
     .forEach((section, index) => {
-      lines.push(`${index + 1}. ${section.title}`);
+      lines.push(`${index + 1}. ${normalizePdfText(section.title)}`);
       section.content.split(/\r?\n/).forEach((paragraph) => {
-        lines.push(paragraph.trim());
+        lines.push(normalizePdfText(paragraph));
       });
       lines.push("");
     });
@@ -61,7 +99,7 @@ function buildPdfTextLines(contract: ContractContent, language: SupportedLanguag
   if (contract.disclaimer) {
     lines.push(labels.disclaimer);
     contract.disclaimer.split(/\r?\n/).forEach((paragraph) => {
-      lines.push(paragraph.trim());
+      lines.push(normalizePdfText(paragraph));
     });
     lines.push("");
   }
@@ -119,8 +157,12 @@ function loadChineseFontBuffer() {
   const candidates = [
     process.env.CONTRACT_PDF_FONT_PATH,
     "C:\\Windows\\Fonts\\simhei.ttf",
+    "C:\\Windows\\Fonts\\simsun.ttf",
     "C:\\Windows\\Fonts\\NotoSansSC-VF.ttf",
+    "C:\\Windows\\Fonts\\msyh.ttf",
+    "C:\\Windows\\Fonts\\msyh.ttc",
     "C:\\Windows\\Fonts\\simsunb.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansCJKsc-Regular.otf",
     "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/System/Library/Fonts/STHeiti Light.ttc",
@@ -146,7 +188,7 @@ async function buildModernPdfBuffer(
 
   const font =
     chineseFontBuffer && language === "zh"
-      ? await pdfDoc.embedFont(chineseFontBuffer, { subset: true })
+      ? await pdfDoc.embedFont(chineseFontBuffer, { subset: false })
       : await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   const fontSize = 12;
@@ -198,7 +240,7 @@ export async function buildContractPdfBuffer(
     language?: SupportedLanguage;
   },
 ) {
-  const language = resolvePreferredLanguage(options?.language);
+  const language = resolvePreferredLanguage(contract, options?.language);
   const chineseFontBuffer = language === "zh" ? loadChineseFontBuffer() : null;
 
   if (language === "zh" && !chineseFontBuffer) {

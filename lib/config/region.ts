@@ -33,7 +33,8 @@ export const RegionConfig = {
     provider: isChinaRegion() ? "cloudbase" : "supabase",
     features: {
       emailAuth: true,
-      wechatAuth: isChinaRegion(),
+      phoneOtpAuth: isChinaRegion(),
+      wechatAuth: false,
       googleAuth: isInternationalRegion(),
       githubAuth: false,
     },

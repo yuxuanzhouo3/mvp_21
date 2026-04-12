@@ -15,7 +15,6 @@ import { useLanguage } from "@/components/language-provider";
 import { getAuthClient } from "@/lib/auth/client";
 import { useTranslations } from "@/lib/i18n";
 import { RegionType } from "@/lib/architecture-modules/core/types";
-import { getWechatLoginUrl } from "@/lib/wechat/oauth";
 import { isChinaDeployment } from "@/lib/config/deployment.config";
 import { useAuthConfig } from "@/lib/hooks/useAuthConfig";
 
@@ -50,10 +49,9 @@ function AuthPageContent() {
   const [region, setRegion] = useState<RegionType>(isChinaDeployment() ? RegionType.CHINA : RegionType.USA);
   const authActionLockRef = useRef(false);
   const redirectingRef = useRef(false);
-  const supportsOtp = region !== RegionType.CHINA;
+  const supportsOtp = true;
   const thirdPartyUnavailable =
-    (region === RegionType.CHINA && !config.features.wechatAuth) ||
-    (region !== RegionType.CHINA && !config.features.googleAuth);
+    region !== RegionType.CHINA && !config.features.googleAuth;
 
   const buildUrl = useCallback((path: string, extra?: Record<string, string>) => {
     const params = new URLSearchParams();
@@ -193,9 +191,9 @@ function AuthPageContent() {
           const { error: err } = await authClient.signInWithOtp({ email });
           if (err) throw err;
           setOtpSent(true);
-          setNotice(t.auth.otpSent);
+          setNotice(region === RegionType.CHINA ? "验证码已发送到你的手机号。" : t.auth.otpSent);
         } else {
-          const { error: err } = await authClient.verifyOtp({ email, token: otp, type: "email" });
+          const { error: err } = await authClient.verifyOtp({ email, token: otp, type: region === RegionType.CHINA ? "sms" : "email" });
           if (err) throw err;
           goSignedIn();
         }
@@ -244,24 +242,6 @@ function AuthPageContent() {
     } catch (err) {
       setError(msg(err));
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const onWechat = async () => {
-    if (loading) return;
-    clearFeedback();
-    setLoading(true);
-    try {
-      if (!config.wechatAppId) throw new Error(ui.wechatAppIdMissing);
-      if (!config.appUrl) throw new Error(ui.appUrlMissing);
-      const callback = new URL(`${config.appUrl}/auth/callback`);
-      if (debugRegion) callback.searchParams.set("debug", debugRegion);
-      if (postAuthPath !== "/dashboard") callback.searchParams.set("redirect", postAuthPath);
-      setNotice(ui.wechatRedirecting);
-      window.location.href = getWechatLoginUrl(config.wechatAppId, callback.toString());
-    } catch (err) {
-      setError(msg(err));
       setLoading(false);
     }
   };
@@ -414,8 +394,17 @@ function AuthPageContent() {
     supportsOtp && forgotStep !== "off" ? forgotForm : (
       <form onSubmit={loginMethod === "password" ? onSignIn : onOtp} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="signin-email">{t.auth.email}</Label>
-          <Input id="signin-email" type="email" placeholder={t.auth.enterEmail} value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <Label htmlFor="signin-email">
+            {loginMethod === "otp" && region === RegionType.CHINA ? "手机号" : t.auth.email}
+          </Label>
+          <Input
+            id="signin-email"
+            type={loginMethod === "otp" && region === RegionType.CHINA ? "tel" : "email"}
+            placeholder={loginMethod === "otp" && region === RegionType.CHINA ? "请输入手机号" : t.auth.enterEmail}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
         </div>
         {loginMethod === "password" ? (
           <div className="space-y-2">
@@ -427,14 +416,16 @@ function AuthPageContent() {
             {supportsOtp ? (
               <div className="flex justify-between text-sm">
                 <button type="button" className="text-blue-600 hover:underline" onClick={() => { clearFeedback(); setLoginMethod("otp"); setOtp(""); setOtpSent(false); }}>{t.auth.sendOtp}</button>
-                <button type="button" className="text-blue-600 hover:underline" onClick={() => { clearFeedback(); setForgotStep("request"); }}>{t.auth.forgotPassword}</button>
+                {region !== RegionType.CHINA ? (
+                  <button type="button" className="text-blue-600 hover:underline" onClick={() => { clearFeedback(); setForgotStep("request"); }}>{t.auth.forgotPassword}</button>
+                ) : null}
               </div>
             ) : null}
           </div>
         ) : (
           <div className="space-y-2">
             <Label htmlFor="signin-otp">{otpSent ? t.auth.verifyOtp : t.auth.sendOtp}</Label>
-            <Input id="signin-otp" type="text" placeholder={otpSent ? t.auth.enterOtp : t.auth.enterEmail} value={otpSent ? otp : email} onChange={(e) => otpSent ? setOtp(e.target.value) : setEmail(e.target.value)} maxLength={otpSent ? 6 : undefined} required />
+            <Input id="signin-otp" type="text" placeholder={otpSent ? t.auth.enterOtp : region === RegionType.CHINA ? "请输入手机号" : t.auth.enterEmail} value={otpSent ? otp : email} onChange={(e) => otpSent ? setOtp(e.target.value) : setEmail(e.target.value)} maxLength={otpSent ? 6 : undefined} required />
             <div className="text-right text-sm">
               <button type="button" className="text-blue-600 hover:underline" onClick={() => { clearFeedback(); setLoginMethod("password"); setOtp(""); setOtpSent(false); }}>{t.auth.usePasswordLogin}</button>
             </div>
@@ -468,8 +459,12 @@ function AuthPageContent() {
               </TabsList>
               <TabsContent value="signin" className="space-y-6">
                 {signInForm}
-                <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-sm"><span className="bg-white px-4 text-gray-500">{t.auth.or}</span></div></div>
-                {region === RegionType.CHINA ? <Button onClick={onWechat} variant="outline" className="h-12 w-full" disabled={loading || configLoading || thirdPartyUnavailable}>{loading ? ui.wechatRedirecting : t.auth.wechatLogin}</Button> : <Button onClick={onGoogle} variant="outline" className="h-12 w-full" disabled={loading || configLoading || thirdPartyUnavailable}>{t.auth.googleLogin}</Button>}
+                {region !== RegionType.CHINA ? (
+                  <>
+                    <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-sm"><span className="bg-white px-4 text-gray-500">{t.auth.or}</span></div></div>
+                    <Button onClick={onGoogle} variant="outline" className="h-12 w-full" disabled={loading || configLoading || thirdPartyUnavailable}>{t.auth.googleLogin}</Button>
+                  </>
+                ) : null}
               </TabsContent>
               <TabsContent value="signup" className="space-y-4">
                 <form onSubmit={onSignUp} className="space-y-4">
@@ -479,13 +474,17 @@ function AuthPageContent() {
                   {privacy}
                   <Button type="submit" className="w-full" disabled={loading}>{loading ? ui.signingUp : t.auth.signUpButton}</Button>
                 </form>
-                <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-sm"><span className="bg-white px-4 text-gray-500">{t.auth.or}</span></div></div>
-                {region === RegionType.CHINA ? <Button onClick={onWechat} variant="outline" className="h-12 w-full" disabled={loading || configLoading || thirdPartyUnavailable}>{loading ? ui.wechatRedirecting : t.auth.wechatRegister}</Button> : <Button onClick={onGoogle} variant="outline" className="h-12 w-full" disabled={loading || configLoading || thirdPartyUnavailable}>{t.auth.googleRegister}</Button>}
+                {region !== RegionType.CHINA ? (
+                  <>
+                    <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-sm"><span className="bg-white px-4 text-gray-500">{t.auth.or}</span></div></div>
+                    <Button onClick={onGoogle} variant="outline" className="h-12 w-full" disabled={loading || configLoading || thirdPartyUnavailable}>{t.auth.googleRegister}</Button>
+                  </>
+                ) : null}
               </TabsContent>
             </Tabs>
             {notice ? <Alert className="mt-4"><AlertDescription>{notice}</AlertDescription></Alert> : null}
             {error ? <Alert variant="destructive" className="mt-4"><AlertDescription>{error}</AlertDescription></Alert> : null}
-            {thirdPartyUnavailable && !configLoading ? <Alert className="mt-4"><AlertDescription>{ui.oauthUnavailable}</AlertDescription></Alert> : null}
+            {region !== RegionType.CHINA && thirdPartyUnavailable && !configLoading ? <Alert className="mt-4"><AlertDescription>{ui.oauthUnavailable}</AlertDescription></Alert> : null}
           </CardContent>
         </Card>
       </div>
