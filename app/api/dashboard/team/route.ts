@@ -6,6 +6,68 @@ import {
 } from "@/lib/data/dashboard-store";
 import { requireDashboardUser } from "@/lib/dashboard/server-auth";
 
+function readErrorMessage(error: unknown) {
+  if (!error) {
+    return "";
+  }
+
+  if (error instanceof Error) {
+    return error.message || "";
+  }
+
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    return typeof message === "string" ? message : "";
+  }
+
+  return "";
+}
+
+function readErrorCode(error: unknown) {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    return typeof code === "string" ? code : "";
+  }
+
+  return "";
+}
+
+function isTeamStorageNotReady(error: unknown) {
+  const code = readErrorCode(error).toUpperCase();
+  if (code === "42P01" || code === "PGRST205") {
+    return true;
+  }
+
+  const message = readErrorMessage(error).toLowerCase();
+  if (!message) {
+    return false;
+  }
+
+  const mentionsTeamStorage =
+    message.includes("workspace_invites") || message.includes("workspace_members");
+  const missingKeywords = [
+    "does not exist",
+    "not exist",
+    "not found",
+    "relation",
+    "collection",
+  ];
+
+  return mentionsTeamStorage && missingKeywords.some((keyword) => message.includes(keyword));
+}
+
+function isTeamStoragePermissionDenied(error: unknown) {
+  const code = readErrorCode(error).toUpperCase();
+  if (code === "42501") {
+    return true;
+  }
+
+  const message = readErrorMessage(error).toLowerCase();
+  const mentionsTeamStorage =
+    message.includes("workspace_invites") || message.includes("workspace_members");
+  return mentionsTeamStorage && message.includes("permission denied");
+}
+
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireDashboardUser(request);
@@ -53,6 +115,8 @@ export async function POST(request: NextRequest) {
       data: team,
     });
   } catch (error) {
+    console.error("[/api/dashboard/team] Invite failed:", error);
+
     const message =
       error instanceof Error && error.message === "TEAM_INVITE_FORBIDDEN"
         ? "You do not have permission to invite members."
@@ -60,6 +124,10 @@ export async function POST(request: NextRequest) {
           ? "Member email is required."
           : error instanceof Error && error.message === "TEAM_MEMBER_ALREADY_ACTIVE"
             ? "This email is already an active workspace member."
+          : isTeamStorageNotReady(error)
+            ? "Team invite storage is not initialized. Please run the latest workspace team database migrations."
+            : isTeamStoragePermissionDenied(error)
+              ? "Team invite write is blocked by database permissions. Please verify SUPABASE_SERVICE_ROLE_KEY and table policies."
           : "Failed to invite member.";
 
     return NextResponse.json(
@@ -75,6 +143,8 @@ export async function POST(request: NextRequest) {
               : error.message === "TEAM_MEMBER_ALREADY_ACTIVE"
                 ? 409
               : 403
+            : isTeamStorageNotReady(error)
+              ? 503
             : 500,
       },
     );

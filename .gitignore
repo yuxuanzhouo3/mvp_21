@@ -1,7 +1,12 @@
 .next/
 node_modules/
 .pnpm-store/
+.npm-cache/
 .DS_Store
+.mcp.json
+.tmp-*.tar.gz
+supabase.exe
+supabase/.temp/
 
 # Environment files with real secrets must never be committed.
 .env*

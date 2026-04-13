@@ -17,6 +17,7 @@ import {
   Download,
   Eraser,
   FileText,
+  Info,
   Pen,
   Shield,
   Type,
@@ -29,6 +30,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -81,6 +90,7 @@ export function ContractSignFlow({
   const [uploadedSignature, setUploadedSignature] = useState<{ dataUrl: string; fileName: string } | null>(null);
   const [legalConsent, setLegalConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingRef = useRef(false);
@@ -433,6 +443,76 @@ export function ContractSignFlow({
   const canSendReminder = ["awaiting_sender", "awaiting_counterparty"].includes(
     enhancement.signFlow.status,
   );
+  const currentStageLabel =
+    enhancement.signFlow.status === "draft"
+      ? isEn
+        ? "Draft (not launched)"
+        : "草稿（未发起）"
+      : enhancement.signFlow.status === "awaiting_sender"
+        ? isEn
+          ? "Waiting sender confirmation"
+          : "等待发起方确认"
+        : enhancement.signFlow.status === "awaiting_counterparty"
+          ? isEn
+            ? "Waiting counterparty confirmation"
+            : "等待对方确认"
+          : enhancement.signFlow.status === "completed"
+            ? isEn
+              ? "Completed"
+              : "已完成"
+            : enhancement.signFlow.status;
+
+  const guideSteps = isEn
+    ? [
+        {
+          title: "Step 1: Verify contract and parties",
+          description:
+            "Confirm contract title, participating parties, and preview content are correct before signing.",
+        },
+        {
+          title: "Step 2: Choose a signature method",
+          description:
+            "Use handwritten, typed name, or uploaded image. This choice only affects how the signature is captured.",
+        },
+        {
+          title: "Step 3: Capture signature and consent",
+          description:
+            "Fill signer name, provide signature content, then check legal consent to enable confirmation.",
+        },
+        {
+          title: "Step 4: Use the primary action button by stage",
+          description:
+            "Draft: Launch Signing. Awaiting sender: Confirm Sender Signature. Awaiting counterparty: Confirm Counterparty Signature. Completed: Download Final Copy.",
+        },
+        {
+          title: "Step 5: Optional reminders and evidence",
+          description:
+            "If pending, use Send Reminder. Evidence and final retained copy are shown on the right for traceability.",
+        },
+      ]
+    : [
+        {
+          title: "第 1 步：核对合同与签署方",
+          description: "先确认合同标题、参与方和预览内容，避免带着错误信息进入签署。",
+        },
+        {
+          title: "第 2 步：选择签署方式",
+          description: "可选手写、输入姓名或上传签名图。方式不同，但都会进入同一签署留痕流程。",
+        },
+        {
+          title: "第 3 步：录入签名并勾选法律确认",
+          description: "填写签署人信息并完成签名后，勾选法律声明，系统才会允许提交确认。",
+        },
+        {
+          title: "第 4 步：按当前阶段点击主按钮",
+          description:
+            "草稿阶段点击“发起签署”；等待发起方时点击“确认发起方签名”；等待对方时点击“确认对方签名”；完成后可下载最终电子版。",
+        },
+        {
+          title: "第 5 步：按需催办并查看证据",
+          description: "待签阶段可发送提醒；右侧证据记录与留存副本可随时回看，方便追踪。",
+        },
+      ];
 
   return (
     <div className="space-y-6">
@@ -443,8 +523,53 @@ export function ContractSignFlow({
             {resolvedBackLabel}
           </Link>
         </Button>
-        <Badge variant="outline">{signatureSource}</Badge>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setGuideOpen(true)}>
+            <Info className="mr-2 h-4 w-4" />
+            {isEn ? "Signing Guide" : "签署流程"}
+          </Button>
+          <Badge variant="outline">{signatureSource}</Badge>
+        </div>
       </div>
+
+      <Dialog open={guideOpen} onOpenChange={setGuideOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{isEn ? "Signing Walkthrough" : "签署流程说明"}</DialogTitle>
+            <DialogDescription>
+              {isEn
+                ? "You can open/close this guide at any time. It will not reset your current signature inputs."
+                : "该说明可随时打开和关闭，不会重置你当前已填写的签名内容。"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
+            <p className="font-medium">
+              {isEn ? "Current stage:" : "当前阶段："} {currentStageLabel}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {isEn
+                ? "Tip: If you close the guide, your typed name, selected method, uploaded image, and consent state stay unchanged."
+                : "提示：关闭弹窗后，你的签署方式、输入内容、已上传签名图和勾选状态都会保留。"}
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {guideSteps.map((step) => (
+              <div key={step.title} className="rounded-lg border border-border bg-background p-3">
+                <p className="font-medium">{step.title}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{step.description}</p>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGuideOpen(false)}>
+              {isEn ? "Close" : "关闭"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-6">

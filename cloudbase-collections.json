@@ -178,6 +178,91 @@
       }
     },
     {
+      "name": "workspace_members",
+      "description": "Workspace team member records",
+      "indexes": [
+        {
+          "name": "workspace_owner_created_index",
+          "keys": [
+            { "field": "workspace_owner_id", "order": "asc" },
+            { "field": "created_at", "order": "desc" }
+          ]
+        },
+        {
+          "name": "workspace_user_index",
+          "keys": [{ "field": "user_id", "order": "asc" }]
+        },
+        {
+          "name": "workspace_email_index",
+          "keys": [
+            { "field": "workspace_owner_id", "order": "asc" },
+            { "field": "email", "order": "asc" }
+          ]
+        }
+      ],
+      "schema": {
+        "_id": "string",
+        "id": "string",
+        "workspace_owner_id": "string",
+        "user_id": "string",
+        "email": "string",
+        "name": "string",
+        "avatar": "string",
+        "role": "string",
+        "status": "string",
+        "invited_by": "string",
+        "joined_at": "date",
+        "last_active_at": "date",
+        "created_at": "date",
+        "updated_at": "date"
+      }
+    },
+    {
+      "name": "workspace_invites",
+      "description": "Workspace team invite tokens and states",
+      "indexes": [
+        {
+          "name": "workspace_owner_created_index",
+          "keys": [
+            { "field": "workspace_owner_id", "order": "asc" },
+            { "field": "created_at", "order": "desc" }
+          ]
+        },
+        {
+          "name": "workspace_token_index",
+          "keys": [{ "field": "token", "order": "asc" }],
+          "unique": true
+        },
+        {
+          "name": "workspace_member_status_index",
+          "keys": [
+            { "field": "member_id", "order": "asc" },
+            { "field": "status", "order": "asc" }
+          ]
+        }
+      ],
+      "schema": {
+        "_id": "string",
+        "id": "string",
+        "workspace_owner_id": "string",
+        "member_id": "string",
+        "email": "string",
+        "name": "string",
+        "role": "string",
+        "token": "string",
+        "status": "string",
+        "expires_at": "date",
+        "invited_by": "string",
+        "accepted_by_user_id": "string",
+        "accepted_at": "date",
+        "revoked_at": "date",
+        "access_count": "number",
+        "last_accessed_at": "date",
+        "created_at": "date",
+        "updated_at": "date"
+      }
+    },
+    {
       "name": "refresh_tokens",
       "description": "Refresh token records",
       "indexes": [
@@ -253,5 +338,5 @@
       }
     }
   ],
-  "instructions": "Create or verify the collections and indexes above in the CloudBase console. The canonical collections are web_users, company_profiles, contracts, subscriptions, payments, refresh_tokens, and admin_audit_logs."
+  "instructions": "Create or verify the collections and indexes above in the CloudBase console. The canonical collections are web_users, company_profiles, contracts, subscriptions, payments, workspace_members, workspace_invites, refresh_tokens, and admin_audit_logs."
 }

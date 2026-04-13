@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "supabase-db": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=qwtdbswpenugyyfhbeaj&features=database,debugging,development,docs&read_only=false",
+      "headers": {
+        "Authorization": "Bearer <YOUR_SUPABASE_PERSONAL_ACCESS_TOKEN>"
+      }
+    }
+  }
+}
