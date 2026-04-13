@@ -59,6 +59,13 @@ export function getDashScopeBaseUrl(): string {
   );
 }
 
+export function getOpenAIBaseUrl(): string {
+  return pickFirstNonEmpty(
+    process.env.OPENAI_BASE_URL,
+    "https://api.openai.com/v1",
+  );
+}
+
 export function getQwenModel(): string {
   return pickFirstNonEmpty(
     process.env.QWEN_MODEL,
@@ -67,8 +74,13 @@ export function getQwenModel(): string {
 }
 
 export function getOpenAIModel(): string {
+  const baseUrl = getOpenAIBaseUrl().toLowerCase();
+  const defaultModel = baseUrl.includes("dashscope.aliyuncs.com")
+    ? "qwen-plus"
+    : "gpt-4.1-mini";
+
   return pickFirstNonEmpty(
     process.env.OPENAI_MODEL,
-    "gpt-4.1-mini",
+    defaultModel,
   );
 }

@@ -113,11 +113,11 @@ export function getPaymentMethodsByRegion(region: Region): string[] {
     case "india":
     case "singapore":
     case "other":
-      return ["stripe", "paypal"];
+      return ["stripe"];
     case "europe":
       return []; // 欧洲地区屏蔽支付
     default:
-      return ["stripe", "paypal"];
+      return ["stripe"];
   }
 }
 

@@ -3,10 +3,28 @@
 import { ContractAIError, analyzeConversation } from "@/lib/ai";
 import { extractTokenFromRequest, verifyAuthToken } from "@/lib/auth/auth-utils";
 import { isChinaRegion } from "@/lib/config/region";
+import {
+  MAX_ANALYSIS_MAX_CHARS,
+  MIN_ANALYSIS_MAX_CHARS,
+  prepareAnalysisInput,
+} from "@/lib/contracts/analysis-input";
 import { SourceType } from "@/lib/ai/types";
 
 function t(zh: string, en: string) {
   return isChinaRegion() ? zh : en;
+}
+
+function parsePositiveInt(raw: string | undefined): number | undefined {
+  const parsed = Number.parseInt(String(raw || ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function resolveAnalyzeMaxChars() {
+  const configured = parsePositiveInt(process.env.AI_ANALYZE_INPUT_MAX_CHARS) || 12_000;
+  return Math.max(
+    MIN_ANALYSIS_MAX_CHARS,
+    Math.min(MAX_ANALYSIS_MAX_CHARS, configured),
+  );
 }
 
 function getAiErrorMessage(error: ContractAIError): string {
@@ -15,12 +33,12 @@ function getAiErrorMessage(error: ContractAIError): string {
     case "AI_NOT_CONFIGURED":
       return t(
         "DASHSCOPE_API_KEY 密钥不可用，请联系管理员检查配置。",
-        "DASHSCOPE_API_KEY is unavailable. Please ask the administrator to check the configuration.",
+        "AI API key is unavailable. Please ask the administrator to check the configuration.",
       );
     case "AI_AUTH_FAILED":
       return t(
         "DASHSCOPE_API_KEY 密钥不可用，请检查 API Key 配置。",
-        "DASHSCOPE_API_KEY is unavailable. Please check the API key configuration.",
+        "AI API key is unavailable. Please check the API key configuration.",
       );
     case "AI_RATE_LIMITED":
       return t(
@@ -91,7 +109,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (content.length < 10) {
+    const rawContent = content.trim();
+
+    if (rawContent.length < 10) {
       return NextResponse.json(
         {
           success: false,
@@ -107,7 +127,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (content.length > 50000) {
+    if (rawContent.length > 120_000) {
       return NextResponse.json(
         {
           success: false,
@@ -123,14 +143,49 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const preparedInput = prepareAnalysisInput(rawContent, {
+      maxChars: resolveAnalyzeMaxChars(),
+    });
+
+    if (preparedInput.content.length < 10) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "CONTENT_TOO_SHORT",
+            message: t(
+              "对话内容太短，请提供更详细的对话。",
+              "Conversation is too short. Please provide more detail.",
+            ),
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    if (preparedInput.truncated) {
+      console.info("[/api/contracts/analyze] Input truncated for latency control:", {
+        originalChars: preparedInput.originalChars,
+        normalizedChars: preparedInput.normalizedChars,
+        analyzedChars: preparedInput.analyzedChars,
+      });
+    }
+
     const result = await analyzeConversation({
-      content,
+      content: preparedInput.content,
       sourceType,
     });
 
     return NextResponse.json({
       success: true,
       data: result,
+      meta: {
+        input: {
+          originalChars: preparedInput.originalChars,
+          analyzedChars: preparedInput.analyzedChars,
+          truncated: preparedInput.truncated,
+        },
+      },
     });
   } catch (error) {
     if (error instanceof ContractAIError) {

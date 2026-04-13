@@ -388,7 +388,7 @@ export class GeoRouter {
       region: RegionType.USA,
       countryCode: "US",
       currency: "USD",
-      paymentMethods: ["stripe", "paypal"],
+      paymentMethods: ["stripe"],
       authMethods: ["google", "email"],
       database: "supabase",
       deployment: "vercel",

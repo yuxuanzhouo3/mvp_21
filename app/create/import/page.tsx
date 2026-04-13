@@ -23,6 +23,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { useFocusScrollIntoView } from "@/hooks/use-mobile-keyboard";
 import { tokenManager } from "@/lib/auth/frontend-token-manager";
 import { createContractForCurrentUser } from "@/lib/contracts/client";
+import {
+  DEFAULT_ANALYSIS_MAX_CHARS,
+  prepareAnalysisInput,
+} from "@/lib/contracts/analysis-input";
 import { prepareDraftAnalysisForCurrentUser } from "@/lib/contracts/draft-context";
 import {
   buildContractParties,
@@ -93,6 +97,17 @@ function ImportContent() {
       throw new Error("UNAUTHORIZED");
     }
 
+    const preparedInput = prepareAnalysisInput(nextContent, {
+      maxChars: DEFAULT_ANALYSIS_MAX_CHARS,
+    });
+    if (preparedInput.analyzedChars < 20) {
+      throw new Error(
+        isEn
+          ? "Conversation is too short. Please provide more detail before analysis."
+          : "对话内容过短，请补充更多细节后再分析。",
+      );
+    }
+
     const analysisResponse = await fetch("/api/contracts/analyze", {
       method: "POST",
       headers: {
@@ -100,12 +115,18 @@ function ImportContent() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        content: nextContent,
+        content: preparedInput.content,
         sourceType,
       }),
     });
 
     const analysisResult = await analysisResponse.json();
+    if (preparedInput.truncated || analysisResult?.meta?.input?.truncated) {
+      console.info("[CreateImportPage] Analysis input compacted:", {
+        clientInputChars: preparedInput.analyzedChars,
+        serverInputChars: analysisResult?.meta?.input?.analyzedChars,
+      });
+    }
     if (!analysisResult.success) {
       throw new Error(
         analysisResult.error?.message || (isEn ? "Analysis failed" : "分析失败"),

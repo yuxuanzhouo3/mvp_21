@@ -79,7 +79,7 @@ export class PaymentRouter {
       case RegionType.EUROPE:
         return []; // GDPR合规，禁用支付
       default:
-        return ["stripe", "paypal"];
+        return ["stripe"];
     }
   }
 

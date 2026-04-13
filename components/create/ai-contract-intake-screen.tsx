@@ -22,6 +22,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { useFocusScrollIntoView } from "@/hooks/use-mobile-keyboard";
 import { createContractForCurrentUser } from "@/lib/contracts/client";
+import {
+  DEFAULT_ANALYSIS_MAX_CHARS,
+  prepareAnalysisInput,
+} from "@/lib/contracts/analysis-input";
 import { prepareDraftAnalysisForCurrentUser } from "@/lib/contracts/draft-context";
 import {
   buildContractParties,
@@ -178,6 +182,17 @@ export function AIContractIntakeScreen() {
         throw new Error("UNAUTHORIZED");
       }
 
+      const preparedInput = prepareAnalysisInput(chatResult.draftSourceContent, {
+        maxChars: DEFAULT_ANALYSIS_MAX_CHARS,
+      });
+      if (preparedInput.analyzedChars < 20) {
+        throw new Error(
+          isEn
+            ? "The extracted conversation is too short. Please add more details."
+            : "提取后的对话过短，请补充更多细节后再分析。",
+        );
+      }
+
       const analysisResponse = await fetch("/api/contracts/analyze", {
         method: "POST",
         headers: {
@@ -185,12 +200,18 @@ export function AIContractIntakeScreen() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          content: chatResult.draftSourceContent,
+          content: preparedInput.content,
           sourceType: "text",
         }),
       });
 
       const analysisResult = await analysisResponse.json();
+      if (preparedInput.truncated || analysisResult?.meta?.input?.truncated) {
+        console.info("[AIContractIntakeScreen] Analysis input compacted:", {
+          clientInputChars: preparedInput.analyzedChars,
+          serverInputChars: analysisResult?.meta?.input?.analyzedChars,
+        });
+      }
       if (!analysisResult.success) {
         throw new Error(
           analysisResult.error?.message || (isEn ? "Analysis failed." : "分析失败。"),

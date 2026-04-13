@@ -27,12 +27,12 @@ function getAiErrorMessage(error: ContractAIError): string {
     case "AI_NOT_CONFIGURED":
       return t(
         "DASHSCOPE_API_KEY 密钥不可用，请联系管理员检查配置。",
-        "DASHSCOPE_API_KEY is unavailable. Please ask the administrator to check the configuration.",
+        "AI API key is unavailable. Please ask the administrator to check the configuration.",
       );
     case "AI_AUTH_FAILED":
       return t(
         "DASHSCOPE_API_KEY 密钥不可用，请检查 API Key 配置。",
-        "DASHSCOPE_API_KEY is unavailable. Please check the API key configuration.",
+        "AI API key is unavailable. Please check the API key configuration.",
       );
     case "AI_RATE_LIMITED":
       return t(

@@ -30,6 +30,12 @@ const envSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1).optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
+  AUTH_EMAIL_SMTP_HOST: z.string().min(1).optional(),
+  AUTH_EMAIL_SMTP_PORT: z.string().regex(/^\d+$/).optional(),
+  AUTH_EMAIL_SMTP_SECURE: z.enum(["true", "false"]).optional(),
+  AUTH_EMAIL_SMTP_USER: z.string().min(1).optional(),
+  AUTH_EMAIL_SMTP_PASS: z.string().min(1).optional(),
+  AUTH_EMAIL_FROM: z.string().min(1).optional(),
 
   // Stripe配置
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z
@@ -76,6 +82,7 @@ const envSchema = z.object({
 
   // AI提供商配置
   OPENAI_API_KEY: z.string().regex(/^sk-/).optional(),
+  OPENAI_BASE_URL: z.string().url().optional(),
   OPENAI_ORG_ID: z.string().optional(),
   ANTHROPIC_API_KEY: z
     .string()

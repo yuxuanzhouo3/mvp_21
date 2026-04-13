@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
     const message = isKeyUnavailable
       ? t(
           "DASHSCOPE_API_KEY 密钥不可用，请联系管理员检查配置。",
-          "DASHSCOPE_API_KEY is unavailable. Please ask the administrator to check the configuration.",
+          "AI API key is unavailable. Please ask the administrator to check the configuration.",
         )
       : t("AI 对话请求失败。", "AI chat request failed.");
 

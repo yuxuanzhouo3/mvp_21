@@ -4,6 +4,8 @@ import OpenAI from "openai";
 import { isChinaRegion } from "@/lib/config/region";
 import {
   getDashScopeBaseUrl,
+  getOpenAIBaseUrl,
+  getOpenAIModel,
   getQwenModel,
 } from "@/lib/config/runtime-env";
 import type {
@@ -21,8 +23,6 @@ import type {
 import {
   generateAnalyzePrompt,
   generateAnalyzeSystemPrompt,
-  generatePreAnalyzePrompt,
-  generatePreAnalyzeSystemPrompt,
   type PromptLanguage as AnalyzePromptLanguage,
 } from "./prompts/analyze";
 import {
@@ -41,7 +41,7 @@ import {
 } from "./prompts/experts";
 
 type AILanguage = AnalyzePromptLanguage & GeneratePromptLanguage;
-type AIProvider = "dashscope";
+type AIProvider = "dashscope" | "openai";
 
 export class ContractAIError extends Error {
   code: string;
@@ -69,7 +69,18 @@ function hasDashScope() {
   return Boolean(process.env.DASHSCOPE_API_KEY?.trim());
 }
 
+function hasOpenAI() {
+  return Boolean(process.env.OPENAI_API_KEY?.trim());
+}
+
 function getAIClientByProvider(provider: AIProvider): OpenAI {
+  if (provider === "openai") {
+    return new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      baseURL: getOpenAIBaseUrl(),
+    });
+  }
+
   return new OpenAI({
     apiKey: process.env.DASHSCOPE_API_KEY,
     baseURL: getDashScopeBaseUrl(),
@@ -77,6 +88,10 @@ function getAIClientByProvider(provider: AIProvider): OpenAI {
 }
 
 function getModelByProvider(provider: AIProvider): string {
+  if (provider === "openai") {
+    return getOpenAIModel();
+  }
+
   return getQwenModel();
 }
 
@@ -117,8 +132,9 @@ function mapProviderError(error: unknown, provider: AIProvider): ContractAIError
   }
 
   if (status === 401 || status === 403) {
+    const keyName = provider === "openai" ? "OPENAI_API_KEY" : "DASHSCOPE_API_KEY";
     return new ContractAIError(
-      `DashScope API key is unavailable: ${message}`,
+      `${keyName} is unavailable: ${message}`,
       "AI_KEY_UNAVAILABLE",
       503,
       provider,
@@ -131,8 +147,9 @@ function mapProviderError(error: unknown, provider: AIProvider): ContractAIError
     normalizedMessage.includes("unauthorized") ||
     normalizedMessage.includes("authentication")
   ) {
+    const keyName = provider === "openai" ? "OPENAI_API_KEY" : "DASHSCOPE_API_KEY";
     return new ContractAIError(
-      `DashScope API key is unavailable: ${message}`,
+      `${keyName} is unavailable: ${message}`,
       "AI_KEY_UNAVAILABLE",
       503,
       provider,
@@ -150,11 +167,20 @@ function mapProviderError(error: unknown, provider: AIProvider): ContractAIError
 async function runWithProviderFallback<T>(
   task: (context: { provider: AIProvider; client: OpenAI; model: string }) => Promise<T>,
 ): Promise<T> {
-  const provider: AIProvider = "dashscope";
+  const provider: AIProvider = isChinaRegion() ? "dashscope" : "openai";
 
-  if (!hasDashScope()) {
+  if (provider === "dashscope" && !hasDashScope()) {
     throw new ContractAIError(
       "DASHSCOPE_API_KEY is unavailable",
+      "AI_KEY_UNAVAILABLE",
+      503,
+      provider,
+    );
+  }
+
+  if (provider === "openai" && !hasOpenAI()) {
+    throw new ContractAIError(
+      "OPENAI_API_KEY is unavailable",
       "AI_KEY_UNAVAILABLE",
       503,
       provider,
@@ -500,27 +526,57 @@ async function requestJsonCompletion(
   }
 }
 
-async function preAnalyze(
-  content: string,
-  language: AILanguage,
-  provider: AIProvider,
-  client: OpenAI,
-  model: string,
-) {
-  const result = await requestJsonCompletion(
-    client,
-    provider,
-    model,
-    generatePreAnalyzeSystemPrompt(language),
-    generatePreAnalyzePrompt(content, language),
-    0.1,
-    800,
-  );
+function inferContractTypeFromConversation(content: string): ContractType | "custom" {
+  const normalized = content.toLowerCase();
+  if (!normalized) {
+    return "custom";
+  }
 
-  return {
-    contractType: normalizeContractType(result.contractType),
-    scenario: normalizeString(result.scenario),
-  };
+  if (
+    /(保密|保密协议|竞业|nda|non-disclosure|confidential)/i.test(normalized)
+  ) {
+    return "nda";
+  }
+
+  if (
+    /(雇佣|劳动合同|社保|公积金|试用期|入职|工资|加班|辞退|offer|employment|salary|probation|onboard|overtime|benefits)/i.test(
+      normalized,
+    )
+  ) {
+    return "labor";
+  }
+
+  if (
+    /(软件|开发|外包|系统|接口|api|源码|部署|上线|验收|迭代|里程碑|implementation|source code|delivery|milestone|acceptance)/i.test(
+      normalized,
+    )
+  ) {
+    return "tech";
+  }
+
+  if (
+    /(顾问|咨询|服务费|服务内容|sla|service|consulting|support)/i.test(
+      normalized,
+    )
+  ) {
+    return "service";
+  }
+
+  if (
+    /(合作|联营|代理|渠道|分成|joint venture|partnership|cooperation|reseller|revenue share)/i.test(
+      normalized,
+    )
+  ) {
+    return "cooperation";
+  }
+
+  if (
+    /(自由职业|兼职|远程接单|freelance|contractor|gig)/i.test(normalized)
+  ) {
+    return "freelance";
+  }
+
+  return "custom";
 }
 
 function buildFallbackSummary(language: AILanguage, contractType: string, keyTerms: KeyTerm[]) {
@@ -552,31 +608,46 @@ export async function analyzeConversation(
   request: AnalyzeConversationRequest,
 ): Promise<AIAnalysisResult> {
   const language = resolveLanguage(request.language);
-  const { parsed, contractType, expert } = await runWithProviderFallback(
-    async ({ provider, client, model }) => {
-      const { contractType } = await preAnalyze(
-        request.content,
-        language,
-        provider,
-        client,
-        model,
-      );
-      const expert = getExpertByContractType(contractType);
-      const parsed = await requestJsonCompletion(
-        client,
-        provider,
-        model,
-        generateAnalyzeSystemPrompt(expert, language),
-        generateAnalyzePrompt(expert, request.content, language),
-        0.2,
-        3200,
-      );
+  const inferredContractType = inferContractTypeFromConversation(request.content);
+  const initialExpert = getExpertByContractType(inferredContractType);
+  const configuredAnalyzeMaxTokens =
+    parsePositiveInt(process.env.AI_ANALYZE_MAX_TOKENS) || 2_200;
+  const configuredAnalyzeTimeoutMs =
+    parsePositiveInt(process.env.AI_ANALYZE_TIMEOUT_MS) || 40_000;
+  const targetMaxTokens = clampNumber(
+    request.content.length > 10_000
+      ? Math.floor(configuredAnalyzeMaxTokens * 0.85)
+      : configuredAnalyzeMaxTokens,
+    2_200,
+    900,
+    3_600,
+  );
+  const targetTimeoutMs = clampNumber(
+    configuredAnalyzeTimeoutMs,
+    40_000,
+    8_000,
+    120_000,
+  );
 
-      return { parsed, contractType, expert };
+  const parsed = await runWithProviderFallback(
+    async ({ provider, client, model }) => {
+      return requestJsonCompletion(
+        client,
+        provider,
+        model,
+        generateAnalyzeSystemPrompt(initialExpert, language),
+        generateAnalyzePrompt(initialExpert, request.content, language),
+        0.2,
+        targetMaxTokens,
+        targetTimeoutMs,
+      );
     },
   );
 
-  const normalizedType = normalizeContractType(parsed.contractType || contractType);
+  const normalizedType = normalizeContractType(
+    parsed.contractType || inferredContractType,
+  );
+  const expert = getExpertByContractType(normalizedType);
   const keyTerms = normalizeKeyTerms(parsed.keyTerms);
 
   return {

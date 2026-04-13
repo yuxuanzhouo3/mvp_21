@@ -55,7 +55,7 @@ function generateConfig(region: DeploymentRegion): DeploymentConfig {
       provider: isChinaRegion ? "cloudbase" : "supabase",
     },
     payment: {
-      providers: isChinaRegion ? ["wechat", "alipay"] : ["stripe", "paypal"],
+      providers: isChinaRegion ? ["wechat", "alipay"] : ["stripe"],
     },
     apis: {
       authCallbackPath: "/auth/callback",

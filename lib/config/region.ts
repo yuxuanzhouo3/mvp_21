@@ -45,7 +45,7 @@ export const RegionConfig = {
   payment: {
     providers: isChinaRegion()
       ? ["wechat", "alipay"]
-      : ["stripe", "paypal"],
+      : ["stripe"],
     primary: isChinaRegion() ? "wechat" : "stripe",
   },
   ai: {
@@ -86,8 +86,8 @@ export function validateRegionConfig(): { valid: boolean; errors: string[] } {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
       errors.push("INTL deployment requires NEXT_PUBLIC_SUPABASE_URL");
     }
-    if (!process.env.DASHSCOPE_API_KEY) {
-      errors.push("INTL deployment requires DASHSCOPE_API_KEY");
+    if (!process.env.OPENAI_API_KEY) {
+      errors.push("INTL deployment requires OPENAI_API_KEY");
     }
   }
 
