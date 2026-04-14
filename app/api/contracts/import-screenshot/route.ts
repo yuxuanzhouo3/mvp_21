@@ -1,33 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import {
+  ContractChatOcrError,
+  analyzeContractChatScreenshot,
+} from "@/lib/ocr/contract-chat";
+import {
+  loadChinaAccountProfile,
+  loadIntlAccountProfile,
+} from "@/lib/account/server-profile";
 import { extractTokenFromRequest, verifyAuthToken } from "@/lib/auth/auth-utils";
 import { isChinaRegion } from "@/lib/config/region";
-import {
-  analyzeContractChatScreenshot,
-  ContractChatOcrError,
-  type ContractChatScreenshotData,
-} from "@/lib/ocr/contract-chat";
+import { loadAdminSettings } from "@/lib/data/admin-settings-store";
+import { buildMembershipEntitlements } from "@/lib/membership/policy";
+
+type SourceHint = "wechat" | "feishu" | "screenshot";
 
 function t(zh: string, en: string) {
   return isChinaRegion() ? zh : en;
 }
 
-function parsePositiveInt(raw: string | undefined, fallback: number) {
-  const parsed = Number.parseInt(String(raw || ""), 10);
+function parsePositiveInt(value: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(String(value || ""), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
 
 async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
-  fallback: T,
+  fallbackFactory: () => T,
 ): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   try {
     return await Promise.race([
       promise,
-      new Promise<T>((resolve) => {
-        timer = setTimeout(() => resolve(fallback), timeoutMs);
+      new Promise<T>((resolve, reject) => {
+        timer = setTimeout(() => {
+          try {
+            resolve(fallbackFactory());
+          } catch (error) {
+            reject(error);
+          }
+        }, timeoutMs);
       }),
     ]);
   } finally {
@@ -37,173 +54,303 @@ async function withTimeout<T>(
   }
 }
 
-function resolveStepTimeoutMs(deadlineAt: number, desiredMs: number, floorMs: number) {
-  const remainingMs = deadlineAt - Date.now();
-  if (!Number.isFinite(remainingMs) || remainingMs <= floorMs) {
-    return floorMs;
+function normalizeSourceHint(value: unknown): SourceHint {
+  if (value === "wechat" || value === "feishu") {
+    return value;
   }
-  return Math.max(floorMs, Math.min(desiredMs, remainingMs));
+  return "screenshot";
 }
 
-function buildFallbackData(
-  sourceHint?: "wechat" | "feishu" | "screenshot",
-): ContractChatScreenshotData {
+function normalizeImageBase64(value: unknown) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim();
+}
+
+function validateImageBase64(value: string): string | null {
+  if (!value) {
+    return t("缺少图片数据。", "Missing image data.");
+  }
+
+  if (!value.startsWith("data:image/")) {
+    return t("图片数据格式不正确。", "Invalid image data format.");
+  }
+
+  if (value.length > 15 * 1024 * 1024) {
+    return t("图片体积过大，请压缩后再试。", "Image payload is too large. Please compress and retry.");
+  }
+
+  return null;
+}
+
+function resolveRouteBudgetMs() {
+  return clamp(
+    parsePositiveInt(process.env.OCR_ROUTE_BUDGET_MS, 20_000),
+    2_000,
+    120_000,
+  );
+}
+
+function resolveSoftTimeoutMs() {
+  return clamp(
+    parsePositiveInt(process.env.OCR_SOFT_TIMEOUT_MS, 8_000),
+    1_000,
+    60_000,
+  );
+}
+
+function isRetryableOcrFailure(error: unknown) {
+  if (error instanceof ContractChatOcrError) {
+    return (
+      error.code === "OCR_TIMEOUT" ||
+      error.code === "OCR_PROVIDER_FAILED" ||
+      error.code === "OCR_KEY_UNAVAILABLE"
+    );
+  }
+  if (error instanceof Error) {
+    return /timeout|timed out|temporarily unavailable|OCR_/i.test(error.message);
+  }
+  return false;
+}
+
+function buildFallbackOcrPayload(sourceHint: SourceHint) {
+  const conversationText = isChinaRegion()
+    ? "【OCR 降级模式】\n系统暂时无法自动识别截图，请手动粘贴聊天文本后继续分析。"
+    : "[OCR degraded mode]\nScreenshot OCR is temporarily unavailable. Please paste the chat text manually and continue.";
+
   return {
-    sourceType: sourceHint || "screenshot",
-    conversationText: t(
-      "OCR 降级模式：请手动粘贴聊天内容后继续分析。",
-      "OCR degraded mode: please paste chat content manually before analysis.",
-    ),
-    summary: t(
-      "OCR 超时或失败，已返回可编辑占位内容。",
-      "OCR timed out or failed. Returned editable fallback content.",
-    ),
+    sourceType: sourceHint,
+    conversationText,
+    summary: isChinaRegion()
+      ? "OCR 暂不可用，已切换为手动补录模式。"
+      : "OCR unavailable. Switched to manual input mode.",
   };
 }
 
-function mapOcrErrorMessage(error: ContractChatOcrError) {
-  if (error.code === "OCR_KEY_UNAVAILABLE") {
-    return t(
-      "DASHSCOPE_API_KEY 不可用，已切换到 OCR 降级模式。",
-      "DASHSCOPE_API_KEY is unavailable. Switched to OCR degraded mode.",
-    );
+async function requireCurrentUserWithAiChatPermission(request: NextRequest) {
+  const { token, error: tokenError } = extractTokenFromRequest(request);
+  if (tokenError || !token) {
+    return {
+      error: NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "UNAUTHORIZED",
+            message: t("请先登录后再继续。", "Please sign in first."),
+          },
+        },
+        { status: 401 },
+      ),
+    };
   }
-  if (error.code === "OCR_TIMEOUT") {
-    return t(
-      "OCR 超时，已切换到降级模式。",
-      "OCR timed out. Switched to degraded mode.",
-    );
+
+  const authResult = await withTimeout(
+    verifyAuthToken(token),
+    parsePositiveInt(process.env.AUTH_VERIFY_TIMEOUT_MS, 5_000),
+    () => ({ success: false, error: "AUTH_TIMEOUT" }),
+  );
+  if (!authResult.success || !authResult.userId) {
+    return {
+      error: NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "UNAUTHORIZED",
+            message: t("登录状态无效。", "Invalid token."),
+          },
+        },
+        { status: 401 },
+      ),
+    };
   }
-  return error.message;
+
+  const profile = isChinaRegion()
+    ? await withTimeout(
+        loadChinaAccountProfile(authResult.userId),
+        parsePositiveInt(process.env.MEMBERSHIP_PROFILE_TIMEOUT_MS, 4_000),
+        () => null,
+      )
+    : await withTimeout(
+        loadIntlAccountProfile(
+          authResult.userId,
+          authResult.user && "user_metadata" in authResult.user
+            ? authResult.user
+            : undefined,
+        ),
+        parsePositiveInt(process.env.MEMBERSHIP_PROFILE_TIMEOUT_MS, 4_000),
+        () => null,
+      );
+
+  const settings = await withTimeout(
+    loadAdminSettings(),
+    parsePositiveInt(process.env.MEMBERSHIP_SETTINGS_TIMEOUT_MS, 4_000),
+    () => null,
+  );
+  if (settings) {
+    const entitlements = buildMembershipEntitlements(
+      {
+        plan:
+          profile?.subscription_plan ||
+          authResult.user?.subscription_plan ||
+          authResult.user?.user_metadata?.subscription_plan,
+        status:
+          profile?.subscription_status ||
+          authResult.user?.subscription_status ||
+          authResult.user?.user_metadata?.subscription_status,
+        membershipExpiresAt:
+          profile?.membership_expires_at ||
+          profile?.subscription_expires_at ||
+          authResult.user?.membership_expires_at ||
+          authResult.user?.user_metadata?.membership_expires_at ||
+          authResult.user?.subscription_expires_at ||
+          authResult.user?.user_metadata?.subscription_expires_at,
+      },
+      settings,
+    );
+
+    if (!entitlements.features.canUseAiChat) {
+      return {
+        error: NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "AI_CHAT_DISABLED",
+              message: t(
+                "AI 对话功能当前不可用，请联系管理员。",
+                "AI chat is currently unavailable.",
+              ),
+            },
+          },
+          { status: 403 },
+        ),
+      };
+    }
+  }
+
+  return { userId: authResult.userId };
 }
 
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
+  const auth = await requireCurrentUserWithAiChatPermission(request);
+  if ("error" in auth) {
+    return auth.error;
+  }
+
+  let bodyRaw: unknown;
   try {
-    const routeBudgetMs = parsePositiveInt(process.env.OCR_ROUTE_BUDGET_MS, 10_000);
-    const deadlineAt = Date.now() + routeBudgetMs;
-
-    const { token, error: tokenError } = extractTokenFromRequest(request);
-
-    if (tokenError || !token) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
-    const authResult = await withTimeout(
-      verifyAuthToken(token),
-      resolveStepTimeoutMs(
-        deadlineAt,
-        parsePositiveInt(process.env.AUTH_VERIFY_TIMEOUT_MS, 5_000),
-        1_000,
-      ),
-      { success: false, error: "AUTH_TIMEOUT" },
-    );
-    if (!authResult.success || !authResult.userId) {
-      return NextResponse.json(
-        { success: false, error: authResult.error || "Invalid token" },
-        { status: 401 },
-      );
-    }
-
-    const body = await request.json();
-    const imageBase64 =
-      typeof body?.imageBase64 === "string" ? body.imageBase64.trim() : "";
-    const sourceHint =
-      body?.sourceHint === "wechat" ||
-      body?.sourceHint === "feishu" ||
-      body?.sourceHint === "screenshot"
-        ? body.sourceHint
-        : undefined;
-
-    if (!imageBase64) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: t("缺少 imageBase64 图片数据。", "Missing imageBase64 payload."),
-          code: "OCR_INVALID_PAYLOAD",
-        },
-        { status: 400 },
-      );
-    }
-
-    let softTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
-    try {
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        softTimeoutHandle = setTimeout(() => {
-          reject(
-            new ContractChatOcrError(
-              "OCR soft timeout",
-              "OCR_TIMEOUT",
-              504,
-            ),
-          );
-        }, resolveStepTimeoutMs(deadlineAt, parsePositiveInt(process.env.OCR_SOFT_TIMEOUT_MS, 8_000), 1_500));
-      });
-
-      const result = await Promise.race([
-        analyzeContractChatScreenshot(imageBase64, sourceHint),
-        timeoutPromise,
-      ]);
-
-      return NextResponse.json({
-        success: true,
-        data: result.data,
-        meta: {
-          provider: result.provider,
-          degraded: false,
-        },
-      });
-    } catch (ocrError) {
-      if (
-        ocrError instanceof ContractChatOcrError &&
-        (ocrError.code === "OCR_TIMEOUT" ||
-          ocrError.code === "OCR_PROVIDER_FAILED" ||
-          ocrError.code === "OCR_KEY_UNAVAILABLE" ||
-          ocrError.code === "OCR_EMPTY_RESPONSE" ||
-          ocrError.code === "OCR_EMPTY_RESULT")
-      ) {
-        const response = NextResponse.json({
-          success: true,
-          data: buildFallbackData(sourceHint),
-          meta: {
-            provider: "degraded",
-            degraded: true,
-            degradedReason: ocrError.code,
-            degradedMessage: mapOcrErrorMessage(ocrError),
-          },
-        });
-        response.headers.set("X-AI-Degraded", "1");
-        response.headers.set("X-AI-Degraded-Reason", ocrError.code);
-        return response;
-      }
-      throw ocrError;
-    } finally {
-      if (softTimeoutHandle) {
-        clearTimeout(softTimeoutHandle);
-      }
-    }
-  } catch (error) {
-    if (error instanceof ContractChatOcrError) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: mapOcrErrorMessage(error),
-          code: error.code,
-        },
-        { status: error.status },
-      );
-    }
-
-    console.error("[/api/contracts/import-screenshot] Unexpected error:", error);
+    bodyRaw = await request.json();
+  } catch {
     return NextResponse.json(
       {
         success: false,
-        error: t("合同截图 OCR 识别失败。", "Contract screenshot OCR failed."),
-        code: "OCR_UNKNOWN_ERROR",
+        error: {
+          code: "INVALID_JSON",
+          message: t("请求体必须是有效 JSON。", "Request body must be valid JSON."),
+        },
       },
-      { status: 500 },
+      { status: 400 },
+    );
+  }
+
+  if (!bodyRaw || typeof bodyRaw !== "object" || Array.isArray(bodyRaw)) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: "INVALID_BODY",
+          message: t("请求体必须是对象。", "Request body must be an object."),
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  const body = bodyRaw as Record<string, unknown>;
+  const imageBase64 = normalizeImageBase64(body.imageBase64);
+  const sourceHint = normalizeSourceHint(body.sourceHint);
+  const imageValidationError = validateImageBase64(imageBase64);
+  if (imageValidationError) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: "INVALID_IMAGE",
+          message: imageValidationError,
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  const softTimeoutMs = resolveSoftTimeoutMs();
+  const routeBudgetMs = resolveRouteBudgetMs();
+  const startedAt = Date.now();
+
+  try {
+    const result = await withTimeout(
+      withTimeout(
+        analyzeContractChatScreenshot(imageBase64, sourceHint),
+        softTimeoutMs,
+        () => {
+          throw new ContractChatOcrError(
+            `OCR soft timeout after ${softTimeoutMs}ms`,
+            "OCR_TIMEOUT",
+            504,
+          );
+        },
+      ),
+      routeBudgetMs,
+      () => {
+        throw new ContractChatOcrError(
+          `OCR route timeout after ${routeBudgetMs}ms`,
+          "OCR_TIMEOUT",
+          504,
+        );
+      },
+    );
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        sourceType: result.data.sourceType,
+        conversationText: result.data.conversationText,
+        summary: result.data.summary,
+      },
+      meta: {
+        degraded: false,
+        provider: result.provider,
+        latencyMs: Date.now() - startedAt,
+      },
+    });
+  } catch (error) {
+    if (isRetryableOcrFailure(error)) {
+      return NextResponse.json({
+        success: true,
+        data: buildFallbackOcrPayload(sourceHint),
+        meta: {
+          degraded: true,
+          reason: error instanceof Error ? error.message : "OCR unavailable",
+          latencyMs: Date.now() - startedAt,
+        },
+      });
+    }
+
+    const status = error instanceof ContractChatOcrError ? error.status : 500;
+    const code = error instanceof ContractChatOcrError ? error.code : "OCR_FAILED";
+    const message =
+      error instanceof Error
+        ? error.message
+        : t("截图识别失败，请稍后重试。", "Failed to import screenshot. Please retry later.");
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: { code, message },
+      },
+      { status },
     );
   }
 }

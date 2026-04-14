@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import {
-  runContractIntakeChat,
-  type IntakeChatMessage,
-  type IntakeChatState,
-} from "@/lib/ai/contract-intake-chat";
+import type { IntakeChatMessage, IntakeChatState } from "@/lib/ai/contract-intake-chat";
+import { runContractIntakeChat } from "@/lib/ai/contract-intake-chat";
 import {
   loadChinaAccountProfile,
   loadIntlAccountProfile,
@@ -18,22 +15,32 @@ function t(zh: string, en: string) {
   return isChinaRegion() ? zh : en;
 }
 
-function parsePositiveInt(raw: string | undefined, fallback: number) {
-  const parsed = Number.parseInt(String(raw || ""), 10);
+function parsePositiveInt(value: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(String(value || ""), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
 
 async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
-  fallback: T,
+  fallbackFactory: () => T,
 ): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   try {
     return await Promise.race([
       promise,
-      new Promise<T>((resolve) => {
-        timer = setTimeout(() => resolve(fallback), timeoutMs);
+      new Promise<T>((resolve, reject) => {
+        timer = setTimeout(() => {
+          try {
+            resolve(fallbackFactory());
+          } catch (error) {
+            reject(error);
+          }
+        }, timeoutMs);
       }),
     ]);
   } finally {
@@ -43,55 +50,81 @@ async function withTimeout<T>(
   }
 }
 
-function resolveStepTimeoutMs(deadlineAt: number, desiredMs: number, floorMs: number) {
-  const remainingMs = deadlineAt - Date.now();
-  if (!Number.isFinite(remainingMs) || remainingMs <= floorMs) {
-    return floorMs;
+function normalizeMessageList(value: unknown): IntakeChatMessage[] {
+  if (!Array.isArray(value)) {
+    return [];
   }
-  return Math.max(floorMs, Math.min(desiredMs, remainingMs));
+
+  const normalized: IntakeChatMessage[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+
+    const record = item as Record<string, unknown>;
+    const role = record.role;
+    const content = typeof record.content === "string" ? record.content.trim() : "";
+    if (!content) {
+      continue;
+    }
+    if (role !== "user" && role !== "assistant") {
+      continue;
+    }
+
+    normalized.push({
+      role,
+      content: content.slice(0, 4_000),
+    });
+  }
+
+  return normalized.slice(-24);
 }
 
 function resolveRouteBudgetMs() {
-  return parsePositiveInt(process.env.AI_CHAT_ROUTE_BUDGET_MS, 10_000);
+  return clamp(
+    parsePositiveInt(process.env.AI_CHAT_ROUTE_BUDGET_MS, 30_000),
+    3_000,
+    120_000,
+  );
 }
 
 function resolveSoftTimeoutMs() {
-  return parsePositiveInt(process.env.AI_CHAT_SOFT_TIMEOUT_MS, 8_000);
-}
-
-function normalizeMessages(input: unknown): IntakeChatMessage[] {
-  const rawMessages = Array.isArray(input) ? input : [];
-  return rawMessages
-    .map((item: Record<string, unknown>): IntakeChatMessage => ({
-      role: item?.role === "assistant" ? "assistant" : "user",
-      content: typeof item?.content === "string" ? item.content.trim() : "",
-    }))
-    .filter(
-      (item: IntakeChatMessage) => item.content.length > 0,
-    )
-    .slice(-20);
-}
-
-function buildFallbackChatState(messages: IntakeChatMessage[]): IntakeChatState {
-  const latestUserContent = [...messages]
-    .reverse()
-    .find((item) => item.role === "user" && item.content.trim())
-    ?.content || "";
-
-  const fallbackSummary = latestUserContent
-    ? latestUserContent.slice(0, 500)
-    : t("请补充合同场景、双方主体、金额与期限。", "Please add contract context, both parties, amount, and timeline.");
-
-  const reply = t(
-    "AI 对话当前走快速降级通道。请一次性补充：合同类型、甲乙方名称、服务/岗位内容、金额与付款节点、起止时间、违约责任。我会继续帮你生成初稿。",
-    "AI chat is in fast degraded mode. Please provide contract type, both party names, scope/role, amount and payment milestones, timeline, and liabilities in one message. I will continue preparing the draft.",
+  return clamp(
+    parsePositiveInt(process.env.AI_CHAT_SOFT_TIMEOUT_MS, 10_000),
+    1_000,
+    60_000,
   );
+}
+
+function isRetryableChatFailure(error: unknown) {
+  if (error instanceof Error) {
+    return /timeout|timed out|rate limit|temporarily unavailable|AI_CHAT_/i.test(
+      error.message,
+    );
+  }
+
+  return false;
+}
+
+function buildFallbackState(messages: IntakeChatMessage[]): IntakeChatState {
+  const lastUserMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "user" && message.content.trim())
+    ?.content;
+
+  const fallbackReply = isChinaRegion()
+    ? "AI 对话服务暂时拥挤，我先帮你继续采集关键信息。请补充：1）甲乙双方名称；2）金额/薪酬与付款方式；3）起止时间或交付周期。"
+    : "AI chat is temporarily busy. Let's continue intake manually. Please add: 1) Party names, 2) amount/payment terms, 3) start date or delivery timeline.";
 
   return {
-    reply,
+    reply: fallbackReply,
     ready: false,
-    completionScore: 0.3,
-    summary: fallbackSummary,
+    completionScore: 0.35,
+    summary:
+      lastUserMessage ||
+      (isChinaRegion()
+        ? "已进入降级采集模式，等待补充合同关键事实。"
+        : "Degraded intake mode enabled. Waiting for key contract facts."),
     missingFields: [
       "contractType",
       "partyAName",
@@ -99,215 +132,217 @@ function buildFallbackChatState(messages: IntakeChatMessage[]): IntakeChatState 
       "paymentOrSalary",
       "termOrStartDate",
     ],
-    suggestedTitle: t("AI 合同草稿", "AI Contract Draft"),
+    suggestedTitle: isChinaRegion() ? "AI 合同草稿" : "AI Contract Draft",
     collectedData: {},
-    draftSourceContent: fallbackSummary,
+    draftSourceContent: lastUserMessage || "",
   };
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const routeBudgetMs = resolveRouteBudgetMs();
-    const deadlineAt = Date.now() + routeBudgetMs;
-
-    const { token, error: tokenError } = extractTokenFromRequest(request);
-    if (tokenError || !token) {
-      return NextResponse.json(
-        { success: false, error: tokenError || "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
-    const authResult = await withTimeout(
-      verifyAuthToken(token),
-      resolveStepTimeoutMs(
-        deadlineAt,
-        parsePositiveInt(process.env.AUTH_VERIFY_TIMEOUT_MS, 5_000),
-        1_000,
-      ),
-      { success: false, error: "AUTH_TIMEOUT" },
-    );
-    if (!authResult.success || !authResult.userId) {
-      return NextResponse.json(
+async function requireCurrentUserWithAiChatPermission(request: NextRequest) {
+  const { token, error: tokenError } = extractTokenFromRequest(request);
+  if (tokenError || !token) {
+    return {
+      error: NextResponse.json(
         {
           success: false,
-          error: authResult.error || t("登录状态无效。", "Invalid token."),
-        },
-        { status: 401 },
-      );
-    }
-
-    const body = await request.json();
-    const messages = normalizeMessages(body?.messages);
-    if (messages.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: t("缺少对话消息。", "Missing conversation messages."),
-        },
-        { status: 400 },
-      );
-    }
-
-    let degraded = false;
-    let degradedReason = "";
-    let degradedMessage = "";
-
-    try {
-      const [profile, settings] = await Promise.all([
-        isChinaRegion()
-          ? withTimeout(
-              loadChinaAccountProfile(authResult.userId),
-              resolveStepTimeoutMs(deadlineAt, 4_000, 800),
-              null,
-            )
-          : withTimeout(
-              loadIntlAccountProfile(
-                authResult.userId,
-                authResult.user && "user_metadata" in authResult.user
-                  ? authResult.user
-                  : undefined,
-              ),
-              resolveStepTimeoutMs(deadlineAt, 4_000, 800),
-              null,
-            ),
-        withTimeout(
-          loadAdminSettings(),
-          resolveStepTimeoutMs(deadlineAt, 4_000, 800),
-          null,
-        ),
-      ]);
-
-      if (settings) {
-        const entitlements = buildMembershipEntitlements(
-          {
-            plan:
-              profile?.subscription_plan ||
-              authResult.user?.subscription_plan ||
-              authResult.user?.user_metadata?.subscription_plan,
-            status:
-              profile?.subscription_status ||
-              authResult.user?.subscription_status ||
-              authResult.user?.user_metadata?.subscription_status,
-            membershipExpiresAt:
-              profile?.membership_expires_at ||
-              profile?.subscription_expires_at ||
-              authResult.user?.membership_expires_at ||
-              authResult.user?.user_metadata?.membership_expires_at ||
-              authResult.user?.subscription_expires_at ||
-              authResult.user?.user_metadata?.subscription_expires_at,
+          error: {
+            code: "UNAUTHORIZED",
+            message: t("请先登录后再继续。", "Please sign in first."),
           },
-          settings,
-        );
-
-        if (!entitlements.features.canUseAiChat) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: t(
-                "当前环境暂未启用 AI 对话能力。",
-                "AI chat is currently disabled in this deployment.",
-              ),
-              code: "AI_CHAT_DISABLED",
-            },
-            { status: 403 },
-          );
-        }
-      } else {
-        degraded = true;
-        degradedReason = "SETTINGS_TIMEOUT";
-        degradedMessage = t(
-          "会员配置读取超时，已切换可用性优先模式。",
-          "Membership settings timed out. Switched to availability-first mode.",
-        );
-      }
-    } catch (membershipError) {
-      console.warn("[/api/contracts/ai-chat] Membership check degraded:", membershipError);
-      degraded = true;
-      degradedReason = "MEMBERSHIP_CHECK_FAILED";
-      degradedMessage = t(
-        "会员检查失败，已切换可用性优先模式。",
-        "Membership check failed. Switched to availability-first mode.",
-      );
-    }
-
-    let softTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
-    try {
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        softTimeoutHandle = setTimeout(() => {
-          reject(new Error("AI_CHAT_TIMEOUT"));
-        }, resolveStepTimeoutMs(deadlineAt, resolveSoftTimeoutMs(), 1_200));
-      });
-
-      const result = await Promise.race([
-        runContractIntakeChat(messages),
-        timeoutPromise,
-      ]);
-
-      const response = NextResponse.json({
-        success: true,
-        data: result,
-        meta: {
-          degraded,
-          degradedReason: degraded ? degradedReason : undefined,
-          degradedMessage: degraded ? degradedMessage : undefined,
         },
-      });
-      if (degraded) {
-        response.headers.set("X-AI-Degraded", "1");
-        response.headers.set("X-AI-Degraded-Reason", degradedReason || "MEMBERSHIP_CHECK_FAILED");
-      }
-      return response;
-    } catch (chatError) {
-      const fallback = buildFallbackChatState(messages);
+        { status: 401 },
+      ),
+    };
+  }
 
-      const code =
-        chatError instanceof Error && chatError.message === "AI_CHAT_KEY_UNAVAILABLE"
-          ? "AI_CHAT_KEY_UNAVAILABLE"
-          : chatError instanceof Error && chatError.message === "AI_CHAT_TIMEOUT"
-            ? "AI_CHAT_TIMEOUT"
-            : "AI_CHAT_FAILED";
+  const authResult = await withTimeout(
+    verifyAuthToken(token),
+    parsePositiveInt(process.env.AUTH_VERIFY_TIMEOUT_MS, 5_000),
+    () => ({ success: false, error: "AUTH_TIMEOUT" }),
+  );
+  if (!authResult.success || !authResult.userId) {
+    return {
+      error: NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "UNAUTHORIZED",
+            message: t("登录状态无效。", "Invalid token."),
+          },
+        },
+        { status: 401 },
+      ),
+    };
+  }
 
-      const message =
-        code === "AI_CHAT_KEY_UNAVAILABLE"
-          ? t(
-              "AI Key 不可用，系统已切换为快速采集模式。",
-              "AI key is unavailable. Switched to fast intake mode.",
-            )
-          : code === "AI_CHAT_TIMEOUT"
-            ? t(
-                "AI 对话超时，系统已切换为快速采集模式。",
-                "AI chat timed out. Switched to fast intake mode.",
-              )
-            : t(
-                "AI 对话异常，系统已切换为快速采集模式。",
-                "AI chat failed. Switched to fast intake mode.",
-              );
+  const profile = isChinaRegion()
+    ? await withTimeout(
+        loadChinaAccountProfile(authResult.userId),
+        parsePositiveInt(process.env.MEMBERSHIP_PROFILE_TIMEOUT_MS, 4_000),
+        () => null,
+      )
+    : await withTimeout(
+        loadIntlAccountProfile(
+          authResult.userId,
+          authResult.user && "user_metadata" in authResult.user
+            ? authResult.user
+            : undefined,
+        ),
+        parsePositiveInt(process.env.MEMBERSHIP_PROFILE_TIMEOUT_MS, 4_000),
+        () => null,
+      );
 
-      const response = NextResponse.json({
+  const settings = await withTimeout(
+    loadAdminSettings(),
+    parsePositiveInt(process.env.MEMBERSHIP_SETTINGS_TIMEOUT_MS, 4_000),
+    () => null,
+  );
+  if (settings) {
+    const entitlements = buildMembershipEntitlements(
+      {
+        plan:
+          profile?.subscription_plan ||
+          authResult.user?.subscription_plan ||
+          authResult.user?.user_metadata?.subscription_plan,
+        status:
+          profile?.subscription_status ||
+          authResult.user?.subscription_status ||
+          authResult.user?.user_metadata?.subscription_status,
+        membershipExpiresAt:
+          profile?.membership_expires_at ||
+          profile?.subscription_expires_at ||
+          authResult.user?.membership_expires_at ||
+          authResult.user?.user_metadata?.membership_expires_at ||
+          authResult.user?.subscription_expires_at ||
+          authResult.user?.user_metadata?.subscription_expires_at,
+      },
+      settings,
+    );
+
+    if (!entitlements.features.canUseAiChat) {
+      return {
+        error: NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "AI_CHAT_DISABLED",
+              message: t(
+                "AI 对话功能当前不可用，请联系管理员。",
+                "AI chat is currently unavailable.",
+              ),
+            },
+          },
+          { status: 403 },
+        ),
+      };
+    }
+  }
+
+  return { userId: authResult.userId };
+}
+
+export const maxDuration = 60;
+
+export async function POST(request: NextRequest) {
+  const auth = await requireCurrentUserWithAiChatPermission(request);
+  if ("error" in auth) {
+    return auth.error;
+  }
+
+  let bodyRaw: unknown;
+  try {
+    bodyRaw = await request.json();
+  } catch {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: "INVALID_JSON",
+          message: t("请求体必须是有效 JSON。", "Request body must be valid JSON."),
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  if (!bodyRaw || typeof bodyRaw !== "object" || Array.isArray(bodyRaw)) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: "INVALID_BODY",
+          message: t("请求体必须是对象。", "Request body must be an object."),
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  const body = bodyRaw as Record<string, unknown>;
+  const messages = normalizeMessageList(body.messages);
+  if (messages.length === 0) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: "MISSING_MESSAGES",
+          message: t("请至少提供一条对话消息。", "Please provide at least one chat message."),
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  const softTimeoutMs = resolveSoftTimeoutMs();
+  const routeBudgetMs = resolveRouteBudgetMs();
+  const startedAt = Date.now();
+
+  try {
+    const result = await withTimeout(
+      withTimeout(
+        runContractIntakeChat(messages),
+        softTimeoutMs,
+        () => {
+          throw new Error(`AI_CHAT_TIMEOUT (${softTimeoutMs}ms)`);
+        },
+      ),
+      routeBudgetMs,
+      () => {
+        throw new Error(`AI_CHAT_ROUTE_TIMEOUT (${routeBudgetMs}ms)`);
+      },
+    );
+
+    return NextResponse.json({
+      success: true,
+      data: result,
+      meta: {
+        degraded: false,
+        latencyMs: Date.now() - startedAt,
+      },
+    });
+  } catch (error) {
+    if (isRetryableChatFailure(error)) {
+      return NextResponse.json({
         success: true,
-        data: fallback,
+        data: buildFallbackState(messages),
         meta: {
           degraded: true,
-          degradedReason: code,
-          degradedMessage: message,
+          reason: error instanceof Error ? error.message : "AI chat unavailable",
+          latencyMs: Date.now() - startedAt,
         },
       });
-      response.headers.set("X-AI-Degraded", "1");
-      response.headers.set("X-AI-Degraded-Reason", code);
-      return response;
-    } finally {
-      if (softTimeoutHandle) {
-        clearTimeout(softTimeoutHandle);
-      }
     }
-  } catch (error) {
-    console.error("[/api/contracts/ai-chat] Failed:", error);
 
     return NextResponse.json(
       {
         success: false,
-        error: t("AI 对话请求失败。", "AI chat request failed."),
+        error: {
+          code: "AI_CHAT_FAILED",
+          message:
+            error instanceof Error
+              ? error.message
+              : t("AI 对话失败，请稍后重试。", "AI chat failed. Please retry later."),
+        },
       },
       { status: 500 },
     );

@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ContractAIError, generateContract } from "@/lib/ai";
-import {
-  type AIAnalysisResult,
-  type ContractContent,
-  type ContractType,
-} from "@/lib/ai/types";
+import type { AIAnalysisResult, ContractContent, GenerateContractRequest } from "@/lib/ai/types";
 import {
   loadChinaAccountProfile,
   loadIntlAccountProfile,
@@ -20,22 +16,32 @@ function t(zh: string, en: string) {
   return isChinaRegion() ? zh : en;
 }
 
-function parsePositiveInt(raw: string | undefined, fallback: number) {
-  const parsed = Number.parseInt(String(raw || ""), 10);
+function parsePositiveInt(value: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(String(value || ""), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
 
 async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
-  fallback: T,
+  fallbackFactory: () => T,
 ): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   try {
     return await Promise.race([
       promise,
-      new Promise<T>((resolve) => {
-        timer = setTimeout(() => resolve(fallback), timeoutMs);
+      new Promise<T>((resolve, reject) => {
+        timer = setTimeout(() => {
+          try {
+            resolve(fallbackFactory());
+          } catch (error) {
+            reject(error);
+          }
+        }, timeoutMs);
       }),
     ]);
   } finally {
@@ -45,192 +51,186 @@ async function withTimeout<T>(
   }
 }
 
-function resolveGenerateSoftTimeoutMs() {
-  return parsePositiveInt(process.env.AI_GENERATE_SOFT_TIMEOUT_MS, 12_000);
-}
-
-function resolveGenerateRouteBudgetMs() {
-  return parsePositiveInt(process.env.AI_GENERATE_ROUTE_BUDGET_MS, 12_000);
-}
-
-function resolveStepTimeoutMs(deadlineAt: number, desiredMs: number, floorMs: number) {
-  const remainingMs = deadlineAt - Date.now();
-  if (!Number.isFinite(remainingMs) || remainingMs <= floorMs) {
-    return floorMs;
+function normalizeLanguage(value: unknown): "zh" | "en" | undefined {
+  if (value === "zh" || value === "en") {
+    return value;
   }
-  return Math.max(floorMs, Math.min(desiredMs, remainingMs));
+  return undefined;
 }
 
-function normalizeText(value: unknown, fallback = "") {
-  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+function sanitizeCustomFields(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const normalized = Object.entries(value as Record<string, unknown>).reduce<Record<string, string>>(
+    (accumulator, [key, raw]) => {
+      if (typeof raw !== "string") {
+        return accumulator;
+      }
+      const nextKey = key.trim();
+      if (!nextKey) {
+        return accumulator;
+      }
+      accumulator[nextKey] = raw;
+      return accumulator;
+    },
+    {},
+  );
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
-function pickContractTypeLabel(contractType: unknown) {
-  const type = normalizeText(contractType, "custom").toLowerCase() as ContractType | string;
-  const labels: Record<string, { zh: string; en: string }> = {
-    labor: { zh: "劳动合同", en: "Employment Contract" },
-    service: { zh: "服务合同", en: "Service Agreement" },
-    cooperation: { zh: "合作协议", en: "Cooperation Agreement" },
-    nda: { zh: "保密协议", en: "NDA" },
-    freelance: { zh: "自由职业合同", en: "Freelance Contract" },
-    tech: { zh: "技术开发合同", en: "Technology Development Contract" },
-    software: { zh: "软件开发合同", en: "Software Development Contract" },
-    custom: { zh: "合同", en: "Contract" },
-  };
+function isValidAnalysisResult(value: unknown): value is AIAnalysisResult {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
 
-  return labels[type] || labels.custom;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.contractType === "string" &&
+    Array.isArray(record.keyTerms) &&
+    record.keyTerms.length > 0
+  );
 }
 
-function buildFastFallbackContract(args: {
-  analysisResult: AIAnalysisResult;
-  templateName?: string;
-  customFields?: Record<string, string>;
-}): ContractContent {
-  const { analysisResult, templateName, customFields } = args;
-  const zh = isChinaRegion();
-  const typeLabel = pickContractTypeLabel(analysisResult.contractType);
-  const title = normalizeText(templateName)
-    ? normalizeText(templateName)
-    : zh
-      ? `${typeLabel.zh}草稿`
-      : `${typeLabel.en} Draft`;
-
-  const partyAName = normalizeText(
-    analysisResult.partyA?.name,
-    zh ? "甲方（待补充）" : "Party A (To Be Added)",
-  );
-  const partyBName = normalizeText(
-    analysisResult.partyB?.name,
-    zh ? "乙方（待补充）" : "Party B (To Be Added)",
-  );
-
-  const summary = normalizeText(
-    analysisResult.summary,
-    zh
-      ? "系统已进入快速生成模式，请在编辑页补充关键业务事实。"
-      : "Fast generation mode is enabled. Please complete key business facts in the editor.",
-  );
-
-  const keyTermLines = (analysisResult.keyTerms || [])
+function createFallbackSections(language: "zh" | "en", analysisResult: AIAnalysisResult) {
+  const keyTermsText = analysisResult.keyTerms
     .slice(0, 8)
-    .map((term) => `${normalizeText(term.label, zh ? "条款" : "Term")}: ${normalizeText(term.value)}`)
-    .filter(Boolean);
+    .map((term) => `- ${term.label}: ${term.value}`)
+    .join("\n");
 
-  const keyTermBody = keyTermLines.length
-    ? keyTermLines.join("\n")
-    : zh
-      ? "请补充：金额、付款节点、交付内容、期限、违约责任。"
-      : "Please add: amount, payment milestones, deliverables, timeline, and liabilities.";
+  if (language === "zh") {
+    return [
+      {
+        id: "section-1",
+        title: "第一条 合同主体与定义",
+        content:
+          "甲乙双方应在本合同首页或附件中填写完整主体信息，包括公司名称、统一社会信用代码、地址、联系人及联系方式。",
+        order: 1,
+        editable: true,
+      },
+      {
+        id: "section-2",
+        title: "第二条 服务/合作内容与交付",
+        content:
+          "双方按照已确认的业务目标执行合作，具体范围、交付物、验收标准和时间节点应在本条及附件中进一步明确。",
+        order: 2,
+        editable: true,
+      },
+      {
+        id: "section-3",
+        title: "第三条 费用与付款安排",
+        content:
+          "双方应明确总价、付款节点、开票条件、逾期责任及税费承担。建议按里程碑或验收结果支付对应款项。",
+        order: 3,
+        editable: true,
+      },
+      {
+        id: "section-4",
+        title: "第四条 关键条款（待确认）",
+        content: keyTermsText || "请补充金额、期限、付款节点、违约责任、争议解决等关键条款。",
+        order: 4,
+        editable: true,
+      },
+    ];
+  }
 
-  const extraFieldLines = Object.entries(customFields || {})
-    .filter(([key, value]) => key.trim() && normalizeText(value))
-    .slice(0, 8)
-    .map(([key, value]) => `${key}: ${normalizeText(value)}`);
-
-  const extraFieldBody = extraFieldLines.length
-    ? `${zh ? "补充字段" : "Additional Fields"}:\n${extraFieldLines.join("\n")}`
-    : "";
-
-  const sections = [
+  return [
     {
       id: "section-1",
-      title: zh ? "一、合同主体" : "1. Parties",
-      content: zh
-        ? `甲方：${partyAName}\n乙方：${partyBName}\n双方身份信息、联系方式及签约主体信息请在正式签署前补充完整。`
-        : `Party A: ${partyAName}\nParty B: ${partyBName}\nPlease complete legal entity and contact details before execution.`,
+      title: "1. Parties and Definitions",
+      content:
+        "The parties shall provide complete legal identity details in the contract cover page or annex, including name, registration number, address, and contacts.",
       order: 1,
       editable: true,
     },
     {
       id: "section-2",
-      title: zh ? "二、合作内容与交付" : "2. Scope and Deliverables",
-      content: zh
-        ? `基于当前事实摘要：\n${summary}\n\n关键点：\n${keyTermBody}${extraFieldBody ? `\n\n${extraFieldBody}` : ""}`
-        : `Current fact summary:\n${summary}\n\nKey points:\n${keyTermBody}${extraFieldBody ? `\n\n${extraFieldBody}` : ""}`,
+      title: "2. Scope and Deliverables",
+      content:
+        "The parties shall perform the agreed business scope. Deliverables, acceptance criteria, and schedule should be specified in this section and annexes.",
       order: 2,
       editable: true,
     },
     {
       id: "section-3",
-      title: zh ? "三、价款与支付" : "3. Fees and Payment",
-      content: zh
-        ? "请补充合同总金额、币种、付款节点、发票类型及逾期付款责任。"
-        : "Please specify total amount, currency, payment milestones, invoicing, and late-payment liabilities.",
+      title: "3. Fees and Payment",
+      content:
+        "The parties should define total consideration, milestones, invoice requirements, tax allocation, and late-payment liabilities.",
       order: 3,
       editable: true,
     },
     {
       id: "section-4",
-      title: zh ? "四、期限与违约责任" : "4. Term and Liability",
-      content: zh
-        ? "请补充生效日期、履约期限、交付验收标准、违约金及损失赔偿规则。"
-        : "Please define effective date, term, acceptance criteria, liquidated damages, and indemnities.",
+      title: "4. Key Terms to Confirm",
+      content:
+        keyTermsText ||
+        "Please add amount, duration, milestones, breach liability, and dispute resolution clauses.",
       order: 4,
       editable: true,
     },
   ];
+}
+
+function buildFallbackContract(
+  analysisResult: AIAnalysisResult,
+  language: "zh" | "en",
+): ContractContent {
+  const contractType = analysisResult.contractType || "custom";
+  const title =
+    language === "zh"
+      ? `AI 降级草稿（${String(contractType)}）`
+      : `AI Degraded Draft (${String(contractType)})`;
+  const now = new Date().toISOString();
 
   return {
     title,
-    contractType: normalizeText(analysisResult.contractType, "custom"),
+    contractType,
+    legalBasis:
+      language === "zh"
+        ? "本草稿为 AI 服务降级输出，请务必人工复核。"
+        : "This draft was produced in degraded mode. Manual legal review is required.",
     generatedBy: {
-      expertName: zh ? "系统快速模式" : "System Fast Mode",
-      expertTitle: zh ? "降级初稿生成" : "Degraded Draft Generator",
-      generatedAt: new Date().toISOString(),
+      expertName: language === "zh" ? "系统降级助手" : "System Fallback Assistant",
+      expertTitle: language === "zh" ? "合同初稿整理" : "Contract Draft Assistant",
+      generatedAt: now,
     },
-    sections,
-    disclaimer: zh
-      ? "当前为快速降级草稿，用于避免超时中断。请在编辑页补全关键条款后再签署。"
-      : "This is a fast degraded draft to avoid timeout interruption. Please complete key clauses before signing.",
+    sections: createFallbackSections(language, analysisResult),
+    disclaimer:
+      language === "zh"
+        ? "当前为降级草稿，请在签署前完成人工审核并补充缺失条款。"
+        : "This is a degraded draft. Complete manual review and missing terms before signing.",
     signature: {
       partyA: {
-        name: partyAName,
-        title: zh ? "甲方（盖章）" : "Party A (Signature / Seal)",
+        name: analysisResult.partyA?.name || (language === "zh" ? "【待补充：甲方名称】" : "[Party A name pending]"),
+        title: language === "zh" ? "甲方（盖章）" : "Party A (Signature/Seal)",
       },
       partyB: {
-        name: partyBName,
-        title: zh ? "乙方（签字/盖章）" : "Party B (Signature / Seal)",
+        name: analysisResult.partyB?.name || (language === "zh" ? "【待补充：乙方名称】" : "[Party B name pending]"),
+        title: language === "zh" ? "乙方（签字/盖章）" : "Party B (Signature/Seal)",
       },
     },
   };
 }
 
-function getAiErrorMessage(error: ContractAIError): string {
-  switch (error.code) {
-    case "AI_KEY_UNAVAILABLE":
-    case "AI_NOT_CONFIGURED":
-      return t(
-        "AI API Key 不可用，请联系管理员检查配置。",
-        "AI API key is unavailable. Please ask the administrator to check the configuration.",
-      );
-    case "AI_AUTH_FAILED":
-      return t(
-        "AI API Key 鉴权失败，请检查配置。",
-        "AI API key authentication failed. Please check the API key configuration.",
-      );
-    case "AI_RATE_LIMITED":
-      return t(
-        "AI 服务当前请求较多，请稍后重试。",
-        "AI service is currently rate-limited. Please try again shortly.",
-      );
-    case "AI_TIMEOUT":
-      return t(
-        "AI 生成超时，系统已切换为快速初稿。",
-        "AI generation timed out. Switched to a fast fallback draft.",
-      );
-    default:
-      return t(
-        "AI 服务暂时不可用，请稍后重试。",
-        "AI service is temporarily unavailable. Please try again later.",
-      );
+function isRetryableAiFailure(error: unknown) {
+  if (error instanceof ContractAIError) {
+    return (
+      error.code === "AI_TIMEOUT" ||
+      error.code === "AI_RATE_LIMITED" ||
+      error.code === "AI_PROVIDER_FAILED" ||
+      error.code === "AI_KEY_UNAVAILABLE"
+    );
   }
+  if (error instanceof Error) {
+    return /timeout|timed out|rate limit|temporarily unavailable/i.test(error.message);
+  }
+  return false;
 }
 
-export const maxDuration = 300;
-
-async function requireCurrentUser(request: NextRequest, deadlineAt: number) {
+async function requireCurrentUserWithGeneratePermission(request: NextRequest) {
   const { token, error: tokenError } = extractTokenFromRequest(request);
-
   if (tokenError || !token) {
     return {
       error: NextResponse.json(
@@ -238,7 +238,7 @@ async function requireCurrentUser(request: NextRequest, deadlineAt: number) {
           success: false,
           error: {
             code: "UNAUTHORIZED",
-            message: t("请先登录后再试。", "Please sign in first."),
+            message: t("请先登录后再继续。", "Please sign in first."),
           },
         },
         { status: 401 },
@@ -248,15 +248,8 @@ async function requireCurrentUser(request: NextRequest, deadlineAt: number) {
 
   const authResult = await withTimeout(
     verifyAuthToken(token),
-    resolveStepTimeoutMs(
-      deadlineAt,
-      parsePositiveInt(process.env.AUTH_VERIFY_TIMEOUT_MS, 5_000),
-      1_000,
-    ),
-    {
-      success: false,
-      error: "AUTH_TIMEOUT",
-    },
+    parsePositiveInt(process.env.AUTH_VERIFY_TIMEOUT_MS, 5_000),
+    () => ({ success: false, error: "AUTH_TIMEOUT" }),
   );
   if (!authResult.success || !authResult.userId) {
     return {
@@ -273,249 +266,214 @@ async function requireCurrentUser(request: NextRequest, deadlineAt: number) {
     };
   }
 
-  try {
-    const profileTimeoutMs = parsePositiveInt(
-      process.env.MEMBERSHIP_PROFILE_TIMEOUT_MS,
-      4_000,
-    );
-    const settingsTimeoutMs = parsePositiveInt(
-      process.env.MEMBERSHIP_SETTINGS_TIMEOUT_MS,
-      4_000,
-    );
-
-    const profilePromise = isChinaRegion()
-      ? loadChinaAccountProfile(authResult.userId)
-      : loadIntlAccountProfile(
+  const profile = isChinaRegion()
+    ? await withTimeout(
+        loadChinaAccountProfile(authResult.userId),
+        parsePositiveInt(process.env.MEMBERSHIP_PROFILE_TIMEOUT_MS, 4_000),
+        () => null,
+      )
+    : await withTimeout(
+        loadIntlAccountProfile(
           authResult.userId,
           authResult.user && "user_metadata" in authResult.user
             ? authResult.user
             : undefined,
-        );
-
-    const [profile, settings] = await Promise.all([
-      withTimeout(
-        profilePromise,
-        resolveStepTimeoutMs(deadlineAt, profileTimeoutMs, 800),
-        null,
-      ),
-      withTimeout(
-        loadAdminSettings(),
-        resolveStepTimeoutMs(deadlineAt, settingsTimeoutMs, 800),
-        null,
-      ),
-    ]);
-    if (settings) {
-      const entitlements = buildMembershipEntitlements(
-        {
-          plan:
-            profile?.subscription_plan ||
-            authResult.user?.subscription_plan ||
-            authResult.user?.user_metadata?.subscription_plan,
-          status:
-            profile?.subscription_status ||
-            authResult.user?.subscription_status ||
-            authResult.user?.user_metadata?.subscription_status,
-          membershipExpiresAt:
-            profile?.membership_expires_at ||
-            profile?.subscription_expires_at ||
-            authResult.user?.membership_expires_at ||
-            authResult.user?.user_metadata?.membership_expires_at ||
-            authResult.user?.subscription_expires_at ||
-            authResult.user?.user_metadata?.subscription_expires_at,
-        },
-        settings,
+        ),
+        parsePositiveInt(process.env.MEMBERSHIP_PROFILE_TIMEOUT_MS, 4_000),
+        () => null,
       );
 
-      if (!entitlements.features.canGenerateContract) {
-        return {
-          error: NextResponse.json(
-            {
-              success: false,
-              error: {
-                code: "CONTRACT_GENERATION_DISABLED",
-                message: t(
-                  "合同生成功能当前已被管理员关闭。",
-                  "Contract generation is currently disabled by the administrator.",
-                ),
-              },
-            },
-            { status: 403 },
-          ),
-        };
-      }
-    } else {
-      console.warn(
-        "[/api/contracts/generate] Membership settings unavailable, using graceful bypass for availability.",
-      );
-    }
-  } catch (error) {
-    console.warn(
-      "[/api/contracts/generate] Membership gating failed, bypassing to keep service available:",
-      error,
+  const settings = await withTimeout(
+    loadAdminSettings(),
+    parsePositiveInt(process.env.MEMBERSHIP_SETTINGS_TIMEOUT_MS, 4_000),
+    () => null,
+  );
+
+  if (settings) {
+    const entitlements = buildMembershipEntitlements(
+      {
+        plan:
+          profile?.subscription_plan ||
+          authResult.user?.subscription_plan ||
+          authResult.user?.user_metadata?.subscription_plan,
+        status:
+          profile?.subscription_status ||
+          authResult.user?.subscription_status ||
+          authResult.user?.user_metadata?.subscription_status,
+        membershipExpiresAt:
+          profile?.membership_expires_at ||
+          profile?.subscription_expires_at ||
+          authResult.user?.membership_expires_at ||
+          authResult.user?.user_metadata?.membership_expires_at ||
+          authResult.user?.subscription_expires_at ||
+          authResult.user?.user_metadata?.subscription_expires_at,
+      },
+      settings,
     );
+
+    if (!entitlements.features.canGenerateContract) {
+      return {
+        error: NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "CONTRACT_GENERATION_DISABLED",
+              message: t(
+                "合同生成功能当前不可用，请联系管理员。",
+                "Contract generation is currently unavailable.",
+              ),
+            },
+          },
+          { status: 403 },
+        ),
+      };
+    }
   }
 
-  return {
-    userId: authResult.userId,
-  };
+  return { userId: authResult.userId };
 }
 
+function resolveRouteBudgetMs() {
+  return clamp(
+    parsePositiveInt(process.env.AI_GENERATE_ROUTE_BUDGET_MS, 60_000),
+    8_000,
+    300_000,
+  );
+}
+
+export const maxDuration = 120;
+
 export async function POST(request: NextRequest) {
+  const auth = await requireCurrentUserWithGeneratePermission(request);
+  if ("error" in auth) {
+    return auth.error;
+  }
+
+  let bodyRaw: unknown;
   try {
-    const routeBudgetMs = resolveGenerateRouteBudgetMs();
-    const deadlineAt = Date.now() + routeBudgetMs;
-
-    const auth = await requireCurrentUser(request, deadlineAt);
-    if ("error" in auth) {
-      return auth.error;
-    }
-
-    const body = await request.json();
-    const {
-      analysisResult,
-      templateId,
-      templateName,
-      templateContent,
-      templateVersion,
-      customFields,
-    } = body as {
-      analysisResult: AIAnalysisResult;
-      templateId?: string;
-      templateName?: string;
-      templateContent?: string;
-      templateVersion?: number;
-      customFields?: Record<string, string>;
-    };
-
-    if (!analysisResult || !analysisResult.contractType) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: "INVALID_INPUT",
-            message: t("请提供有效的分析结果。", "Please provide a valid analysis result."),
-          },
-        },
-        { status: 400 },
-      );
-    }
-
-    let resolvedTemplateName = templateName;
-    let resolvedTemplateContent = templateContent;
-    let resolvedTemplateVersion = templateVersion;
-
-    if ((!resolvedTemplateContent || !resolvedTemplateContent.trim()) && templateId) {
-      const template = await withTimeout(
-        getDashboardTemplateById(auth.userId, templateId).catch(() => null),
-        resolveStepTimeoutMs(deadlineAt, 1_500, 500),
-        null,
-      );
-      if (template?.content) {
-        resolvedTemplateName = template.name;
-        resolvedTemplateContent = template.content;
-        resolvedTemplateVersion = template.version;
-      }
-    }
-
-    const aiTimeBudgetMs = resolveStepTimeoutMs(
-      deadlineAt,
-      parsePositiveInt(process.env.AI_GENERATE_TIME_BUDGET_MS, 12_000),
-      1_200,
-    );
-    const softTimeoutMs = resolveStepTimeoutMs(
-      deadlineAt,
-      resolveGenerateSoftTimeoutMs(),
-      1_200,
-    );
-
-    let contract: ContractContent;
-    let degraded = false;
-    let degradedReason = "";
-    let degradedMessage = "";
-
-    let softTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
-    try {
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        softTimeoutHandle = setTimeout(() => {
-          reject(
-            new ContractAIError(
-              `Generate soft timeout after ${softTimeoutMs}ms`,
-              "AI_TIMEOUT",
-              504,
-            ),
-          );
-        }, softTimeoutMs);
-      });
-
-      contract = await Promise.race([
-        generateContract({
-          analysisResult,
-          templateId,
-          templateName: resolvedTemplateName,
-          templateContent: resolvedTemplateContent,
-          templateVersion: resolvedTemplateVersion,
-          customFields,
-          timeBudgetMs: aiTimeBudgetMs,
-          maxTokens: parsePositiveInt(process.env.AI_GENERATE_MAX_TOKENS, 1_600),
-        }),
-        timeoutPromise,
-      ]);
-    } catch (error) {
-      degraded = true;
-      if (error instanceof ContractAIError) {
-        degradedReason = error.code;
-        degradedMessage = getAiErrorMessage(error);
-      } else if (error instanceof Error) {
-        degradedReason = "GENERATE_FAILED";
-        degradedMessage = error.message;
-      } else {
-        degradedReason = "GENERATE_FAILED";
-        degradedMessage = String(error);
-      }
-
-      console.warn("Generate contract degraded to fast fallback:", {
-        reason: degradedReason,
-        message: degradedMessage,
-      });
-
-      contract = buildFastFallbackContract({
-        analysisResult,
-        templateName: resolvedTemplateName,
-        customFields,
-      });
-    } finally {
-      if (softTimeoutHandle) {
-        clearTimeout(softTimeoutHandle);
-      }
-    }
-
-    const response = NextResponse.json({
-      success: true,
-      data: contract,
-      meta: {
-        degraded,
-        degradedReason: degraded ? degradedReason : undefined,
-        degradedMessage: degraded ? degradedMessage : undefined,
-      },
-    });
-    response.headers.set("X-AI-Time-Budget-Ms", String(aiTimeBudgetMs));
-    if (degraded) {
-      response.headers.set("X-AI-Degraded", "1");
-      response.headers.set("X-AI-Degraded-Reason", degradedReason || "GENERATE_FAILED");
-    }
-    return response;
-  } catch (error) {
-    console.error("Generate contract failed:", error);
-
+    bodyRaw = await request.json();
+  } catch {
     return NextResponse.json(
       {
         success: false,
         error: {
-          code: "GENERATE_FAILED",
-          message: t("生成失败，请稍后重试。", "Generation failed. Please try again."),
+          code: "INVALID_JSON",
+          message: t("请求体必须是有效 JSON。", "Request body must be valid JSON."),
         },
       },
-      { status: 500 },
+      { status: 400 },
+    );
+  }
+
+  if (!bodyRaw || typeof bodyRaw !== "object" || Array.isArray(bodyRaw)) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: "INVALID_BODY",
+          message: t("请求体必须是对象。", "Request body must be an object."),
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  const body = bodyRaw as Record<string, unknown>;
+  const analysisResult = body.analysisResult;
+  if (!isValidAnalysisResult(analysisResult)) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: "INVALID_ANALYSIS_RESULT",
+          message: t(
+            "分析结果无效或缺少关键条款。",
+            "Analysis result is invalid or missing key terms.",
+          ),
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  const language = normalizeLanguage(body.language) || (isChinaRegion() ? "zh" : "en");
+  const templateId = typeof body.templateId === "string" ? body.templateId.trim() : "";
+  let templateName = typeof body.templateName === "string" ? body.templateName.trim() : "";
+  let templateContent =
+    typeof body.templateContent === "string" ? body.templateContent : "";
+  let templateVersion =
+    typeof body.templateVersion === "number" && Number.isFinite(body.templateVersion)
+      ? body.templateVersion
+      : undefined;
+
+  if ((!templateContent || !templateContent.trim()) && templateId) {
+    const template = await withTimeout(
+      getDashboardTemplateById(auth.userId, templateId),
+      parsePositiveInt(process.env.CONTRACTS_QUERY_TIMEOUT_MS, 5_000),
+      () => null,
+    );
+    if (template?.content) {
+      templateName = template.name || templateName;
+      templateContent = template.content || templateContent;
+      templateVersion = template.version ?? templateVersion;
+    }
+  }
+
+  const requestPayload: GenerateContractRequest = {
+    analysisResult,
+    templateId: templateId || undefined,
+    templateName: templateName || undefined,
+    templateContent: templateContent || undefined,
+    templateVersion,
+    customFields: sanitizeCustomFields(body.customFields),
+    language,
+  };
+
+  const startedAt = Date.now();
+  try {
+    const generated = await withTimeout(
+      generateContract(requestPayload),
+      resolveRouteBudgetMs(),
+      () => {
+        throw new ContractAIError("AI generation route timeout", "AI_TIMEOUT", 504);
+      },
+    );
+
+    return NextResponse.json({
+      success: true,
+      data: generated,
+      meta: {
+        degraded: false,
+        latencyMs: Date.now() - startedAt,
+      },
+    });
+  } catch (error) {
+    if (isRetryableAiFailure(error)) {
+      const fallback = buildFallbackContract(analysisResult, language);
+      return NextResponse.json({
+        success: true,
+        data: fallback,
+        meta: {
+          degraded: true,
+          reason: error instanceof Error ? error.message : "AI unavailable",
+          latencyMs: Date.now() - startedAt,
+        },
+      });
+    }
+
+    const status = error instanceof ContractAIError ? error.status : 500;
+    const code = error instanceof ContractAIError ? error.code : "GENERATE_FAILED";
+    const message =
+      error instanceof ContractAIError
+        ? error.message
+        : t("合同生成失败，请稍后重试。", "Failed to generate contract. Please retry later.");
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: { code, message },
+      },
+      { status },
     );
   }
 }
