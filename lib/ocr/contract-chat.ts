@@ -125,6 +125,17 @@ function ensureResult(data: ContractChatScreenshotData) {
   }
 }
 
+function parsePositiveInt(raw: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(String(raw || ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function resolveOcrProviderTimeoutMs() {
+  const fallback = parsePositiveInt(process.env.AI_PROVIDER_TIMEOUT_MS, 12_000);
+  const configured = parsePositiveInt(process.env.OCR_PROVIDER_TIMEOUT_MS, fallback);
+  return Math.max(2_000, Math.min(30_000, configured));
+}
+
 async function callDashScope(imageBase64: string): Promise<string> {
   const apiKey = process.env.DASHSCOPE_API_KEY;
   if (!apiKey?.trim()) {
@@ -135,30 +146,61 @@ async function callDashScope(imageBase64: string): Promise<string> {
     );
   }
 
-  const response = await fetch(
-    "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: process.env.DASHSCOPE_OCR_MODEL || "qwen-vl-plus",
-        input: {
-          messages: [
-            {
-              role: "user",
-              content: [
-                { image: imageBase64 },
-                { text: getOcrPrompt() },
-              ],
-            },
-          ],
+  const timeoutMs = resolveOcrProviderTimeoutMs();
+  const abortController = new AbortController();
+  const timeoutHandle = setTimeout(() => {
+    abortController.abort("OCR_TIMEOUT");
+  }, timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(
+      "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
         },
-      }),
-    },
-  );
+        signal: abortController.signal,
+        body: JSON.stringify({
+          model: process.env.DASHSCOPE_OCR_MODEL || "qwen-vl-plus",
+          input: {
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { image: imageBase64 },
+                  { text: getOcrPrompt() },
+                ],
+              },
+            ],
+          },
+        }),
+      },
+    );
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.name === "AbortError" ||
+        /timeout|timed out|aborted|abort/i.test(error.message))
+    ) {
+      throw new ContractChatOcrError(
+        `DashScope OCR timeout after ${timeoutMs}ms`,
+        "OCR_TIMEOUT",
+        504,
+      );
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    throw new ContractChatOcrError(
+      `DashScope OCR request failed: ${message}`,
+      "OCR_PROVIDER_FAILED",
+      502,
+    );
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -168,6 +210,14 @@ async function callDashScope(imageBase64: string): Promise<string> {
         `DASHSCOPE_API_KEY is unavailable: ${errorText}`,
         "OCR_KEY_UNAVAILABLE",
         503,
+      );
+    }
+
+    if (response.status === 408 || response.status === 504) {
+      throw new ContractChatOcrError(
+        `DashScope OCR timeout: ${errorText}`,
+        "OCR_TIMEOUT",
+        504,
       );
     }
 

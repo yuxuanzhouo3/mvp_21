@@ -19,6 +19,31 @@ function t(zh: string, en: string) {
   return isChinaRegion() ? zh : en;
 }
 
+function parsePositiveInt(value: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  fallback: T,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 function sanitizeCustomFields(value: unknown): Record<string, string> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
@@ -29,12 +54,10 @@ function sanitizeCustomFields(value: unknown): Record<string, string> | undefine
       if (typeof entry !== "string") {
         return accumulator;
       }
-
       const normalizedKey = key.trim();
       if (!normalizedKey) {
         return accumulator;
       }
-
       accumulator[normalizedKey] = entry;
       return accumulator;
     },
@@ -74,7 +97,11 @@ async function requireCurrentUser(request: NextRequest) {
     };
   }
 
-  const authResult = await verifyAuthToken(token);
+  const authResult = await withTimeout(
+    verifyAuthToken(token),
+    parsePositiveInt(process.env.AUTH_VERIFY_TIMEOUT_MS, 5_000),
+    { success: false, error: "AUTH_TIMEOUT" },
+  );
   if (!authResult.success || !authResult.userId) {
     return {
       error: NextResponse.json(
@@ -91,52 +118,68 @@ async function requireCurrentUser(request: NextRequest) {
   }
 
   const profile = isChinaRegion()
-    ? await loadChinaAccountProfile(authResult.userId)
-    : await loadIntlAccountProfile(
-        authResult.userId,
-        authResult.user && "user_metadata" in authResult.user
-          ? authResult.user
-          : undefined,
+    ? await withTimeout(
+        loadChinaAccountProfile(authResult.userId),
+        parsePositiveInt(process.env.MEMBERSHIP_PROFILE_TIMEOUT_MS, 4_000),
+        null,
+      )
+    : await withTimeout(
+        loadIntlAccountProfile(
+          authResult.userId,
+          authResult.user && "user_metadata" in authResult.user
+            ? authResult.user
+            : undefined,
+        ),
+        parsePositiveInt(process.env.MEMBERSHIP_PROFILE_TIMEOUT_MS, 4_000),
+        null,
       );
 
-  const settings = await loadAdminSettings();
-  const entitlements = buildMembershipEntitlements(
-    {
-      plan:
-        profile?.subscription_plan ||
-        authResult.user?.subscription_plan ||
-        authResult.user?.user_metadata?.subscription_plan,
-      status:
-        profile?.subscription_status ||
-        authResult.user?.subscription_status ||
-        authResult.user?.user_metadata?.subscription_status,
-      membershipExpiresAt:
-        profile?.membership_expires_at ||
-        profile?.subscription_expires_at ||
-        authResult.user?.membership_expires_at ||
-        authResult.user?.user_metadata?.membership_expires_at ||
-        authResult.user?.subscription_expires_at ||
-        authResult.user?.user_metadata?.subscription_expires_at,
-    },
-    settings,
+  const settings = await withTimeout(
+    loadAdminSettings(),
+    parsePositiveInt(process.env.MEMBERSHIP_SETTINGS_TIMEOUT_MS, 4_000),
+    null,
   );
+  if (settings) {
+    const entitlements = buildMembershipEntitlements(
+      {
+        plan:
+          profile?.subscription_plan ||
+          authResult.user?.subscription_plan ||
+          authResult.user?.user_metadata?.subscription_plan,
+        status:
+          profile?.subscription_status ||
+          authResult.user?.subscription_status ||
+          authResult.user?.user_metadata?.subscription_status,
+        membershipExpiresAt:
+          profile?.membership_expires_at ||
+          profile?.subscription_expires_at ||
+          authResult.user?.membership_expires_at ||
+          authResult.user?.user_metadata?.membership_expires_at ||
+          authResult.user?.subscription_expires_at ||
+          authResult.user?.user_metadata?.subscription_expires_at,
+      },
+      settings,
+    );
 
-  if (!entitlements.features.canGenerateContract) {
-    return {
-      error: NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: "CONTRACT_GENERATION_DISABLED",
-            message: t(
-              "合同生成功能当前已被管理员关闭。",
-              "Contract generation is currently disabled by the administrator.",
-            ),
+    if (!entitlements.features.canGenerateContract) {
+      return {
+        error: NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "CONTRACT_GENERATION_DISABLED",
+              message: t(
+                "合同生成功能当前已被管理员关闭。",
+                "Contract generation is currently disabled by the administrator.",
+              ),
+            },
           },
-        },
-        { status: 403 },
-      ),
-    };
+          { status: 403 },
+        ),
+      };
+    }
+  } else {
+    console.warn("[/api/contracts/generate/jobs] Membership settings timed out. Bypass gating.");
   }
 
   return {
@@ -217,7 +260,7 @@ export async function POST(request: NextRequest) {
           error: {
             code: "INVALID_ANALYSIS_RESULT",
             message: t(
-              "分析结果无效或缺少关键条款，请返回上一步补充后再生成。",
+              "分析结果无效或缺少关键条款，请补充后再生成。",
               "Analysis is invalid or missing key terms. Please revise it before generating.",
             ),
           },
@@ -226,7 +269,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const contract = await getContractById(contractId);
+    const contract = await withTimeout(
+      getContractById(contractId),
+      parsePositiveInt(process.env.CONTRACTS_QUERY_TIMEOUT_MS, 5_000),
+      null,
+    );
     if (!contract) {
       return NextResponse.json(
         {
@@ -253,17 +300,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await enqueueContractGenerationJob({
-      contract,
-      userId: auth.userId,
-      analysisResult,
-      templateId,
-      templateName,
-      templateContent,
-      templateVersion,
-      customFields: sanitizeCustomFields(body.customFields),
-      language,
-    });
+    const result = await withTimeout(
+      enqueueContractGenerationJob({
+        contract,
+        userId: auth.userId,
+        analysisResult,
+        templateId,
+        templateName,
+        templateContent,
+        templateVersion,
+        customFields: sanitizeCustomFields(body.customFields),
+        language,
+      }),
+      parsePositiveInt(process.env.CONTRACTS_ENQUEUE_TIMEOUT_MS, 7_000),
+      null,
+    );
+
+    if (!result) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "ENQUEUE_TIMEOUT",
+            message: t("创建生成任务超时，请重试。", "Creating generation job timed out. Please retry."),
+          },
+        },
+        { status: 503 },
+      );
+    }
 
     return NextResponse.json(
       {
@@ -289,3 +353,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

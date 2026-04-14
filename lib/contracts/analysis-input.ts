@@ -1,9 +1,9 @@
-const DEFAULT_ANALYSIS_MAX_CHARS = 12_000;
+const DEFAULT_ANALYSIS_MAX_CHARS = 6_000;
 const MIN_ANALYSIS_MAX_CHARS = 2_000;
 const MAX_ANALYSIS_MAX_CHARS = 50_000;
 const OMITTED_SECTION_MARKER = "\n\n[...middle content omitted for faster AI analysis...]\n\n";
 const KEY_LINE_PATTERN =
-  /(\d|%|deadline|start|end|payment|deliver|milestone|invoice|acceptance|price|salary|term|penalty|liability|confidential|amount|tax|service fee)/i;
+  /(\d|%|deadline|start|end|payment|deliver|milestone|invoice|acceptance|price|salary|term|penalty|liability|confidential|amount|tax|service fee|金额|付款|违约|期限|交付|验收|税|保密|服务费)/i;
 
 function clampMaxChars(value: number | undefined): number {
   if (!value || !Number.isFinite(value)) {

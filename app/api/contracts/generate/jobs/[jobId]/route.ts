@@ -19,6 +19,31 @@ function t(zh: string, en: string) {
   return isChinaRegion() ? zh : en;
 }
 
+function parsePositiveInt(value: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  fallback: T,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 async function requireCurrentUser(request: NextRequest) {
   const { token, error: tokenError } = extractTokenFromRequest(request);
   if (tokenError || !token) {
@@ -36,7 +61,11 @@ async function requireCurrentUser(request: NextRequest) {
     };
   }
 
-  const authResult = await verifyAuthToken(token);
+  const authResult = await withTimeout(
+    verifyAuthToken(token),
+    parsePositiveInt(process.env.AUTH_VERIFY_TIMEOUT_MS, 5_000),
+    { success: false, error: "AUTH_TIMEOUT" },
+  );
   if (!authResult.success || !authResult.userId) {
     return {
       error: NextResponse.json(
@@ -95,7 +124,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const contract = await getContractById(contractId);
+    const contract = await withTimeout(
+      getContractById(contractId),
+      parsePositiveInt(process.env.CONTRACTS_QUERY_TIMEOUT_MS, 5_000),
+      null,
+    );
     if (!contract) {
       return NextResponse.json(
         {
@@ -136,7 +169,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    job = await failStaleGenerationJobIfNeeded(contract, normalizedJobId);
+    job = await withTimeout(
+      failStaleGenerationJobIfNeeded(contract, normalizedJobId),
+      parsePositiveInt(process.env.CONTRACTS_QUERY_TIMEOUT_MS, 5_000),
+      job,
+    );
     if (!job) {
       return NextResponse.json(
         {
@@ -158,14 +195,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
       });
     }
 
-    const refreshedContract = await getContractById(contractId);
+    const refreshedContract = await withTimeout(
+      getContractById(contractId),
+      parsePositiveInt(process.env.CONTRACTS_QUERY_TIMEOUT_MS, 5_000),
+      null,
+    );
     const refreshedJob = refreshedContract
       ? readGenerationJobFromMetadata(refreshedContract.metadata)
       : null;
 
     const responseJob =
       refreshedJob && refreshedJob.id === normalizedJobId ? refreshedJob : job;
-
     const pollAfterMs =
       responseJob.status === "queued" || responseJob.status === "running" ? 1_800 : 0;
 
@@ -190,3 +230,4 @@ export async function GET(request: NextRequest, context: RouteContext) {
     );
   }
 }
+

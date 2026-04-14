@@ -475,7 +475,7 @@ async function requestJsonCompletion(
 
     const effectiveTimeoutMs = clampNumber(
       timeoutMs,
-      parsePositiveInt(process.env.AI_PROVIDER_TIMEOUT_MS) || 55_000,
+      parsePositiveInt(process.env.AI_PROVIDER_TIMEOUT_MS) || 18_000,
       5_000,
       300_000,
     );
@@ -611,22 +611,22 @@ export async function analyzeConversation(
   const inferredContractType = inferContractTypeFromConversation(request.content);
   const initialExpert = getExpertByContractType(inferredContractType);
   const configuredAnalyzeMaxTokens =
-    parsePositiveInt(process.env.AI_ANALYZE_MAX_TOKENS) || 2_200;
+    parsePositiveInt(process.env.AI_ANALYZE_MAX_TOKENS) || 1_200;
   const configuredAnalyzeTimeoutMs =
-    parsePositiveInt(process.env.AI_ANALYZE_TIMEOUT_MS) || 40_000;
+    parsePositiveInt(process.env.AI_ANALYZE_TIMEOUT_MS) || 12_000;
   const targetMaxTokens = clampNumber(
     request.content.length > 10_000
       ? Math.floor(configuredAnalyzeMaxTokens * 0.85)
       : configuredAnalyzeMaxTokens,
-    2_200,
-    900,
-    3_600,
+    1_200,
+    500,
+    2_400,
   );
   const targetTimeoutMs = clampNumber(
     configuredAnalyzeTimeoutMs,
-    40_000,
-    8_000,
-    120_000,
+    12_000,
+    4_000,
+    30_000,
   );
 
   const parsed = await runWithProviderFallback(
