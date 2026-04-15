@@ -6,6 +6,7 @@ import {
   getAppUrl,
   getWechatPayApiV3Key,
   getWechatPayAppId,
+  getWechatPayPlatformPublicKey,
 } from "@/lib/config/runtime-env";
 import { applySubscriptionPaymentSuccess } from "@/lib/payment/subscription-payment-sync";
 
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest) {
       privateKey: process.env.WECHAT_PAY_PRIVATE_KEY!,
       serialNo: process.env.WECHAT_PAY_SERIAL_NO!,
       notifyUrl: `${getAppUrl()}/api/payment/webhook/wechat`,
+      platformPublicKey: getWechatPayPlatformPublicKey(),
     });
 
     if (!provider.verifyWebhookSignature(body, signature, timestamp, nonce)) {

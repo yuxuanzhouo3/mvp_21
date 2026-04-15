@@ -361,7 +361,18 @@ class CloudBaseAuthAdapter implements AuthAdapter {
   }
 
   async toDefaultLoginPage(redirectUrl?: string): Promise<void> {
-    throw new Error("Not implemented");
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const loginUrl = new URL("/login", window.location.origin);
+    const fallbackRedirect =
+      `${window.location.pathname}${window.location.search}${window.location.hash}` ||
+      "/";
+    const safeRedirect = (redirectUrl && redirectUrl.trim()) || fallbackRedirect;
+
+    loginUrl.searchParams.set("redirect", safeRedirect);
+    window.location.assign(loginUrl.toString());
   }
 
   async signOut(): Promise<void> {

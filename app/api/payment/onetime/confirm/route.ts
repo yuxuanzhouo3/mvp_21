@@ -38,8 +38,6 @@ async function extendMembership(
 }
 
 export async function GET(request: NextRequest) {
-  console.log("🚀🚀🚀 [CONFIRM API] STARTED - Entry point");
-
   const startTime = Date.now();
   const operationId = `onetime_confirm_${Date.now()}_${Math.random()
     .toString(36)
@@ -60,7 +58,7 @@ export async function GET(request: NextRequest) {
     const tradeNo = searchParams.get("trade_no"); // Alipay交易号
     const wechatOutTradeNo = searchParams.get("wechat_out_trade_no"); // WeChat Native
 
-    console.log("🚀🚀🚀 [CONFIRM API] Parameters extracted", {
+    logInfo("[onetime-confirm] Parameters extracted", {
       hasSessionId: !!sessionId,
       hasToken: !!token,
       hasOutTradeNo: !!outTradeNo,
@@ -530,8 +528,8 @@ export async function GET(request: NextRequest) {
         if (!isChinaRegion()) {
           if (isPayPalOrStripe) {
             // PayPal 和 Stripe：跳过 extendMembership，依赖 webhook
-            console.log(
-              "✅✅✅ [ALREADY-PROCESSED FLOW] PayPal/Stripe payment - SKIPPING extendMembership in confirm, relying on webhook",
+            logInfo(
+              "[onetime-confirm] already-processed PayPal/Stripe payment, skipping extendMembership and relying on webhook",
               {
                 operationId,
                 userId: user.id,
@@ -922,8 +920,8 @@ export async function GET(request: NextRequest) {
 
     if (isPayPalOrStripe) {
       // PayPal 和 Stripe：跳过 extendMembership，依赖 webhook
-      console.log(
-        "✅✅✅ [MAIN FLOW] PayPal/Stripe payment confirmed - SKIPPING extendMembership in confirm, relying on webhook",
+      logInfo(
+        "[onetime-confirm] PayPal/Stripe payment confirmed, skipping extendMembership and relying on webhook",
         {
           operationId,
           userId: user.id,
@@ -937,8 +935,8 @@ export async function GET(request: NextRequest) {
     } else if (isAlipay) {
       // ✅ Alipay 同步返回：webhook 将负责会员延期
       // webhook 有 metadata 中的正确 days，confirm 不负责计算和延期
-      console.log(
-        "✅✅✅ [MAIN FLOW] Alipay payment confirmed - SKIPPING extendMembership in confirm, delegating to webhook",
+      logInfo(
+        "[onetime-confirm] Alipay sync return confirmed, skipping extendMembership and delegating to webhook",
         {
           operationId,
           userId: user.id,

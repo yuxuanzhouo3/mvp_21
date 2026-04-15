@@ -39,6 +39,13 @@ export function getWechatPayApiV3Key(): string {
   );
 }
 
+export function getWechatPayPlatformPublicKey(): string {
+  return pickFirstNonEmpty(
+    process.env.WECHAT_PAY_PLATFORM_PUBLIC_KEY,
+    process.env.WECHAT_PAY_PUBLIC_KEY,
+  );
+}
+
 export function getPayPalEnvironment(): "sandbox" | "production" {
   const raw = pickFirstNonEmpty(
     process.env.PAYPAL_ENVIRONMENT,
