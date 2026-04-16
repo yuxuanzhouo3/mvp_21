@@ -39,6 +39,25 @@ export function getWechatPayApiV3Key(): string {
   );
 }
 
+export function getWechatPayMerchantId(): string {
+  return pickFirstNonEmpty(process.env.WECHAT_PAY_MCH_ID);
+}
+
+export function getWechatPayPrivateKey(): string {
+  return pickFirstNonEmpty(process.env.WECHAT_PAY_PRIVATE_KEY);
+}
+
+export function getWechatPaySerialNo(): string {
+  return pickFirstNonEmpty(process.env.WECHAT_PAY_SERIAL_NO);
+}
+
+export function getCloudBaseEnvId(): string {
+  return pickFirstNonEmpty(
+    process.env.NEXT_PUBLIC_WECHAT_CLOUDBASE_ID,
+    process.env.NEXT_PUBLIC_CLOUDBASE_ENV_ID,
+  );
+}
+
 export function getWechatPayPlatformPublicKey(): string {
   return pickFirstNonEmpty(
     process.env.WECHAT_PAY_PLATFORM_PUBLIC_KEY,

@@ -4,6 +4,25 @@
  */
 
 import { isChinaRegion } from '@/lib/config/region';
+import { getCloudBaseEnvId as getRuntimeCloudBaseEnvId } from '@/lib/config/runtime-env';
+
+function getCloudBaseEnvId() {
+  const preferred = process.env.NEXT_PUBLIC_WECHAT_CLOUDBASE_ID?.trim();
+  const legacy = process.env.NEXT_PUBLIC_CLOUDBASE_ENV_ID?.trim();
+  const resolved = getRuntimeCloudBaseEnvId();
+  if (resolved) {
+    if (!preferred && legacy) {
+    console.warn(
+      "[db] NEXT_PUBLIC_CLOUDBASE_ENV_ID is deprecated. Use NEXT_PUBLIC_WECHAT_CLOUDBASE_ID instead.",
+    );
+    }
+    return resolved;
+  }
+
+  throw new Error(
+    "CloudBase env id is missing. Set NEXT_PUBLIC_WECHAT_CLOUDBASE_ID.",
+  );
+}
 
 // 数据库表名映射
 export const TABLES = {
@@ -253,7 +272,7 @@ class CloudBaseDbService implements DbService {
 
     const cloudbase = require('@cloudbase/node-sdk');
     const app = cloudbase.init({
-      env: process.env.NEXT_PUBLIC_CLOUDBASE_ENV_ID,
+      env: getCloudBaseEnvId(),
       secretId: process.env.CLOUDBASE_SECRET_ID,
       secretKey: process.env.CLOUDBASE_SECRET_KEY,
     });

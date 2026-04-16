@@ -26,6 +26,27 @@ export interface PublicAuthConfig {
   availability: Record<AuthMethod, CapabilityStatus>;
 }
 
+export type OAuthReadinessStatus = "ready" | "not_ready" | "dashboard_check_required";
+
+export interface OAuthProviderReadiness {
+  enabled: boolean;
+  status: OAuthReadinessStatus;
+  reason?: string;
+  checks: {
+    envConfigured: boolean;
+    expectedCallbackUrlConfigured: boolean;
+    dashboardProviderVerified: boolean;
+  };
+  expectedCallbackUrl?: string;
+}
+
+export interface OAuthReadinessSnapshot {
+  region: Region;
+  providers: {
+    google: OAuthProviderReadiness;
+  };
+}
+
 export interface PaymentConfigSnapshot {
   region: Region;
   methods: Record<PaymentMethod, CapabilityStatus>;
@@ -138,6 +159,71 @@ export function getPublicAuthConfig(): PublicAuthConfig {
       sms,
       wechat,
       google,
+    },
+  };
+}
+
+export function getOAuthReadinessSnapshot(): OAuthReadinessSnapshot {
+  const region = currentRegion;
+  const googleStatus = getGoogleAuthStatus(region);
+  const appUrl = getAppUrl();
+  const expectedCallbackUrl = looksLikeUrl(appUrl)
+    ? `${appUrl.replace(/\/$/, "")}/auth/callback`
+    : undefined;
+
+  if (region !== "INTL" || !isAuthFeatureSupported("googleAuth")) {
+    return {
+      region,
+      providers: {
+        google: {
+          enabled: false,
+          status: "not_ready",
+          reason: "Google sign-in is not supported in this deployment.",
+          checks: {
+            envConfigured: false,
+            expectedCallbackUrlConfigured: Boolean(expectedCallbackUrl),
+            dashboardProviderVerified: false,
+          },
+          expectedCallbackUrl,
+        },
+      },
+    };
+  }
+
+  if (!googleStatus.enabled) {
+    return {
+      region,
+      providers: {
+        google: {
+          enabled: false,
+          status: "not_ready",
+          reason: googleStatus.reason,
+          checks: {
+            envConfigured: false,
+            expectedCallbackUrlConfigured: Boolean(expectedCallbackUrl),
+            dashboardProviderVerified: false,
+          },
+          expectedCallbackUrl,
+        },
+      },
+    };
+  }
+
+  return {
+    region,
+    providers: {
+      google: {
+        enabled: true,
+        status: "dashboard_check_required",
+        reason:
+          "Environment variables are ready. Verify Google provider toggle and redirect URLs in Supabase Dashboard.",
+        checks: {
+          envConfigured: true,
+          expectedCallbackUrlConfigured: Boolean(expectedCallbackUrl),
+          dashboardProviderVerified: false,
+        },
+        expectedCallbackUrl,
+      },
     },
   };
 }

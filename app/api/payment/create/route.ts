@@ -6,17 +6,21 @@ import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
 import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
 import { StripeProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/stripe-provider";
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
-import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
 import { getPaymentMethodStatus } from "@/lib/config/third-party-capabilities";
-import { isChinaRegion } from "@/lib/config/region";
 import {
   getAppUrl,
   getWechatPayApiV3Key,
   getWechatPayAppId,
+  getWechatPayMerchantId,
+  getWechatPayPrivateKey,
+  getWechatPaySerialNo,
 } from "@/lib/config/runtime-env";
 import { captureException } from "@/lib/integrations/sentry";
-import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
 import { getPricingByMethod, type PaymentMethod } from "@/lib/payment/payment-config";
+import {
+  createPendingPaymentRecord,
+  findRecentPaymentByFingerprint,
+} from "@/lib/payment/payment-record-store";
 import { buildSubscriptionPaymentFields } from "@/lib/payment/subscription-payment-sync";
 import { paymentRateLimit } from "@/lib/security/rate-limit";
 
@@ -133,53 +137,24 @@ async function handlePaymentCreate(request: NextRequest) {
     }
 
     // Block repeated create requests that arrive within a short window.
-    let recentPayments: any[] = [];
-    let checkError: any = null;
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
+    let recentPayment: {
+      id?: string;
+      _id?: string;
+      status?: string;
+      created_at?: string;
+      createdAt?: string;
+    } | null = null;
 
-    if (isChinaRegion()) {
-      try {
-        const db = getDatabase();
-        const _ = db.command;
-        const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
-
-        const result = await db
-          .collection("payments")
-          .where({
-            user_id: userId,
-            amount: roundedExpectedAmount,
-            currency: expectedCurrency,
-            payment_method: paymentMethod,
-            created_at: _.gte(oneMinuteAgo),
-            status: _.in(["pending", "completed"]),
-          })
-          .orderBy("created_at", "desc")
-          .limit(1)
-          .get();
-
-        recentPayments = result.data || [];
-      } catch (error) {
-        console.error("Error checking existing CloudBase payment:", error);
-        checkError = error;
-      }
-    } else {
-      const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
-      const { data, error } = await supabaseAdmin
-        .from("payments")
-        .select("id, status, created_at, transaction_id")
-        .eq("user_id", userId)
-        .eq("amount", roundedExpectedAmount)
-        .eq("currency", expectedCurrency)
-        .eq("payment_method", paymentMethod)
-        .gte("created_at", oneMinuteAgo)
-        .in("status", ["pending", "completed"])
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      recentPayments = data || [];
-      checkError = error;
-    }
-
-    if (checkError && (!isChinaRegion() || (checkError as any)?.code !== "PGRST116")) {
+    try {
+      recentPayment = await findRecentPaymentByFingerprint({
+        userId,
+        amount: roundedExpectedAmount,
+        currency: expectedCurrency,
+        paymentMethod,
+        sinceIso: oneMinuteAgo,
+      });
+    } catch (checkError) {
       console.error("Error checking existing payment:", checkError);
       return NextResponse.json(
         {
@@ -190,16 +165,17 @@ async function handlePaymentCreate(request: NextRequest) {
       );
     }
 
-    if (recentPayments && recentPayments.length > 0) {
-      const latestPayment = recentPayments[0];
+    if (recentPayment) {
+      const recentCreatedAt =
+        recentPayment.created_at || recentPayment.createdAt || new Date().toISOString();
       const paymentAge =
         Date.now() -
-        new Date(latestPayment.created_at || latestPayment.createdAt).getTime();
+        new Date(recentCreatedAt).getTime();
 
       console.warn(
         `Duplicate payment request blocked: User ${userId} tried to create payment within ${Math.floor(
           paymentAge / 1000,
-        )}s of existing payment ${latestPayment.id || latestPayment._id} (status: ${latestPayment.status})`,
+        )}s of existing payment ${recentPayment.id || recentPayment._id} (status: ${recentPayment.status})`,
       );
 
       return NextResponse.json(
@@ -208,7 +184,7 @@ async function handlePaymentCreate(request: NextRequest) {
           error:
             "You have a recent payment request. Please wait a moment before trying again.",
           code: "DUPLICATE_PAYMENT_REQUEST",
-          existingPaymentId: latestPayment.id || latestPayment._id,
+          existingPaymentId: recentPayment.id || recentPayment._id,
           waitTime: Math.ceil((60000 - paymentAge) / 1000),
         },
         { status: 429 },
@@ -275,10 +251,10 @@ async function handlePaymentCreate(request: NextRequest) {
         .toUpperCase()}`;
       const provider = new WechatProviderV3({
         appId: getWechatPayAppId(),
-        mchId: process.env.WECHAT_PAY_MCH_ID || "",
+        mchId: getWechatPayMerchantId(),
         apiV3Key: getWechatPayApiV3Key(),
-        privateKey: process.env.WECHAT_PAY_PRIVATE_KEY || "",
-        serialNo: process.env.WECHAT_PAY_SERIAL_NO || "",
+        privateKey: getWechatPayPrivateKey(),
+        serialNo: getWechatPaySerialNo(),
         notifyUrl: `${getAppUrl()}/api/payment/webhook/wechat`,
       });
 
@@ -305,65 +281,25 @@ async function handlePaymentCreate(request: NextRequest) {
     }
 
     // Persist the pending payment record in the region-specific store.
-    let paymentRecordError: any = null;
     const nowIso = new Date().toISOString();
-
-    if (isChinaRegion()) {
-      try {
-        const db = getDatabase();
-        const paymentsCollection = db.collection("payments");
-
-        await paymentsCollection.add({
-          user_id: userId,
-          amount: roundedExpectedAmount,
-          currency: expectedCurrency || "CNY",
-          status: "pending",
-          payment_method: paymentMethod,
-          order_id: orderResult.orderId,
-          out_trade_no: orderResult.orderId,
-          transaction_id: orderResult.transactionId || orderResult.orderId,
-          code_url: orderResult.codeUrl,
-          client_type: paymentMethod === "wechat" ? "native" : undefined,
-          billing_cycle: paymentFields.billing_cycle,
-          product_type: paymentFields.product_type,
-          product_name: paymentFields.product_name,
-          metadata: paymentFields.metadata,
-          region: "CN",
-          created_at: nowIso,
-          updated_at: nowIso,
-        });
-      } catch (error) {
-        console.error("Error recording CloudBase payment:", error);
-        paymentRecordError = error;
-      }
-    } else {
-      const { error } = await supabaseAdmin.from("payments").insert({
-        user_id: userId,
+    try {
+      await createPendingPaymentRecord({
+        userId,
         amount: roundedExpectedAmount,
         currency: expectedCurrency,
-        status: "pending",
-        payment_method: paymentMethod,
-        order_id: orderResult.orderId,
-        out_trade_no: orderResult.orderId,
-        transaction_id: orderResult.transactionId || orderResult.orderId,
-        code_url: orderResult.codeUrl,
-        billing_cycle: paymentFields.billing_cycle,
-        product_type: paymentFields.product_type,
-        product_name: paymentFields.product_name,
+        paymentMethod,
+        orderId: orderResult.orderId,
+        transactionId: orderResult.transactionId || orderResult.orderId,
+        codeUrl: orderResult.codeUrl,
+        nowIso,
+        paymentFields,
+        clientType: paymentMethod === "wechat" ? "native" : undefined,
+      });
+      console.log("Payment recorded with metadata:", {
+        transactionId: orderResult.orderId,
         metadata: paymentFields.metadata,
       });
-
-      if (!error) {
-        console.log("Payment recorded with metadata:", {
-          transactionId: orderResult.orderId,
-          metadata: paymentFields.metadata,
-        });
-      }
-
-      paymentRecordError = error;
-    }
-
-    if (paymentRecordError) {
+    } catch (paymentRecordError) {
       console.error("Error recording payment:", paymentRecordError);
       return NextResponse.json(
         {
