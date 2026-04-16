@@ -1,0 +1,6 @@
+
+> morncontract@0.1.0 lint
+> next lint
+
+Cannot find module 'E:\xiangmu\code\new\node_modules\eslint-config-next\core-web-vitals' imported from E:\xiangmu\code\new\eslint.config.mjs
+Did you mean to import "eslint-config-next/core-web-vitals.js"?

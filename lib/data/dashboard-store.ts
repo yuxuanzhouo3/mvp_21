@@ -1751,8 +1751,6 @@ function normalizePaymentMethodLabel(method: string) {
   switch (method.toLowerCase()) {
     case "stripe":
       return "Stripe";
-    case "paypal":
-      return "PayPal";
     case "wechat":
       return "WeChat Pay";
     case "alipay":

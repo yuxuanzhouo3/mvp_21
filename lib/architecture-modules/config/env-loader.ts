@@ -66,11 +66,9 @@ export class EnvironmentLoader {
       config.ALIPAY_APP_ID = process.env.NEXT_PUBLIC_ALIPAY_APP_ID;
       config.ALIPAY_PRIVATE_KEY = process.env.ALIPAY_PRIVATE_KEY;
     } else if (this.region !== RegionType.EUROPE) {
-      // 海外非欧洲地区：Stripe + PayPal
+      // 海外非欧洲地区：Stripe
       config.STRIPE_PUBLIC_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
       config.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-      config.PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
-      config.PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
     }
     // 欧洲地区：无支付配置（GDPR）
 

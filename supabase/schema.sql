@@ -1,8 +1,7 @@
--- ContractHub 数据库表结构
--- 国际版 (Supabase/PostgreSQL)
+-- MornContract schema baseline (INTL / Supabase PostgreSQL)
 
 -- ========================================
--- 1. 用户表
+-- 1. Users
 -- ========================================
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -12,19 +11,15 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT DEFAULT 'user' CHECK (role IN ('user', 'admin', 'enterprise')),
   plan TEXT DEFAULT 'free' CHECK (plan IN ('free', 'pro', 'enterprise')),
   status TEXT DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'deleted')),
-  
-  -- 统计数据
   contracts_count INTEGER DEFAULT 0,
   contracts_this_month INTEGER DEFAULT 0,
-  
-  -- 时间戳
   last_login_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ========================================
--- 2. 用户会话表
+-- 2. User sessions
 -- ========================================
 CREATE TABLE IF NOT EXISTS user_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -37,35 +32,25 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 );
 
 -- ========================================
--- 3. 合同表
+-- 3. Contracts
 -- ========================================
 CREATE TABLE IF NOT EXISTS contracts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  
-  -- 合同基本信息
   title TEXT NOT NULL,
   content TEXT,
   status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'completed', 'cancelled')),
   region TEXT CHECK (region IN ('US', 'CN', 'US-CN')),
-  
-  -- 合同参与方
-  parties JSONB DEFAULT '[]'::jsonb, -- 存储参与方数组 [{"name": "张三", "email": "..."}, ...]
-  
-  -- 签名信息
-  signatures JSONB DEFAULT '[]'::jsonb, -- 存储签名数组
-  
-  -- 元数据
+  parties JSONB DEFAULT '[]'::jsonb,
+  signatures JSONB DEFAULT '[]'::jsonb,
   metadata JSONB DEFAULT '{}'::jsonb,
-  
-  -- 时间戳
   signed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ========================================
--- 4. 合同模板表
+-- 4. Contract templates
 -- ========================================
 CREATE TABLE IF NOT EXISTS contract_templates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -85,84 +70,94 @@ CREATE TABLE IF NOT EXISTS contract_templates (
 );
 
 -- ========================================
--- 5. 订阅表
+-- 5. Subscriptions
 -- ========================================
 CREATE TABLE IF NOT EXISTS subscriptions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  plan TEXT NOT NULL CHECK (plan IN ('free', 'pro', 'enterprise')),
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'cancelled', 'expired')),
-  
-  -- 定价信息
+  plan TEXT DEFAULT 'free' CHECK (plan IN ('free', 'pro', 'enterprise')),
+  plan_id TEXT DEFAULT 'free',
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'paused', 'canceled', 'cancelled', 'expired', 'inactive')),
   price NUMERIC(10,2),
   currency TEXT DEFAULT 'USD',
-  billing_cycle TEXT CHECK (billing_cycle IN ('monthly', 'annual')),
-  
-  -- 支付方式
-  payment_method TEXT CHECK (payment_method IN ('stripe', 'paypal')),
-  
-  -- 日期
+  billing_cycle TEXT CHECK (billing_cycle IN ('monthly', 'yearly', 'annual')),
+  payment_method TEXT CHECK (payment_method IN ('stripe', 'wechat', 'alipay')),
+  provider_subscription_id TEXT,
+  transaction_id TEXT,
   start_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   next_bill_date TIMESTAMPTZ,
   cancelled_at TIMESTAMPTZ,
-  
-  -- 时间戳
+  current_period_start TIMESTAMPTZ DEFAULT NOW(),
+  current_period_end TIMESTAMPTZ,
+  cancel_at_period_end BOOLEAN DEFAULT false,
+  region TEXT,
+  metadata JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ========================================
--- 6. 支付记录表
+-- 6. Payments
 -- ========================================
 CREATE TABLE IF NOT EXISTS payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   subscription_id UUID REFERENCES subscriptions(id) ON DELETE SET NULL,
-  
-  -- 支付信息
   amount NUMERIC(10,2) NOT NULL,
   currency TEXT DEFAULT 'USD',
   status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'failed', 'refunded')),
-  payment_method TEXT NOT NULL CHECK (payment_method IN ('stripe', 'paypal')),
-  
-  -- 外部支付 ID
+  payment_method TEXT NOT NULL CHECK (payment_method IN ('stripe', 'wechat', 'alipay')),
+  billing_cycle TEXT CHECK (billing_cycle IN ('monthly', 'yearly', 'annual')),
+  product_type TEXT,
+  product_name TEXT,
+  plan_id TEXT,
   external_payment_id TEXT,
-  
-  -- 元数据
+  transaction_id TEXT,
+  order_id TEXT,
+  out_trade_no TEXT,
+  code_url TEXT,
+  client_type TEXT,
   metadata JSONB DEFAULT '{}'::jsonb,
-  
-  -- 时间戳
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- ========================================
--- 7. 广告位表
--- ========================================
-CREATE TABLE IF NOT EXISTS ads (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  position TEXT NOT NULL, -- 'banner_top', 'sidebar', 'footer' 等
-  type TEXT NOT NULL CHECK (type IN ('image', 'video', 'html')),
-  content TEXT NOT NULL, -- URL 或 HTML 内容
-  link TEXT,
-  
-  -- 状态和统计
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'paused', 'expired')),
-  impressions INTEGER DEFAULT 0,
-  clicks INTEGER DEFAULT 0,
-  revenue NUMERIC(10,2) DEFAULT 0,
-  
-  -- 日期范围
-  start_date DATE,
-  end_date DATE,
-  
-  -- 时间戳
+  completed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ========================================
--- 8. 广告统计表
+-- 7. Webhook events
+-- ========================================
+CREATE TABLE IF NOT EXISTS webhook_events (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL CHECK (provider IN ('stripe', 'alipay', 'wechat')),
+  event_type TEXT NOT NULL,
+  event_data JSONB DEFAULT '{}'::jsonb,
+  processed BOOLEAN NOT NULL DEFAULT false,
+  processed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ========================================
+-- 8. Ads
+-- ========================================
+CREATE TABLE IF NOT EXISTS ads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  position TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('image', 'video', 'html')),
+  content TEXT NOT NULL,
+  link TEXT,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'paused', 'expired')),
+  impressions INTEGER DEFAULT 0,
+  clicks INTEGER DEFAULT 0,
+  revenue NUMERIC(10,2) DEFAULT 0,
+  start_date DATE,
+  end_date DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ========================================
+-- 9. Ad stats
 -- ========================================
 CREATE TABLE IF NOT EXISTS ad_stats (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -172,12 +167,11 @@ CREATE TABLE IF NOT EXISTS ad_stats (
   clicks INTEGER DEFAULT 0,
   revenue NUMERIC(10,2) DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  
   UNIQUE(ad_id, date)
 );
 
 -- ========================================
--- 索引
+-- Indexes
 -- ========================================
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
@@ -186,11 +180,20 @@ CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token);
 CREATE INDEX IF NOT EXISTS idx_contracts_user_id ON contracts(user_id);
 CREATE INDEX IF NOT EXISTS idx_contracts_status ON contracts(status);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_transaction_id ON subscriptions(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_provider_subscription_id ON subscriptions(provider_subscription_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_current_period_end ON subscriptions(current_period_end);
 CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id);
+CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
+CREATE INDEX IF NOT EXISTS idx_payments_transaction_id ON payments(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_payments_order_id ON payments(order_id);
+CREATE INDEX IF NOT EXISTS idx_payments_out_trade_no ON payments(out_trade_no);
+CREATE INDEX IF NOT EXISTS idx_webhook_events_provider_event ON webhook_events(provider, event_type);
+CREATE INDEX IF NOT EXISTS idx_webhook_events_processed ON webhook_events(processed, created_at);
 CREATE INDEX IF NOT EXISTS idx_ads_status ON ads(status);
 
 -- ========================================
--- 自动更新 updated_at 触发器
+-- updated_at trigger function
 -- ========================================
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -212,20 +215,20 @@ CREATE TRIGGER update_contract_templates_updated_at BEFORE UPDATE ON contract_te
 CREATE TRIGGER update_subscriptions_updated_at BEFORE UPDATE ON subscriptions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_payments_updated_at BEFORE UPDATE ON payments
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER update_ads_updated_at BEFORE UPDATE ON ads
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ========================================
--- 初始数据
+-- Seed data
 -- ========================================
-
--- 插入默认合同模板
 INSERT INTO contract_templates (name, description, category, content, is_public, status, version, usage_count) VALUES
 ('Service Agreement', 'Standard service agreement for B2B transactions', 'Business', 'Service Agreement template content here...', true, 'active', 1, 0),
 ('Non-Disclosure Agreement', 'NDA for protecting confidential information', 'Legal', 'NDA template content here...', true, 'active', 1, 0),
 ('Employment Contract', 'Standard employment agreement template', 'HR', 'Employment Contract template content here...', true, 'active', 1, 0),
 ('Partnership Agreement', 'Template for business partnership agreements', 'Business', 'Partnership Agreement template content here...', true, 'active', 1, 0);
 
--- 插入测试用户 (开发环境)
 INSERT INTO users (id, email, name, role, plan, status) VALUES
 ('00000000-0000-0000-0000-000000000001', 'test@contracthub.com', 'Test User', 'user', 'pro', 'active');

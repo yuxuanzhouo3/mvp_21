@@ -74,11 +74,13 @@ export async function middleware(request: NextRequest) {
   // =====================
   if (pathname.startsWith("/api/")) {
     const origin = request.headers.get("origin") || "";
+    const sameOrigin = request.nextUrl.origin;
     const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    const isAllowedOrigin = origin && allowedOrigins.includes(origin);
+    const allowlist = new Set([...allowedOrigins, sameOrigin]);
+    const isAllowedOrigin = origin && allowlist.has(origin);
 
     // 预检请求快速返回
     if (request.method === "OPTIONS") {
@@ -100,6 +102,23 @@ export async function middleware(request: NextRequest) {
           "Access-Control-Allow-Origin": "null",
         },
       });
+    }
+
+    // 普通请求：如果携带 Origin 且不在白名单，直接拒绝
+    if (origin && !isAllowedOrigin) {
+      return new NextResponse(
+        JSON.stringify({
+          error: "Origin not allowed",
+          code: "CORS_ORIGIN_FORBIDDEN",
+        }),
+        {
+          status: 403,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "null",
+          },
+        },
+      );
     }
   }
 
@@ -269,11 +288,13 @@ export async function middleware(request: NextRequest) {
     // 为 API 路由添加 CORS 响应头（基于白名单反射）
     if (pathname.startsWith("/api/")) {
       const origin = request.headers.get("origin") || "";
+      const sameOrigin = request.nextUrl.origin;
       const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      if (origin && allowedOrigins.includes(origin)) {
+      const allowlist = new Set([...allowedOrigins, sameOrigin]);
+      if (origin && allowlist.has(origin)) {
         response.headers.set("Access-Control-Allow-Origin", origin);
         response.headers.set(
           "Access-Control-Allow-Methods",

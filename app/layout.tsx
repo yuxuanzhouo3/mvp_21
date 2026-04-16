@@ -13,6 +13,7 @@ import {
   getAppDisplayName,
   getDefaultLanguage,
 } from "@/lib/config/deployment.config";
+import "@/lib/monitoring/startup-checks";
 import "./globals.css";
 
 assertProductionJwtConfiguration();

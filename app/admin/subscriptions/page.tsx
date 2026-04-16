@@ -410,7 +410,6 @@ export default function SubscriptionsPage() {
         wechat: isEn ? 'WeChat Pay' : '微信支付',
         alipay: 'Alipay',
         stripe: 'Stripe',
-        paypal: 'PayPal',
         card: isEn ? 'Card' : '银行卡',
         manual: isEn ? 'Manual' : '人工处理',
       };

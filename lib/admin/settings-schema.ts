@@ -27,7 +27,6 @@ export interface AdminSettings {
       wechat: boolean;
       alipay: boolean;
       stripe: boolean;
-      paypal: boolean;
     };
     pricing: {
       proMonthlyCny: number;
@@ -121,7 +120,6 @@ export const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
       wechat: true,
       alipay: true,
       stripe: true,
-      paypal: true,
     },
     pricing: {
       proMonthlyCny: 29,
@@ -192,7 +190,6 @@ export function normalizeAdminSettings(value: unknown): AdminSettings {
         wechat: readBoolean(channels.wechat, DEFAULT_ADMIN_SETTINGS.payment.channels.wechat),
         alipay: readBoolean(channels.alipay, DEFAULT_ADMIN_SETTINGS.payment.channels.alipay),
         stripe: readBoolean(channels.stripe, DEFAULT_ADMIN_SETTINGS.payment.channels.stripe),
-        paypal: readBoolean(channels.paypal, DEFAULT_ADMIN_SETTINGS.payment.channels.paypal),
       },
       pricing: {
         proMonthlyCny: readNumber(pricing.proMonthlyCny, DEFAULT_ADMIN_SETTINGS.payment.pricing.proMonthlyCny),

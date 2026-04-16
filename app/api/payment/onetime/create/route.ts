@@ -1,6 +1,5 @@
 // app/api/payment/onetime/create/route.ts - 一次性支付创建API
 import { NextRequest, NextResponse } from "next/server";
-import { PayPalProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/paypal-provider";
 import { StripeProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/stripe-provider";
 import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
@@ -127,7 +126,7 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
     const amount = pricing[billingCycle];
     const days = getDaysByBillingCycle(billingCycle);
 
-    // 检查最近1分钟内是否有相同的pending或completed支付(防止重复点击)
+    // 检查最�?分钟内是否有相同的pending或completed支付(防止重复点击)
     const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
     let recentPayments: any[] = [];
     let checkError: any = null;
@@ -187,7 +186,6 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
       );
     }
 
-    // 如果存在最近的支付,拒绝创建新订单
     if (recentPayments && recentPayments.length > 0) {
       const latestPayment = recentPayments[0];
       const paymentAge =
@@ -220,7 +218,7 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
       description: `${billingCycle === "monthly" ? "1 Month" : "1 Year"
         } Premium Membership (One-time Payment)`,
       userId: user.id,
-      planType: "onetime", // 标记为一次性支付
+      planType: "onetime",
       billingCycle,
       metadata: {
         userId: user.id,
@@ -241,17 +239,8 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
           amount,
         });
         const stripeProvider = new StripeProvider(process.env);
-        // Stripe 一次性支付(使用 payment mode 而不是 subscription mode)
+        // Stripe 一次性支�?使用 payment mode 而不�?subscription mode)
         result = await stripeProvider.createOnetimePayment(order);
-      } else if (method === "paypal") {
-        logInfo("Creating PayPal one-time payment", {
-          operationId,
-          userId: user.id,
-          amount,
-        });
-        const paypalProvider = new PayPalProvider(process.env);
-        // PayPal 一次性支付(使用 order 而不是 subscription)
-        result = await paypalProvider.createOnetimePayment(order);
       } else if (method === "alipay") {
         logInfo("Creating Alipay one-time payment", {
           operationId,
@@ -259,7 +248,6 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
           amount,
         });
         const alipayProvider = new AlipayProvider(process.env);
-        // 支付宝一次性支付
         result = await alipayProvider.createPayment(order);
       } else if (method === "wechat") {
         logInfo("Creating WeChat Native one-time payment", {
@@ -268,7 +256,6 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
           amount,
         });
 
-        // 微信支付仅支持中国区域
         if (!isChinaRegion()) {
           return NextResponse.json(
             {
@@ -279,8 +266,7 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
           );
         }
 
-        // 生成商户订单号
-        const out_trade_no = `WX${Date.now()}${Math.random()
+        const outTradeNo = `WX${Date.now()}${Math.random()
           .toString(36)
           .substr(2, 9)
           .toUpperCase()}`;
@@ -297,17 +283,17 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
 
         // 创建微信 NATIVE 支付订单
         const wechatResponse = await wechatProvider.createNativePayment({
-          out_trade_no,
+          out_trade_no: outTradeNo,
           amount: Math.round(amount * 100), // 转换为分
           description: order.description,
         });
 
         result = {
           success: true,
-          paymentId: out_trade_no,
+          paymentId: outTradeNo,
           paymentUrl: wechatResponse.codeUrl,
-          codeUrl: wechatResponse.codeUrl, // 兼容旧的字段名
-          transactionId: out_trade_no,
+          codeUrl: wechatResponse.codeUrl,
+          transactionId: outTradeNo,
         };
       } else {
         return NextResponse.json(
@@ -349,7 +335,6 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
         },
       };
 
-      // 国内支付额外字段：保留商户单号，供同步回跳和异步 webhook 关联同一笔订单
       if (method === "alipay" || method === "wechat") {
         paymentData.out_trade_no = result.paymentId;
       }
@@ -367,11 +352,6 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
           await db.collection("payments").add(paymentData);
         } else {
           // Supabase 插入
-          console.log("💾 Inserting payment data to Supabase:", {
-            transactionId: result.paymentId,
-            metadata: paymentData.metadata,
-          });
-
           const { data: insertedPayment, error: paymentRecordError } =
             await supabaseAdmin
               .from("payments")
@@ -379,16 +359,11 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
               .select("id, metadata");
 
           if (paymentRecordError) {
-            console.error("❌ Supabase insert error:", paymentRecordError);
             throw paymentRecordError;
           }
 
           if (insertedPayment && insertedPayment.length > 0) {
             const payment = insertedPayment[0];
-            console.log("✅ Payment record created with metadata:", {
-              paymentId: payment.id,
-              metadata: payment.metadata,
-            });
             logInfo("Payment record created", {
               operationId,
               userId: user.id,
@@ -401,9 +376,8 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
           }
         }
       } catch (paymentRecordError) {
-        console.error("❌ Error recording payment:", paymentRecordError);
         logError(
-          "Error recording payment",
+          "Failed to persist one-time payment record",
           paymentRecordError instanceof Error
             ? paymentRecordError
             : new Error(String(paymentRecordError)),
@@ -416,7 +390,14 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
             method,
           }
         );
-        // 继续执行,不阻断支付流程
+        return NextResponse.json(
+          {
+            success: false,
+            error: "PAYMENT_RECORD_PERSIST_FAILED",
+            operationId,
+          },
+          { status: 500 }
+        );
       }
     }
 
@@ -455,3 +436,6 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
     );
   }
 }
+
+
+

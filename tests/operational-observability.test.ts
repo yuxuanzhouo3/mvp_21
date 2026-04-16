@@ -78,10 +78,10 @@ describe("operational observability", () => {
     for (let i = 0; i < 4; i += 1) {
       observeOperationalMetric({
         chain: "payment_webhook",
-        scope: "paypal",
+        scope: "alipay",
         outcome: "failure",
         statusCode: 500,
-        operationId: `paypal-${i}`,
+        operationId: `alipay-${i}`,
         timestampMs: i * 1000,
       });
     }
@@ -100,7 +100,7 @@ describe("operational observability", () => {
     for (let i = 0; i < 8; i += 1) {
       observeOperationalMetric({
         chain: "payment_webhook",
-        scope: "paypal",
+        scope: "alipay",
         outcome: "success",
         statusCode: 200,
         durationMs: 4_200,

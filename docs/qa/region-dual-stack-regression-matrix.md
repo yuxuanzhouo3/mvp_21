@@ -18,7 +18,7 @@
 
 | 能力 | CN 预期 | INTL 预期 | 自动化覆盖 |
 |---|---|---|---|
-| 支付方式支持矩阵 | `wechat`/`alipay` 支持，`stripe`/`paypal` 不支持 | `stripe`/`paypal` 支持，`wechat`/`alipay` 不支持 | `tests/region-dual-stack-capabilities.test.ts` |
+| 支付方式支持矩阵 | `wechat`/`alipay` 支持，`stripe`/`paypal` 不支持 | 仅 `stripe` 支持，`wechat`/`alipay`/`paypal` 不支持 | `tests/region-dual-stack-capabilities.test.ts` |
 | 一次性支付会员生效入口 | 使用统一入口，默认货币 CNY | 使用统一入口，默认货币 USD | `tests/region-dual-stack-onetime-sync.test.ts` |
 | 幂等收敛 | confirm/webhook 共用同一状态更新入口 | confirm/webhook 共用同一状态更新入口 | `tests/onetime-membership-sync.test.ts` |
 
@@ -41,4 +41,3 @@
 
 1. 本地执行：`npm run test:region-consistency`
 2. 发布门禁建议：在 CI 中加入 `test:region-consistency`（可与 `test:release-gate` 并行）。
-

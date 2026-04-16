@@ -1,0 +1,69 @@
+
+> morncontract@0.1.0 test:region-consistency
+> jest --runInBand --passWithNoTests tests/region-dual-stack-capabilities.test.ts tests/region-dual-stack-public-routes.test.ts tests/region-dual-stack-onetime-sync.test.ts
+
+PASS tests/region-dual-stack-public-routes.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+    console.info
+      [2026-04-15T15:16:19.415Z] INFO: Business Event: operational_chain_metric {"type":"business","event":"operational_chain_metric","timestamp":"2026-04-15T15:16:19.412Z","chain":"team_invite_accept","scope":"default","outcome":"rejected","statusCode":403,"operationId":"invite_accept_1776266179411_t1417f84t","durationMs":1,"counts":{"total":1,"success":0,"failure":0,"rejected":1,"slow":0},"threshold":{"windowMs":600000,"failureThreshold":5,"rejectedThreshold":8,"slowThreshold":8,"slowDurationMs":1500},"reason":"accept_failed","error":"TEAM_INVITE_EMAIL_MISMATCH"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+          at Generator.throw (<anonymous>)
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+    console.info
+      [2026-04-15T15:16:20.027Z] INFO: Business Event: operational_chain_metric {"type":"business","event":"operational_chain_metric","timestamp":"2026-04-15T15:16:20.027Z","chain":"team_invite_accept","scope":"default","outcome":"rejected","statusCode":403,"operationId":"invite_accept_1776266180027_15ot6ast7","durationMs":0,"counts":{"total":1,"success":0,"failure":0,"rejected":1,"slow":0},"threshold":{"windowMs":600000,"failureThreshold":5,"rejectedThreshold":8,"slowThreshold":8,"slowDurationMs":1500},"reason":"accept_failed","error":"TEAM_INVITE_EMAIL_MISMATCH"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+          at Generator.throw (<anonymous>)
+
+PASS tests/region-dual-stack-capabilities.test.ts
+PASS tests/region-dual-stack-onetime-sync.test.ts
+  ● Console
+
+    console.info
+      [2026-04-15T15:16:20.210Z] INFO: Created fallback payment before unified membership sync {"userId":"user_intl","transactionId":"txn_intl","paymentId":"pay_intl_new"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+
+    console.info
+      [2026-04-15T15:16:20.215Z] INFO: Created fallback payment before unified membership sync {"userId":"user_cn","transactionId":"txn_cn","paymentId":"pay_cn_new"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+
+
+Test Suites: 3 passed, 3 total
+Tests:       10 passed, 10 total
+Snapshots:   0 total
+Time:        3.42 s, estimated 4 s
+Ran all test suites matching /tests\\region-dual-stack-capabilities.test.ts|tests\\region-dual-stack-public-routes.test.ts|tests\\region-dual-stack-onetime-sync.test.ts/i.

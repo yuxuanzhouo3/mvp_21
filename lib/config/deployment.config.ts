@@ -3,7 +3,11 @@
  * The active region is resolved from environment variables at build/runtime.
  */
 
-export type DeploymentRegion = "CN" | "INTL";
+import {
+  resolveDeploymentRegion,
+  type DeploymentRegion,
+} from "./deployment-region";
+export type { DeploymentRegion } from "./deployment-region";
 
 export interface DeploymentConfig {
   region: DeploymentRegion;
@@ -23,7 +27,7 @@ export interface DeploymentConfig {
     provider: "cloudbase" | "supabase";
   };
   payment: {
-    providers: Array<"stripe" | "paypal" | "wechat" | "alipay">;
+    providers: Array<"stripe" | "wechat" | "alipay">;
   };
   apis: {
     authCallbackPath: string;
@@ -46,7 +50,7 @@ function generateConfig(region: DeploymentRegion): DeploymentConfig {
       features: {
         emailAuth: true,
         phoneOtpAuth: isChinaRegion,
-        wechatAuth: isChinaRegion,
+        wechatAuth: false,
         googleAuth: !isChinaRegion,
         githubAuth: false,
       },
@@ -67,18 +71,24 @@ function generateConfig(region: DeploymentRegion): DeploymentConfig {
   };
 }
 
-const rawRegion =
-  process.env.NEXT_PUBLIC_APP_REGION ||
-  process.env.APP_REGION ||
-  process.env.NEXT_PUBLIC_DEPLOYMENT_REGION ||
-  "CN";
-
-const DEPLOYMENT_REGION: DeploymentRegion =
-  rawRegion.toUpperCase() === "INTL" ? "INTL" : "CN";
+const regionResolution = resolveDeploymentRegion(process.env);
+const DEPLOYMENT_REGION: DeploymentRegion = regionResolution.region;
 
 if (typeof window === "undefined") {
+  if (regionResolution.deprecatedSourceUsed) {
+    console.warn(
+      `[deployment] ${regionResolution.source} is deprecated. Use NEXT_PUBLIC_DEPLOYMENT_REGION instead.`,
+    );
+  }
+
+  if (regionResolution.sourceConflict) {
+    console.warn(
+      "[deployment] Conflicting region env vars detected; NEXT_PUBLIC_DEPLOYMENT_REGION has priority.",
+    );
+  }
+
   console.log(
-    `[deployment] region=${DEPLOYMENT_REGION}, auth=${
+    `[deployment] region=${DEPLOYMENT_REGION}, source=${regionResolution.source}, auth=${
       DEPLOYMENT_REGION === "INTL" ? "supabase" : "cloudbase"
     }`,
   );

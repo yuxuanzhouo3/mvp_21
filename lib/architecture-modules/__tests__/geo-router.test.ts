@@ -37,7 +37,7 @@ describe("GeoRouter", () => {
 
       expect(result.region).toBe(RegionType.USA);
       expect(result.currency).toBe("USD");
-      expect(result.paymentMethods).toEqual(["stripe", "paypal"]);
+      expect(result.paymentMethods).toEqual(["stripe"]);
       expect(result.database).toBe("supabase");
     });
 

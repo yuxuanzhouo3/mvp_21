@@ -1,13 +1,12 @@
 ﻿// app/api/payment/onetime/confirm/route.ts - 一次性支付确认API
 import { NextRequest, NextResponse } from "next/server";
-import { PayPalProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/paypal-provider";
 import { StripeProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/stripe-provider";
 import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
 import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
 import { isChinaRegion } from "@/lib/config/region";
 import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
 import { ensureOnetimeMembershipApplied } from "@/lib/payment/onetime-membership-sync";
-import { logInfo, logError, logWarn, logBusinessEvent } from "@/lib/utils/logger";
+import { logInfo, logError, logWarn } from "@/lib/utils/logger";
 
 /**
  * 延长用户会员时间
@@ -37,13 +36,61 @@ async function extendMembership(
   return result.success;
 }
 
-export async function GET(request: NextRequest) {
+function readString(input: unknown): string {
+  return typeof input === "string" ? input.trim() : "";
+}
+
+function isSameOrigin(source: string, targetOrigin: string): boolean {
+  try {
+    return new URL(source).origin === targetOrigin;
+  } catch {
+    return false;
+  }
+}
+
+function validateStateChangingRequestOrigin(request: NextRequest): boolean {
+  const authorization = request.headers.get("authorization");
+  if (authorization) {
+    return true;
+  }
+
+  const expectedOrigin = request.nextUrl.origin;
+  const origin = request.headers.get("origin");
+  if (origin && origin === expectedOrigin) {
+    return true;
+  }
+
+  const referer = request.headers.get("referer");
+  if (referer && isSameOrigin(referer, expectedOrigin)) {
+    return true;
+  }
+
+  return false;
+}
+
+export async function POST(request: NextRequest) {
   const startTime = Date.now();
   const operationId = `onetime_confirm_${Date.now()}_${Math.random()
     .toString(36)
     .substr(2, 9)}`;
 
   try {
+    if (!validateStateChangingRequestOrigin(request)) {
+      logWarn("Blocked one-time confirmation due to origin validation failure", {
+        operationId,
+        origin: request.headers.get("origin"),
+        referer: request.headers.get("referer"),
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid request origin",
+          code: "ORIGIN_VALIDATION_FAILED",
+        },
+        { status: 403 }
+      );
+    }
+
     // 验证用户认证
     const authResult = await requireAuth(request);
     if (!authResult) {
@@ -51,16 +98,31 @@ export async function GET(request: NextRequest) {
     }
 
     const { user } = authResult;
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const searchParams = request.nextUrl.searchParams;
-    const sessionId = searchParams.get("session_id"); // Stripe
-    const token = searchParams.get("token"); // PayPal
-    const outTradeNo = searchParams.get("out_trade_no"); // Alipay / WeChat
-    const tradeNo = searchParams.get("trade_no"); // Alipay交易号
-    const wechatOutTradeNo = searchParams.get("wechat_out_trade_no"); // WeChat Native
+    const sessionId =
+      readString(body.session_id) ||
+      readString(body.sessionId) ||
+      searchParams.get("session_id") ||
+      "";
+    const outTradeNo =
+      readString(body.out_trade_no) ||
+      readString(body.outTradeNo) ||
+      searchParams.get("out_trade_no") ||
+      "";
+    const tradeNo =
+      readString(body.trade_no) ||
+      readString(body.tradeNo) ||
+      searchParams.get("trade_no") ||
+      "";
+    const wechatOutTradeNo =
+      readString(body.wechat_out_trade_no) ||
+      readString(body.wechatOutTradeNo) ||
+      searchParams.get("wechat_out_trade_no") ||
+      "";
 
     logInfo("[onetime-confirm] Parameters extracted", {
       hasSessionId: !!sessionId,
-      hasToken: !!token,
       hasOutTradeNo: !!outTradeNo,
       hasTradeNo: !!tradeNo,
       hasWechatOutTradeNo: !!wechatOutTradeNo,
@@ -70,13 +132,12 @@ export async function GET(request: NextRequest) {
       operationId,
       userId: user.id,
       hasSessionId: !!sessionId,
-      hasToken: !!token,
       hasOutTradeNo: !!outTradeNo,
       hasTradeNo: !!tradeNo,
       hasWechatOutTradeNo: !!wechatOutTradeNo,
     });
 
-    if (!sessionId && !token && !outTradeNo && !tradeNo && !wechatOutTradeNo) {
+    if (!sessionId && !outTradeNo && !tradeNo && !wechatOutTradeNo) {
       logWarn("Missing payment confirmation parameters", {
         operationId,
         userId: user.id,
@@ -130,117 +191,6 @@ export async function GET(request: NextRequest) {
         .maybeSingle();
 
       days = stripePendingPayment?.metadata?.days || (amount > 50 ? 365 : 30);
-    } else if (token) {
-      // PayPal 支付确认
-      logInfo("Confirming PayPal one-time payment", {
-        operationId,
-        userId: user.id,
-        token,
-      });
-
-      const paypalProvider = new PayPalProvider(process.env);
-
-      try {
-        // 首先尝试从 pending payment 获取金额信息（备用方案）
-        let { data: paypalPendingPayment } = await supabaseAdmin
-          .from("payments")
-          .select("amount, currency, metadata")
-          .eq("transaction_id", token)
-          .eq("status", "pending")
-          .maybeSingle();
-
-        // 捕获 PayPal 订单
-        const captureResult = await paypalProvider.captureOnetimePayment(token);
-
-        if (captureResult.status !== "COMPLETED") {
-          logWarn("PayPal payment not completed", {
-            operationId,
-            userId: user.id,
-            token,
-            status: captureResult.status,
-          });
-          return NextResponse.json(
-            { success: false, error: "Payment not completed" },
-            { status: 400 }
-          );
-        }
-
-        // ✅ 关键修复: transactionId应该使用Capture ID,但查找pending payment时要用Order ID (token)
-        // Order ID: 72C40158BX438952W (CREATE API创建pending payment时用的ID)
-        // Capture ID: 83P92523MR1516802 (capture后的ID,用于最终的transaction_id)
-        const captureId = captureResult.id;
-        transactionId = captureId;
-
-        // 🔑 关键修复：从 payment_source 和 purchase_units 中提取金额
-        // PayPal API 可能返回不同的结构，需要多层备份方案
-        let purchaseUnit = captureResult.purchase_units?.[0];
-
-        if (purchaseUnit?.payments?.captures?.[0]) {
-          // 方案1: 从 captures 中获取
-          const capture = purchaseUnit.payments.captures[0];
-          amount = parseFloat(capture?.amount?.value || "0");
-          currency =
-            capture?.amount?.currency_code ||
-            purchaseUnit?.amount?.currency_code ||
-            "USD";
-          logInfo("Amount from captures", { amount, currency });
-        } else if (purchaseUnit?.amount) {
-          // 方案2: 从 purchase_units.amount 获取
-          amount = parseFloat(purchaseUnit.amount.value || "0");
-          currency = purchaseUnit.amount.currency_code || "USD";
-          logInfo("Amount from purchase_units", { amount, currency });
-        } else {
-          // 方案3: 尝试从 processor_response 获取
-          const processor =
-            captureResult.payment_source?.paypal?.processor_response;
-          if (processor?.verify_response?.gross_amount) {
-            amount = parseFloat(processor.verify_response.gross_amount);
-            currency = processor.verify_response.currency_code || "USD";
-            logInfo("Amount from processor_response", { amount, currency });
-          }
-        }
-
-        // 如果仍然为0，使用 pending payment 中的金额
-        if (amount === 0 && paypalPendingPayment?.amount) {
-          amount = paypalPendingPayment.amount;
-          currency = paypalPendingPayment.currency || "USD";
-          logInfo("Recovered amount from pending payment", {
-            operationId,
-            userId: user.id,
-            amount,
-            currency,
-          });
-        }
-
-        // 从 pending payment 获取天数信息
-        days = paypalPendingPayment?.metadata?.days || (amount > 50 ? 365 : 30);
-
-        logInfo("PayPal capture successful", {
-          operationId,
-          userId: user.id,
-          transactionId,
-          amount,
-          currency,
-          days,
-          captureStatus: captureResult.status,
-        });
-      } catch (error) {
-        logError("PayPal capture error", error as Error, {
-          operationId,
-          userId: user.id,
-          token,
-        });
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              error instanceof Error
-                ? error.message
-                : "Failed to capture PayPal payment",
-          },
-          { status: 500 }
-        );
-      }
     } else if (outTradeNo || tradeNo) {
       // Alipay 支付确认 - 对于同步跳转，只验证支付参数，不处理会员延期
       // ✅ 关键改动：会员延期由 webhook 负责（webhook 有 metadata 中的正确 days）
@@ -513,7 +463,7 @@ export async function GET(request: NextRequest) {
 
       // 即使支付已处理，也应该确保会员已延期（防止webhook失败的情况）
       // 特别是对于WeChat Native QR Code支付
-      // ✅ 策略：PayPal 和 Stripe 依赖 webhook，跳过 confirm 中的会员延期
+      // ✅ 策略：Stripe 依赖 webhook，跳过 confirm 中的会员延期
       if (days > 0 && transactionId) {
         logInfo("Ensuring membership extension for already-processed payment", {
           operationId,
@@ -522,20 +472,19 @@ export async function GET(request: NextRequest) {
           days,
         });
 
-        // 检测是否为 PayPal 或 Stripe（依赖 webhook 的支付方式）
-        const isPayPalOrStripe = !!sessionId || !!token;
+        // 检测是否为 Stripe（依赖 webhook 的支付方式）
+        const isStripe = !!sessionId;
 
         if (!isChinaRegion()) {
-          if (isPayPalOrStripe) {
-            // PayPal 和 Stripe：跳过 extendMembership，依赖 webhook
+          if (isStripe) {
+            // Stripe：跳过 extendMembership，依赖 webhook
             logInfo(
-              "[onetime-confirm] already-processed PayPal/Stripe payment, skipping extendMembership and relying on webhook",
+              "[onetime-confirm] already-processed Stripe payment, skipping extendMembership and relying on webhook",
               {
                 operationId,
                 userId: user.id,
                 transactionId,
                 isStripe: !!sessionId,
-                isPayPal: !!token,
                 days,
               }
             );
@@ -633,7 +582,7 @@ export async function GET(request: NextRequest) {
 
     // 查找 pending 支付记录并更新为 completed
     const paymentIdToUpdate =
-      sessionId || token || outTradeNo || tradeNo || wechatOutTradeNo;
+      sessionId || outTradeNo || tradeNo || wechatOutTradeNo;
     let pendingPayment: any = null;
     let findError: any = null;
 
@@ -783,6 +732,14 @@ export async function GET(request: NextRequest) {
           userId: user.id,
           paymentId: pendingPayment.id || pendingPayment._id,
         });
+        return NextResponse.json(
+          {
+            success: false,
+            error: "PAYMENT_RECORD_UPDATE_FAILED",
+            operationId,
+          },
+          { status: 500 }
+        );
       }
     } else {
       // 创建新的支付记录(如果找不到 pending 记录)
@@ -807,13 +764,21 @@ export async function GET(request: NextRequest) {
             currency,
           }
         );
+        return NextResponse.json(
+          {
+            success: false,
+            error: "INVALID_PAYMENT_AMOUNT",
+            operationId,
+          },
+          { status: 500 }
+        );
       } else {
         const paymentData: any = {
           user_id: user.id,
           amount,
           currency,
           status: "completed",
-          payment_method: sessionId ? "stripe" : token ? "paypal" : "alipay",
+          payment_method: sessionId ? "stripe" : "alipay",
           transaction_id: transactionId,
           metadata: {
             days,
@@ -875,7 +840,6 @@ export async function GET(request: NextRequest) {
               transactionId,
               amount,
               currency,
-              paymentData,
               errorCode: error.code,
               errorMessage: error.message,
               errorDetails: error.details,
@@ -896,7 +860,7 @@ export async function GET(request: NextRequest) {
 
         if (insertError) {
           logError(
-            "Failed to create payment record - continuing anyway",
+            "Failed to create payment record in one-time confirm",
             insertError as Error,
             {
               operationId,
@@ -904,48 +868,51 @@ export async function GET(request: NextRequest) {
               transactionId,
             }
           );
-          // 继续处理,不中断流程
+          return NextResponse.json(
+            {
+              success: false,
+              error: "PAYMENT_RECORD_PERSIST_FAILED",
+              operationId,
+            },
+            { status: 500 }
+          );
         }
       }
     }
 
-    // ✅ 延长用户会员时间
-    // 策略：
-    // - PayPal 和 Stripe 依赖 webhook 增加会员时间，confirm 只确认支付成功
-    // - Alipay 也依赖 webhook（webhook 有 metadata 中的正确 days），confirm 只验证支付
-    // - WeChat 在 confirm 中增加会员时间（因为有 pending payment 记录）
-    let membershipExtended = false;
-    const isPayPalOrStripe = !!sessionId || !!token; // Stripe 有 sessionId，PayPal 有 token
+    const isStripe = !!sessionId;
     const isAlipay = !!outTradeNo || !!tradeNo; // Alipay 有 outTradeNo 或 tradeNo
+    const membershipDeferredToWebhook = isStripe || isAlipay;
 
-    if (isPayPalOrStripe) {
-      // PayPal 和 Stripe：跳过 extendMembership，依赖 webhook
+    if (membershipDeferredToWebhook) {
       logInfo(
-        "[onetime-confirm] PayPal/Stripe payment confirmed, skipping extendMembership and relying on webhook",
+        "[onetime-confirm] Payment confirmed, membership extension deferred to webhook",
         {
           operationId,
           userId: user.id,
           transactionId,
-          isStripe: !!sessionId,
-          isPayPal: !!token,
+          isStripe,
+          isAlipay,
           days,
+          membershipStatus: "pending_webhook",
         }
       );
-      membershipExtended = true; // 标记为成功，实际由 webhook 处理
-    } else if (isAlipay) {
-      // ✅ Alipay 同步返回：webhook 将负责会员延期
-      // webhook 有 metadata 中的正确 days，confirm 不负责计算和延期
-      logInfo(
-        "[onetime-confirm] Alipay sync return confirmed, skipping extendMembership and delegating to webhook",
+
+      return NextResponse.json(
         {
-          operationId,
-          userId: user.id,
+          success: true,
           transactionId,
-          reason: "Webhook has access to metadata with correct days value",
-        }
+          amount,
+          currency,
+          daysAdded: 0,
+          membershipStatus: "pending_webhook",
+        },
+        { status: 202 }
       );
-      membershipExtended = true; // 标记为成功，实际由 webhook 处理
-    } else if (!isChinaRegion()) {
+    }
+
+    let membershipExtended = false;
+    if (!isChinaRegion()) {
       // 国际版的其他支付方式（如果有）
       try {
         const { data: existingSub } = await supabaseAdmin
@@ -1029,6 +996,7 @@ export async function GET(request: NextRequest) {
       amount,
       currency,
       daysAdded: days,
+      membershipStatus: "active",
     });
   } catch (error) {
     const duration = Date.now() - startTime;

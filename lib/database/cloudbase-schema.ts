@@ -178,7 +178,7 @@ export interface Payment {
   amount: number;
   currency: string;
   method?: "wechat" | "alipay";
-  payment_method?: "wechat" | "alipay" | "stripe" | "paypal" | "manual";
+  payment_method?: "wechat" | "alipay" | "stripe" | "manual";
   status: "pending" | "completed" | "failed" | "refunded";
   order_id?: string;
   transaction_id?: string;

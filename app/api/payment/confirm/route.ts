@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
-import { PayPalProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/paypal-provider";
 import { StripeProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/stripe-provider";
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
 import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
@@ -48,15 +47,6 @@ async function confirmPaymentWithProvider(
   reference: string,
 ): Promise<PaymentConfirmationResult> {
   const method = payment.payment_method;
-
-  if (method === "paypal") {
-    const provider = new PayPalProvider(process.env);
-    const confirmation = await provider.confirmPayment(reference);
-    return {
-      ...confirmation,
-      providerReference: reference,
-    };
-  }
 
   if (method === "stripe") {
     const provider = new StripeProvider(process.env);
@@ -138,8 +128,6 @@ async function handlePaymentConfirm(request: NextRequest) {
     const rawReferences = [
       typeof body?.paymentId === "string" ? body.paymentId : "",
       typeof body?.subscriptionId === "string" ? body.subscriptionId : "",
-      typeof body?.token === "string" ? body.token : "",
-      typeof body?.baToken === "string" ? body.baToken : "",
     ].filter(Boolean);
 
     if (!rawReferences.length) {

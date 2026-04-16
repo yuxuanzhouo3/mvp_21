@@ -140,7 +140,6 @@ export default function AnalyticsPage() {
     (value: string) => {
       const labels: Record<string, string> = {
         stripe: 'Stripe',
-        paypal: 'PayPal',
         alipay: 'Alipay',
         wechat: copy.paymentWechat,
         card: copy.paymentCard,

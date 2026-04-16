@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
-import { PayPalProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/paypal-provider";
 import { StripeProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/stripe-provider";
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
 import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
 import { isChinaRegion } from "@/lib/config/region";
 import {
   getAppUrl,
-  getPayPalEnvironment,
   getWechatPayApiV3Key,
   getWechatPayAppId,
 } from "@/lib/config/runtime-env";
@@ -48,11 +46,6 @@ async function createFreshPaymentSession(payment: any) {
     planType: metadata.planType,
     billingCycle: metadata.billingCycle,
   };
-
-  if (payment.payment_method === "paypal") {
-    const provider = new PayPalProvider(process.env);
-    return provider.createPayment(order);
-  }
 
   if (payment.payment_method === "stripe") {
     const provider = new StripeProvider(process.env);
@@ -199,19 +192,6 @@ async function handlePaymentContinue(request: NextRequest) {
       billingCycle: metadata.billingCycle,
       planType: metadata.planType,
     });
-
-    if (!shouldRefreshSession && payment.payment_method === "paypal") {
-      const environment = getPayPalEnvironment();
-      const baseUrl =
-        environment === "production"
-          ? "https://www.paypal.com"
-          : "https://www.sandbox.paypal.com";
-
-      return NextResponse.json({
-        success: true,
-        paymentUrl: `${baseUrl}/checkoutnow?token=${payment.transaction_id}`,
-      });
-    }
 
     if (!shouldRefreshSession && payment.payment_method === "wechat") {
       return NextResponse.json({

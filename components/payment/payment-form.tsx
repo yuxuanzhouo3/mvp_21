@@ -90,11 +90,6 @@ export function PaymentForm({
       icon: <Smartphone className="h-5 w-5" />,
       description: t.payment.methods.alipay.description,
     },
-    paypal: {
-      name: t.payment.methods.paypal.name,
-      icon: <CreditCard className="h-5 w-5" />,
-      description: t.payment.methods.paypal.description,
-    },
   };
 
   useEffect(() => {

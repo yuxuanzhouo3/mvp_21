@@ -73,7 +73,7 @@ describe("ensureOnetimeMembershipApplied", () => {
       id: "pay_1",
       user_id: "user_1",
       status: "pending",
-      payment_method: "paypal",
+      payment_method: "stripe",
       transaction_id: "txn_1",
       metadata: {},
     });
@@ -81,7 +81,7 @@ describe("ensureOnetimeMembershipApplied", () => {
       id: "pay_1",
       user_id: "user_1",
       status: "pending",
-      payment_method: "paypal",
+      payment_method: "stripe",
       transaction_id: "txn_1",
       metadata: { existing: true },
       billing_cycle: "monthly",

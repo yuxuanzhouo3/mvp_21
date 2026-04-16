@@ -644,74 +644,13 @@ class CloudBaseAuthClient implements AuthClient {
       avatar?: string;
     };
   }): Promise<AuthResponse> {
-    try {
-      const response = await fetch("/api/auth/wechat/mini", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          code: params.code,
-          profile: params.profile,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        return {
-          data: { user: null, session: null },
-          error: new Error(
-            errorData?.error?.message ||
-              errorData?.details ||
-              errorData?.error ||
-              "WeChat mini program login failed",
-          ),
-        };
-      }
-
-      const data = await response.json();
-
-      if (data.accessToken && data.user && typeof window !== "undefined") {
-        try {
-          const { saveAuthState } = await import("@/lib/auth/auth-state-manager");
-
-          saveAuthState(
-            data.accessToken,
-            data.refreshToken || data.accessToken,
-            data.user,
-            data.tokenMeta || {
-              accessTokenExpiresIn: 3600,
-              refreshTokenExpiresIn: 604800,
-            },
-          );
-        } catch (error) {
-          console.error("[CloudBase Auth] Failed to persist WeChat auth state:", error);
-        }
-      }
-
-      const accessToken =
-        data.accessToken || data.token || data.session?.access_token;
-
-      return {
-        data: {
-          user: data.user || null,
-          session:
-            data.session ||
-            (accessToken
-              ? {
-                  access_token: accessToken,
-                  user: data.user || null,
-                }
-              : null),
-        },
-        error: null,
-      };
-    } catch (error) {
-      return {
-        data: { user: null, session: null },
-        error: error as Error,
-      };
-    }
+    void params;
+    return {
+      data: { user: null, session: null },
+      error: new Error(
+        "WeChat mini program login is retired. Use email/password or SMS OTP instead.",
+      ),
+    };
   }
 
   async verifyOtp(params: {

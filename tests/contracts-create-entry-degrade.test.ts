@@ -133,8 +133,8 @@ describe("contract creation entry routes degraded mode", () => {
     expect(response.status).toBe(200);
     expect(payload.success).toBe(true);
     expect(payload.meta?.degraded).toBe(true);
+    expect(payload.data?.sourceType).toBe("wechat");
     expect(typeof payload.data?.conversationText).toBe("string");
     expect(payload.data?.conversationText?.length).toBeGreaterThan(0);
   });
 });
-

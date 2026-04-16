@@ -71,12 +71,11 @@ console.log(`   支持的支付方式: ${paymentProviders.join(", ")}`);
 console.log(`   支持微信支付: ${isPaymentMethodSupported("wechat")}`);
 console.log(`   支持支付宝: ${isPaymentMethodSupported("alipay")}`);
 console.log(`   支持 Stripe: ${isPaymentMethodSupported("stripe")}`);
-console.log(`   支持 PayPal: ${isPaymentMethodSupported("paypal")}`);
 
 if (isChinaDeployment()) {
   console.log("   ✓ 中国区域: 支付宝 + 微信\n");
 } else {
-  console.log("   ✓ 国际区域: Stripe + PayPal\n");
+  console.log("   ✓ 国际区域: Stripe\n");
 }
 
 // 测试 6: 验证完整配置

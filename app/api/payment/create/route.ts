@@ -4,7 +4,6 @@ import { z } from "zod";
 
 import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
 import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
-import { PayPalProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/paypal-provider";
 import { StripeProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/stripe-provider";
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
 import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
@@ -23,7 +22,7 @@ import { paymentRateLimit } from "@/lib/security/rate-limit";
 
 // Validate payment creation payloads from the client.
 const createPaymentSchema = z.object({
-  method: z.enum(["stripe", "paypal", "alipay", "wechat"]),
+  method: z.enum(["stripe", "alipay", "wechat"]),
   amount: z.number().positive("Amount must be positive"),
   currency: z.string().min(1, "Currency is required").transform((value) => value.toUpperCase()),
   description: z.string().optional(),
@@ -248,19 +247,6 @@ async function handlePaymentCreate(request: NextRequest) {
 
       if (!created.success || !created.paymentId) {
         throw new Error(created.error || "Failed to create Stripe payment");
-      }
-
-      orderResult = {
-        orderId: created.paymentId,
-        paymentUrl: created.paymentUrl,
-        transactionId: created.paymentId,
-      };
-    } else if (paymentMethod === "paypal") {
-      const provider = new PayPalProvider(process.env);
-      const created = await provider.createOnetimePayment(order);
-
-      if (!created.success || !created.paymentId) {
-        throw new Error(created.error || "Failed to create PayPal payment");
       }
 
       orderResult = {

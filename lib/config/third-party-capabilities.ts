@@ -1,14 +1,12 @@
 import { currentRegion, getPaymentProviders, isAuthFeatureSupported } from "@/lib/config/deployment.config";
 import {
   getAppUrl,
-  getPayPalMode,
-  getWechatOAuthAppId,
   getWechatPayApiV3Key,
   getWechatPayAppId,
 } from "@/lib/config/runtime-env";
 
 type Region = "CN" | "INTL";
-type PaymentMethod = "stripe" | "paypal" | "wechat" | "alipay";
+type PaymentMethod = "stripe" | "wechat" | "alipay";
 type AuthMethod = "sms" | "wechat" | "google";
 
 export interface CapabilityStatus {
@@ -109,18 +107,16 @@ function getGoogleAuthStatus(region: Region): CapabilityStatus {
 
 function getWechatAuthStatus(region: Region): CapabilityStatus {
   if (region !== "CN" || !isAuthFeatureSupported("wechatAuth")) {
-    return createStatus(false, "WeChat sign-in is not supported in this deployment.");
+    return createStatus(
+      false,
+      "WeChat sign-in is not supported in this deployment (retired).",
+    );
   }
 
-  if (!isPresent(getWechatOAuthAppId())) {
-    return createStatus(false, "WECHAT_APP_ID or NEXT_PUBLIC_WECHAT_APP_ID is missing.");
-  }
-
-  if (!isPresent(process.env.WECHAT_APP_SECRET)) {
-    return createStatus(false, "WECHAT_APP_SECRET is missing.");
-  }
-
-  return createStatus(true);
+  return createStatus(
+    false,
+    "WeChat sign-in is not supported in this deployment (retired).",
+  );
 }
 
 export function getPublicAuthConfig(): PublicAuthConfig {
@@ -157,35 +153,6 @@ function getStripeStatus(region: Region): CapabilityStatus {
 
   if (!isPresent(process.env.STRIPE_WEBHOOK_SECRET)) {
     return createStatus(false, "STRIPE_WEBHOOK_SECRET is missing.");
-  }
-
-  if (!looksLikeUrl(getAppUrl())) {
-    return createStatus(false, "APP_URL or NEXT_PUBLIC_APP_URL is missing or invalid.");
-  }
-
-  return createStatus(true);
-}
-
-function getPayPalStatus(region: Region): CapabilityStatus {
-  if (region !== "INTL" || !getPaymentProviders().includes("paypal")) {
-    return createStatus(false, "PayPal is not supported in this deployment.");
-  }
-
-  if (!isPresent(process.env.PAYPAL_CLIENT_ID)) {
-    return createStatus(false, "PAYPAL_CLIENT_ID is missing.");
-  }
-
-  if (!isPresent(process.env.PAYPAL_CLIENT_SECRET)) {
-    return createStatus(false, "PAYPAL_CLIENT_SECRET is missing.");
-  }
-
-  if (!isPresent(process.env.PAYPAL_WEBHOOK_ID)) {
-    return createStatus(false, "PAYPAL_WEBHOOK_ID is missing.");
-  }
-
-  const payPalMode = getPayPalMode();
-  if (!["sandbox", "live"].includes(payPalMode)) {
-    return createStatus(false, "PAYPAL_ENVIRONMENT or PAYPAL_MODE is invalid.");
   }
 
   if (!looksLikeUrl(getAppUrl())) {
@@ -263,7 +230,6 @@ export function getPaymentConfigSnapshot(): PaymentConfigSnapshot {
   const region = currentRegion;
   const methods: Record<PaymentMethod, CapabilityStatus> = {
     stripe: getStripeStatus(region),
-    paypal: getPayPalStatus(region),
     wechat: getWechatPayStatus(region),
     alipay: getAlipayStatus(region),
   };

@@ -256,10 +256,6 @@ export const zh = {
         name: "支付宝",
         description: "支付宝扫码支付",
       },
-      paypal: {
-        name: "PayPal",
-        description: "PayPal 账户支付",
-      },
     },
     status: {
       active: "有效",

@@ -46,19 +46,6 @@ export function getWechatPayPlatformPublicKey(): string {
   );
 }
 
-export function getPayPalEnvironment(): "sandbox" | "production" {
-  const raw = pickFirstNonEmpty(
-    process.env.PAYPAL_ENVIRONMENT,
-    process.env.PAYPAL_MODE,
-  ).toLowerCase();
-
-  return raw === "live" || raw === "production" ? "production" : "sandbox";
-}
-
-export function getPayPalMode(): "sandbox" | "live" {
-  return getPayPalEnvironment() === "production" ? "live" : "sandbox";
-}
-
 export function getDashScopeBaseUrl(): string {
   return pickFirstNonEmpty(
     process.env.DASHSCOPE_BASE_URL,

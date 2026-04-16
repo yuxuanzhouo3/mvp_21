@@ -13,7 +13,7 @@ async function loadCapabilities(region: "CN" | "INTL") {
   jest.doMock("@/lib/config/deployment.config", () => ({
     currentRegion: region,
     getPaymentProviders: () =>
-      region === "CN" ? ["wechat", "alipay"] : ["stripe", "paypal"],
+      region === "CN" ? ["wechat", "alipay"] : ["stripe"],
     isAuthFeatureSupported: (feature: string) => {
       if (feature === "emailAuth") return true;
       if (feature === "wechatAuth") return region === "CN";
@@ -24,7 +24,6 @@ async function loadCapabilities(region: "CN" | "INTL") {
 
   jest.doMock("@/lib/config/runtime-env", () => ({
     getAppUrl: () => "https://example.com",
-    getPayPalMode: () => "sandbox",
     getWechatOAuthAppId: () => "wx-app-id",
     getWechatPayApiV3Key: () => "1".repeat(32),
     getWechatPayAppId: () => "wx-app-id",
@@ -40,7 +39,7 @@ afterEach(() => {
 });
 
 describe("region dual-stack capability matrix", () => {
-  test("CN region keeps stripe/paypal marked as unsupported", async () => {
+  test("CN region keeps stripe marked as unsupported", async () => {
     const caps = await loadCapabilities("CN");
     const paymentSnapshot = caps.getPaymentConfigSnapshot();
     const authSnapshot = caps.getPublicAuthConfig();
@@ -48,8 +47,6 @@ describe("region dual-stack capability matrix", () => {
     expect(paymentSnapshot.region).toBe("CN");
     expect(paymentSnapshot.methods.stripe.enabled).toBe(false);
     expect(paymentSnapshot.methods.stripe.reason).toContain("not supported");
-    expect(paymentSnapshot.methods.paypal.enabled).toBe(false);
-    expect(paymentSnapshot.methods.paypal.reason).toContain("not supported");
 
     expect(authSnapshot.region).toBe("CN");
     expect(authSnapshot.availability.google.enabled).toBe(false);
@@ -72,4 +69,3 @@ describe("region dual-stack capability matrix", () => {
     expect(authSnapshot.availability.wechat.reason).toContain("not supported");
   });
 });
-

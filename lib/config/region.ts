@@ -3,7 +3,8 @@
  * This file is used widely across the app, so keep the public API stable.
  */
 
-import { currentRegion } from "./deployment.config";
+import { currentRegion, deploymentConfig } from "./deployment.config";
+import { getOpenAIModel, getQwenModel } from "./runtime-env";
 
 export type Region = "CN" | "INTL";
 
@@ -28,32 +29,34 @@ export const isChinaRegion = (): boolean => getDeployRegion() === "CN";
 export const isInternationalRegion = (): boolean =>
   getDeployRegion() === "INTL";
 
+const paymentProviders = deploymentConfig.payment.providers;
+const primaryPaymentMethod =
+  paymentProviders[0] || (isChinaRegion() ? "wechat" : "stripe");
+const aiProvider = isChinaRegion() ? "dashscope" : "openai";
+
 export const RegionConfig = {
   auth: {
-    provider: isChinaRegion() ? "cloudbase" : "supabase",
+    provider: deploymentConfig.auth.provider,
     features: {
-      emailAuth: true,
-      phoneOtpAuth: isChinaRegion(),
-      wechatAuth: isChinaRegion(),
-      googleAuth: isInternationalRegion(),
-      githubAuth: false,
+      ...deploymentConfig.auth.features,
     },
   },
   database: {
-    provider: isChinaRegion() ? "cloudbase" : "supabase",
+    provider: deploymentConfig.database.provider,
   },
   payment: {
-    providers: isChinaRegion()
-      ? ["wechat", "alipay"]
-      : ["stripe"],
-    primary: isChinaRegion() ? "wechat" : "stripe",
+    providers: paymentProviders,
+    primary: primaryPaymentMethod,
   },
   ai: {
-    provider: "dashscope",
-    availableModels: ["qwen-plus", "qwen-max", "qwen-vl-plus"],
+    provider: aiProvider,
+    availableModels:
+      aiProvider === "dashscope"
+        ? [getQwenModel(), "qwen-max", "qwen-vl-plus"]
+        : [getOpenAIModel()],
   },
   storage: {
-    provider: isChinaRegion() ? "cloudbase" : "supabase",
+    provider: deploymentConfig.database.provider,
   },
   redirectUrls: {
     domestic: process.env.DOMESTIC_SYSTEM_URL,

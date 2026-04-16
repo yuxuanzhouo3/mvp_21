@@ -270,10 +270,6 @@ export const en = {
         name: "Alipay",
         description: "Alipay QR Code",
       },
-      paypal: {
-        name: "PayPal",
-        description: "PayPal Account",
-      },
     },
 
     status: {

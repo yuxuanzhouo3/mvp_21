@@ -1,0 +1,64 @@
+
+> morncontract@0.1.0 test:mainline
+> jest --runInBand --passWithNoTests tests/mainline-e2e-simulated.test.ts tests/core-contract-flow-governance.test.ts tests/payment-confirm-route.test.ts tests/payment-webhook-routes.test.ts tests/workspace-invites-store.test.ts
+
+PASS tests/mainline-e2e-simulated.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+    console.info
+      [/api/contracts/[id] PUT action] { action: 'start_signing', hasParties: true }
+
+      at app/api/contracts/[id]/route.ts:296:15
+
+    console.info
+      [/api/contracts/[id] PUT action] { action: 'confirm_sender', hasParties: true }
+
+      at app/api/contracts/[id]/route.ts:296:15
+
+    console.info
+      [/api/contracts/[id] PUT action] { action: 'confirm_counterparty', hasParties: true }
+
+      at app/api/contracts/[id]/route.ts:296:15
+
+    console.info
+      [2026-04-15T15:15:51.837Z] INFO: Business Event: operational_chain_metric {"type":"business","event":"operational_chain_metric","userId":"user_mainline","timestamp":"2026-04-15T15:15:51.837Z","chain":"contract_export","scope":"default","outcome":"success","statusCode":200,"operationId":"contract_export_1776266151836_hwwx016u9","durationMs":1,"counts":{"total":1,"success":1,"failure":0,"rejected":0,"slow":0},"threshold":{"windowMs":600000,"failureThreshold":5,"rejectedThreshold":8,"slowThreshold":8,"slowDurationMs":2000},"format":"html","contractId":"contract_1"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+
+    console.info
+      [2026-04-15T15:15:51.842Z] INFO: Business Event: payment_confirm_started {"type":"business","event":"payment_confirm_started","userId":"user_mainline","timestamp":"2026-04-15T15:15:51.842Z","operationId":"payment_confirm_1776266151841_h4qj63vk5","paymentId":"pay_mainline_1","reference":"stripe_order_1","method":"stripe","status":"pending"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+
+    console.info
+      [2026-04-15T15:15:51.844Z] INFO: Business Event: payment_confirm_success {"type":"business","event":"payment_confirm_success","userId":"user_mainline","timestamp":"2026-04-15T15:15:51.844Z","operationId":"payment_confirm_1776266151841_h4qj63vk5","paymentId":"pay_mainline_1","subscriptionId":"sub_mainline_1","method":"stripe","transactionId":"stripe_txn_1","planType":"pro","billingCycle":"monthly"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+
+    console.info
+      [2026-04-15T15:15:51.845Z] INFO: Business Event: operational_chain_metric {"type":"business","event":"operational_chain_metric","userId":"user_mainline","timestamp":"2026-04-15T15:15:51.845Z","chain":"payment_confirm","scope":"default","outcome":"success","statusCode":200,"operationId":"payment_confirm_1776266151841_h4qj63vk5","durationMs":4,"counts":{"total":1,"success":1,"failure":0,"rejected":0,"slow":0},"threshold":{"windowMs":600000,"failureThreshold":5,"rejectedThreshold":10,"slowThreshold":8,"slowDurationMs":2500},"reason":"confirmed","paymentId":"pay_mainline_1","subscriptionId":"sub_mainline_1","method":"stripe"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+
+PASS tests/workspace-invites-store.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+PASS tests/payment-webhook-routes.test.ts
+PASS tests/payment-confirm-route.test.ts
+PASS tests/core-contract-flow-governance.test.ts
+
+Test Suites: 5 passed, 5 total
+Tests:       16 passed, 16 total
+Snapshots:   0 total
+Time:        2.807 s
+Ran all test suites matching /tests\\mainline-e2e-simulated.test.ts|tests\\core-contract-flow-governance.test.ts|tests\\payment-confirm-route.test.ts|tests\\payment-webhook-routes.test.ts|tests\\workspace-invites-store.test.ts/i.

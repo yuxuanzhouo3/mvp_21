@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { resolveDeploymentRegion } from "@/lib/config/deployment-region";
 
 // 环境变量验证schema
 const envSchema = z.object({
@@ -54,18 +55,6 @@ const envSchema = z.object({
   STRIPE_TEAM_MONTHLY_PRICE_ID: z.string().optional(),
   STRIPE_TEAM_ANNUAL_PRICE_ID: z.string().optional(),
 
-  // PayPal配置
-  PAYPAL_CLIENT_ID: z.string().optional(),
-  PAYPAL_CLIENT_SECRET: z.string().optional(),
-  PAYPAL_WEBHOOK_ID: z.string().optional(),
-  PAYPAL_MODE: z.enum(["sandbox", "live"]).default("sandbox"),
-  PAYPAL_ENVIRONMENT: z.enum(["sandbox", "live", "production"]).optional(),
-
-  // PayPal计划ID
-  PAYPAL_PRO_MONTHLY_PLAN_ID: z.string().optional(),
-  PAYPAL_PRO_ANNUAL_PLAN_ID: z.string().optional(),
-  PAYPAL_TEAM_MONTHLY_PLAN_ID: z.string().optional(),
-  PAYPAL_TEAM_ANNUAL_PLAN_ID: z.string().optional(),
   ALIPAY_APP_ID: z.string().optional(),
   ALIPAY_PRIVATE_KEY: z.string().optional(),
   ALIPAY_PUBLIC_KEY: z.string().optional(),
@@ -132,13 +121,74 @@ const envSchema = z.object({
 });
 
 function resolveRegion(envData: Record<string, string | undefined>): "CN" | "INTL" {
-  const rawRegion =
-    envData.NEXT_PUBLIC_APP_REGION ||
-    envData.APP_REGION ||
-    envData.NEXT_PUBLIC_DEPLOYMENT_REGION ||
-    "CN";
+  return resolveDeploymentRegion(envData).region;
+}
 
-  return rawRegion.toUpperCase() === "INTL" ? "INTL" : "CN";
+function isPlaceholderValue(value?: string): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  const placeholderTokens = [
+    "replace_me",
+    "replace-me",
+    "replace-with",
+    "your-",
+    "your_",
+    "your ",
+    "example",
+    "placeholder",
+    "changeme",
+    "todo",
+    "dummy",
+  ];
+
+  return placeholderTokens.some((token) => normalized.includes(token));
+}
+
+function validateProductionPlaceholderValues(
+  envData: Record<string, string | undefined>,
+): string[] {
+  if ((envData.NODE_ENV || "development") !== "production") {
+    return [];
+  }
+
+  const errors: string[] = [];
+  const pushIfPlaceholder = (key: string, message?: string) => {
+    if (isPlaceholderValue(envData[key])) {
+      errors.push(message || `${key}: placeholder value is not allowed in production`);
+    }
+  };
+
+  pushIfPlaceholder("NEXT_PUBLIC_SUPABASE_URL");
+  pushIfPlaceholder("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  pushIfPlaceholder("SUPABASE_SERVICE_ROLE_KEY");
+  pushIfPlaceholder("OPENAI_API_KEY");
+  pushIfPlaceholder("APP_URL");
+  pushIfPlaceholder("NEXT_PUBLIC_APP_URL");
+  pushIfPlaceholder("ALIPAY_APP_ID");
+
+  if ((envData.STRIPE_SECRET_KEY || "").startsWith("sk_test_")) {
+    errors.push("STRIPE_SECRET_KEY: sk_test_ keys are not allowed in production");
+  }
+
+  if ((envData.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "").startsWith("pk_test_")) {
+    errors.push(
+      "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ keys are not allowed in production",
+    );
+  }
+
+  const alipayGateway = (envData.ALIPAY_GATEWAY_URL || "").toLowerCase();
+  if (alipayGateway.includes("sandbox") || alipayGateway.includes("alipaydev.com")) {
+    errors.push("ALIPAY_GATEWAY_URL: sandbox gateway is not allowed in production");
+  }
+
+  return errors;
 }
 
 /**
@@ -165,24 +215,31 @@ export function validateEnvironment():
     }
 
     const region = resolveRegion(envData);
+    const regionResolution = resolveDeploymentRegion(envData);
     const conditionalErrors: string[] = [];
+
+    if (regionResolution.deprecatedSourceUsed) {
+      console.warn(
+        `[env] ${regionResolution.source} is deprecated. Use NEXT_PUBLIC_DEPLOYMENT_REGION.`,
+      );
+    }
 
     if (region === "INTL") {
       if (!envData.NEXT_PUBLIC_SUPABASE_URL) {
         conditionalErrors.push(
-          "NEXT_PUBLIC_SUPABASE_URL: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is INTL"
+          "NEXT_PUBLIC_SUPABASE_URL: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to INTL"
         );
       }
 
       if (!envData.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
         conditionalErrors.push(
-          "NEXT_PUBLIC_SUPABASE_ANON_KEY: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is INTL"
+          "NEXT_PUBLIC_SUPABASE_ANON_KEY: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to INTL"
         );
       }
 
       if (!envData.SUPABASE_SERVICE_ROLE_KEY) {
         conditionalErrors.push(
-          "SUPABASE_SERVICE_ROLE_KEY: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is INTL"
+          "SUPABASE_SERVICE_ROLE_KEY: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to INTL"
         );
       }
     }
@@ -190,49 +247,49 @@ export function validateEnvironment():
     if (region === "CN") {
       if (!envData.NEXT_PUBLIC_WECHAT_CLOUDBASE_ID) {
         conditionalErrors.push(
-          "NEXT_PUBLIC_WECHAT_CLOUDBASE_ID: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+          "NEXT_PUBLIC_WECHAT_CLOUDBASE_ID: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to CN"
         );
       }
 
       if (!envData.CLOUDBASE_SECRET_ID) {
         conditionalErrors.push(
-          "CLOUDBASE_SECRET_ID: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+          "CLOUDBASE_SECRET_ID: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to CN"
         );
       }
 
       if (!envData.CLOUDBASE_SECRET_KEY) {
         conditionalErrors.push(
-          "CLOUDBASE_SECRET_KEY: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+          "CLOUDBASE_SECRET_KEY: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to CN"
         );
       }
 
       if (!envData.TENCENT_SMS_APP_ID) {
         conditionalErrors.push(
-          "TENCENT_SMS_APP_ID: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+          "TENCENT_SMS_APP_ID: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to CN"
         );
       }
 
       if (!envData.TENCENT_SMS_SIGN_NAME) {
         conditionalErrors.push(
-          "TENCENT_SMS_SIGN_NAME: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+          "TENCENT_SMS_SIGN_NAME: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to CN"
         );
       }
 
       if (!envData.TENCENT_SMS_TEMPLATE_ID) {
         conditionalErrors.push(
-          "TENCENT_SMS_TEMPLATE_ID: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+          "TENCENT_SMS_TEMPLATE_ID: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to CN"
         );
       }
 
       if (!envData.TENCENT_SMS_SECRET_ID) {
         conditionalErrors.push(
-          "TENCENT_SMS_SECRET_ID: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+          "TENCENT_SMS_SECRET_ID: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to CN"
         );
       }
 
       if (!envData.TENCENT_SMS_SECRET_KEY) {
         conditionalErrors.push(
-          "TENCENT_SMS_SECRET_KEY: Required when APP_REGION/NEXT_PUBLIC_APP_REGION is CN"
+          "TENCENT_SMS_SECRET_KEY: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to CN"
         );
       }
     }
@@ -243,7 +300,7 @@ export function validateEnvironment():
       !envData.JWT_SECRET?.trim()
     ) {
       conditionalErrors.push(
-        "JWT_SECRET: Required in production when APP_REGION/NEXT_PUBLIC_APP_REGION resolves to CN"
+        "JWT_SECRET: Required in production when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to CN"
       );
     }
 
@@ -254,6 +311,8 @@ export function validateEnvironment():
         "WECHAT_PAY_API_V3_KEY: When provided, it must contain exactly 32 characters"
       );
     }
+
+    conditionalErrors.push(...validateProductionPlaceholderValues(envData));
 
     if (conditionalErrors.length > 0) {
       return { success: false, errors: conditionalErrors };
@@ -298,7 +357,6 @@ export function checkSensitiveDataExposure(): {
   // 检查是否在客户端代码中暴露了敏感信息
   const sensitiveKeys = [
     "STRIPE_SECRET_KEY",
-    "PAYPAL_CLIENT_SECRET",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
     "DASHSCOPE_API_KEY",

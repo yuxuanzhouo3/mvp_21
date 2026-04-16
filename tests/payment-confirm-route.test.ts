@@ -12,7 +12,6 @@ const mockLogError: any = jest.fn();
 const mockLogSecurityEvent: any = jest.fn();
 const mockObserveOperationalMetric: any = jest.fn();
 
-const mockPayPalConfirmPayment: any = jest.fn();
 const mockStripeConfirmPayment: any = jest.fn();
 const mockAlipayConfirmPayment: any = jest.fn();
 const mockAlipayQueryPayment: any = jest.fn();
@@ -44,15 +43,6 @@ jest.mock("@/lib/utils/logger", () => ({
 jest.mock("@/lib/monitoring/operational-observability", () => ({
   observeOperationalMetric: (...args: unknown[]) => mockObserveOperationalMetric(...args),
 }));
-
-jest.mock(
-  "@/lib/architecture-modules/layers/third-party/payment/providers/paypal-provider",
-  () => ({
-    PayPalProvider: jest.fn().mockImplementation(() => ({
-      confirmPayment: mockPayPalConfirmPayment,
-    })),
-  }),
-);
 
 jest.mock(
   "@/lib/architecture-modules/layers/third-party/payment/providers/stripe-provider",
@@ -132,7 +122,7 @@ describe("payment confirm route coverage", () => {
     mockGetPaymentRecordById.mockResolvedValue({
       id: "payment-1",
       user_id: "user-2",
-      payment_method: "paypal",
+      payment_method: "stripe",
       status: "pending",
     });
 
@@ -144,22 +134,22 @@ describe("payment confirm route coverage", () => {
     expect(mockApplySubscriptionPaymentSuccess).not.toHaveBeenCalled();
   });
 
-  test("returns a provider rejection when confirmation fails upstream", async () => {
+  test("returns a provider rejection when stripe confirmation fails upstream", async () => {
     mockRequireAuth.mockResolvedValue({
       user: { id: "user-1" },
     });
     mockGetPaymentRecordById.mockResolvedValue({
       id: "payment-1",
       user_id: "user-1",
-      payment_method: "paypal",
-      transaction_id: "paypal-order-1",
+      payment_method: "stripe",
+      transaction_id: "stripe-session-1",
       amount: 199,
       currency: "USD",
       status: "pending",
     });
-    mockPayPalConfirmPayment.mockResolvedValue({
+    mockStripeConfirmPayment.mockResolvedValue({
       success: false,
-      transactionId: "paypal-order-1",
+      transactionId: "stripe-session-1",
       amount: 199,
       currency: "USD",
     });
@@ -179,7 +169,7 @@ describe("payment confirm route coverage", () => {
     );
   });
 
-  test("returns the stored result for already completed payments without re-confirming upstream", async () => {
+  test("returns the stored result for already completed stripe payments without re-confirming upstream", async () => {
     mockRequireAuth.mockResolvedValue({
       user: { id: "user-1" },
     });
@@ -187,8 +177,8 @@ describe("payment confirm route coverage", () => {
       id: "payment-1",
       user_id: "user-1",
       subscription_id: "subscription-1",
-      payment_method: "paypal",
-      transaction_id: "paypal-capture-1",
+      payment_method: "stripe",
+      transaction_id: "stripe-session-1",
       amount: 299,
       currency: "USD",
       status: "completed",
@@ -203,7 +193,7 @@ describe("payment confirm route coverage", () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(mockPayPalConfirmPayment).not.toHaveBeenCalled();
+    expect(mockStripeConfirmPayment).not.toHaveBeenCalled();
     expect(mockApplySubscriptionPaymentSuccess).not.toHaveBeenCalled();
     expect(mockObserveOperationalMetric).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -214,7 +204,7 @@ describe("payment confirm route coverage", () => {
     );
     expect(payload).toEqual({
       success: true,
-      transactionId: "paypal-capture-1",
+      transactionId: "stripe-session-1",
       amount: 299,
       currency: "USD",
       subscription: {
@@ -226,22 +216,22 @@ describe("payment confirm route coverage", () => {
     });
   });
 
-  test("syncs the subscription after a successful provider confirmation", async () => {
+  test("syncs the subscription after a successful stripe confirmation", async () => {
     mockRequireAuth.mockResolvedValue({
       user: { id: "user-1" },
     });
     mockGetPaymentRecordById.mockResolvedValue({
       id: "payment-1",
       user_id: "user-1",
-      payment_method: "paypal",
-      transaction_id: "paypal-order-1",
+      payment_method: "stripe",
+      transaction_id: "stripe-session-1",
       amount: 299,
       currency: "USD",
       status: "pending",
     });
-    mockPayPalConfirmPayment.mockResolvedValue({
+    mockStripeConfirmPayment.mockResolvedValue({
       success: true,
-      transactionId: "paypal-capture-1",
+      transactionId: "stripe-payment-intent-1",
       amount: 299,
       currency: "USD",
     });
@@ -272,17 +262,17 @@ describe("payment confirm route coverage", () => {
       payment: expect.objectContaining({
         id: "payment-1",
         user_id: "user-1",
-        payment_method: "paypal",
+        payment_method: "stripe",
       }),
-      finalTransactionId: "paypal-capture-1",
-      providerReference: "paypal-order-1",
+      finalTransactionId: "stripe-payment-intent-1",
+      providerReference: "stripe-session-1",
       amount: 299,
       currency: "USD",
-      paymentMethod: "paypal",
+      paymentMethod: "stripe",
     });
     expect(payload).toEqual({
       success: true,
-      transactionId: "paypal-capture-1",
+      transactionId: "stripe-payment-intent-1",
       amount: 299,
       currency: "USD",
       subscription: {

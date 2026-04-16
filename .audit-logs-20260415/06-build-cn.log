@@ -1,0 +1,199 @@
+
+> morncontract@0.1.0 build:cn
+> node scripts/use-env.mjs cn && next build
+
+Active env switched to .env.cn -> .env.local
+   ▲ Next.js 15.2.8
+   - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+ ⨯ ESLint: Cannot find module 'E:\xiangmu\code\new\node_modules\eslint-config-next\core-web-vitals' imported from E:\xiangmu\code\new\eslint.config.mjs Did you mean to import "eslint-config-next/core-web-vitals.js"?
+   Collecting page data ...
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+   Generating static pages (0/107) ...
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[Auth Client] Using CloudBase auth client
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[Auth Client] Using CloudBase auth client
+[deployment] region=CN, auth=cloudbase
+[deployment] region=CN, auth=cloudbase
+[Auth Client] Using CloudBase auth client
+[deployment] region=CN, auth=cloudbase
+[Auth Client] Using CloudBase auth client
+   Generating static pages (26/107) 
+   Generating static pages (53/107) 
+   Generating static pages (80/107) 
+ ✓ Generating static pages (107/107)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                       Size  First Load JS
+┌ ○ /                                          1.23 kB         230 kB
+├ ○ /_not-found                                  988 B         102 kB
+├ ƒ /admin                                       11 kB         170 kB
+├ ƒ /admin/ads                                 10.8 kB         318 kB
+├ ƒ /admin/analytics                           15.1 kB         313 kB
+├ ƒ /admin/audit                               8.34 kB         207 kB
+├ ƒ /admin/settings                            11.7 kB         214 kB
+├ ƒ /admin/subscriptions                       10.9 kB         216 kB
+├ ƒ /admin/users                               11.4 kB         218 kB
+├ ƒ /admin/versions                            9.58 kB         209 kB
+├ ƒ /api/admin/ads                               340 B         102 kB
+├ ƒ /api/admin/ads/[id]                          340 B         102 kB
+├ ƒ /api/admin/analytics                         340 B         102 kB
+├ ƒ /api/admin/audit                             340 B         102 kB
+├ ƒ /api/admin/notifications/payment-failures    340 B         102 kB
+├ ƒ /api/admin/settings                          340 B         102 kB
+├ ƒ /api/admin/stats                             340 B         102 kB
+├ ƒ /api/admin/subscriptions                     340 B         102 kB
+├ ƒ /api/admin/upload                            340 B         102 kB
+├ ƒ /api/admin/users                             340 B         102 kB
+├ ƒ /api/admin/users/[id]                        340 B         102 kB
+├ ƒ /api/admin/versions                          340 B         102 kB
+├ ƒ /api/admin/versions/[id]                     340 B         102 kB
+├ ƒ /api/ads                                     340 B         102 kB
+├ ƒ /api/ads/track                               340 B         102 kB
+├ ƒ /api/auth                                    340 B         102 kB
+├ ƒ /api/auth/config                             340 B         102 kB
+├ ƒ /api/auth/login                              340 B         102 kB
+├ ƒ /api/auth/logout                             340 B         102 kB
+├ ƒ /api/auth/me                                 340 B         102 kB
+├ ƒ /api/auth/phone                              340 B         102 kB
+├ ƒ /api/auth/refresh                            340 B         102 kB
+├ ƒ /api/auth/register                           340 B         102 kB
+├ ƒ /api/auth/reset-password                     340 B         102 kB
+├ ƒ /api/auth/send-reset-code                    340 B         102 kB
+├ ƒ /api/auth/sms/send                           340 B         102 kB
+├ ƒ /api/auth/status                             340 B         102 kB
+├ ƒ /api/auth/unlock                             340 B         102 kB
+├ ƒ /api/auth/update                             340 B         102 kB
+├ ƒ /api/auth/verify-reset-code                  340 B         102 kB
+├ ƒ /api/auth/wechat/mini                        340 B         102 kB
+├ ƒ /api/company-info                            340 B         102 kB
+├ ƒ /api/contracts                               340 B         102 kB
+├ ƒ /api/contracts/[id]                          340 B         102 kB
+├ ƒ /api/contracts/[id]/export                   340 B         102 kB
+├ ƒ /api/contracts/ai-chat                       340 B         102 kB
+├ ƒ /api/contracts/analyze                       340 B         102 kB
+├ ƒ /api/contracts/generate                      340 B         102 kB
+├ ƒ /api/contracts/generate/jobs                 340 B         102 kB
+├ ƒ /api/contracts/generate/jobs/[jobId]         340 B         102 kB
+├ ƒ /api/contracts/import-screenshot             340 B         102 kB
+├ ƒ /api/dashboard/billing                       340 B         102 kB
+├ ƒ /api/dashboard/documents                     340 B         102 kB
+├ ƒ /api/dashboard/documents/[id]                340 B         102 kB
+├ ƒ /api/dashboard/documents/[id]/certificate    340 B         102 kB
+├ ƒ /api/dashboard/documents/[id]/download       340 B         102 kB
+├ ƒ /api/dashboard/documents/[id]/share          340 B         102 kB
+├ ƒ /api/dashboard/documents/[id]/verify         340 B         102 kB
+├ ƒ /api/dashboard/overview                      340 B         102 kB
+├ ƒ /api/dashboard/team                          340 B         102 kB
+├ ƒ /api/dashboard/team/[id]                     340 B         102 kB
+├ ƒ /api/dashboard/templates                     340 B         102 kB
+├ ƒ /api/dashboard/templates/[id]                340 B         102 kB
+├ ƒ /api/downloads                               340 B         102 kB
+├ ƒ /api/geo                                     340 B         102 kB
+├ ƒ /api/health                                  340 B         102 kB
+├ ƒ /api/ocr/business-license                    340 B         102 kB
+├ ƒ /api/payment/cancel                          340 B         102 kB
+├ ƒ /api/payment/config                          340 B         102 kB
+├ ƒ /api/payment/confirm                         340 B         102 kB
+├ ƒ /api/payment/continue                        340 B         102 kB
+├ ƒ /api/payment/create                          340 B         102 kB
+├ ƒ /api/payment/history                         340 B         102 kB
+├ ƒ /api/payment/invoice/[id]                    340 B         102 kB
+├ ƒ /api/payment/onetime/confirm                 340 B         102 kB
+├ ƒ /api/payment/onetime/create                  340 B         102 kB
+├ ƒ /api/payment/onetime/webhook                 340 B         102 kB
+├ ƒ /api/payment/status                          340 B         102 kB
+├ ƒ /api/payment/verify                          340 B         102 kB
+├ ƒ /api/payment/webhook/alipay                  340 B         102 kB
+├ ƒ /api/payment/webhook/paypal                  340 B         102 kB
+├ ƒ /api/payment/webhook/stripe                  340 B         102 kB
+├ ƒ /api/payment/webhook/wechat                  340 B         102 kB
+├ ƒ /api/payment/wechat/native/create            340 B         102 kB
+├ ƒ /api/payment/wechat/query                    340 B         102 kB
+├ ƒ /api/profile                                 340 B         102 kB
+├ ƒ /api/public/documents/[token]/certificate    340 B         102 kB
+├ ƒ /api/public/documents/[token]/verify         340 B         102 kB
+├ ƒ /api/public/team-invites/[token]             340 B         102 kB
+├ ƒ /api/team-invites/[token]/accept             340 B         102 kB
+├ ○ /auth                                      11.2 kB         207 kB
+├ ○ /auth/callback                             3.28 kB         135 kB
+├ ○ /companies                                 12.5 kB         245 kB
+├ ƒ /contact                                     227 B         229 kB
+├ ○ /contracts                                 10.4 kB         257 kB
+├ ƒ /contracts/[id]                            5.88 kB         246 kB
+├ ○ /contracts/ai-generate                       340 B         102 kB
+├ ○ /contracts/company-setup                   6.71 kB         248 kB
+├ ƒ /create                                      202 B         150 kB
+├ ○ /create/ai-chat                             8.6 kB         253 kB
+├ ○ /create/analyze                            13.2 kB         222 kB
+├ ○ /create/edit                                9.2 kB         239 kB
+├ ○ /create/import                             12.8 kB         239 kB
+├ ○ /customers                                 3.71 kB         232 kB
+├ ƒ /dashboard                                 4.77 kB         253 kB
+├ ƒ /dashboard/billing                         11.7 kB         243 kB
+├ ƒ /dashboard/contracts                         700 B         226 kB
+├ ƒ /dashboard/contracts/[id]/sign               221 B         211 kB
+├ ƒ /dashboard/contracts/new                     333 B         150 kB
+├ ƒ /dashboard/documents                         15 kB         260 kB
+├ ƒ /dashboard/documents/[id]/verify           3.23 kB         239 kB
+├ ƒ /dashboard/settings                        10.2 kB         242 kB
+├ ƒ /dashboard/signatures                      9.98 kB         227 kB
+├ ƒ /dashboard/team                            10.3 kB         232 kB
+├ ƒ /dashboard/templates                       10.9 kB         215 kB
+├ ○ /download                                  6.08 kB         141 kB
+├ ○ /features                                  2.36 kB         231 kB
+├ ○ /how-it-works                               2.9 kB         232 kB
+├ ƒ /invite/workspace/[token]                  13.9 kB         188 kB
+├ ƒ /login                                       340 B         102 kB
+├ ○ /mobile                                    13.8 kB         179 kB
+├ ○ /mobile/contracts                          6.43 kB         214 kB
+├ ○ /mobile/sign                                 494 B         211 kB
+├ ○ /payment                                   8.81 kB         220 kB
+├ ○ /payment/cancel                            4.09 kB         113 kB
+├ ○ /payment/redirect                          2.38 kB         134 kB
+├ ○ /payment/success                           9.47 kB         195 kB
+├ ○ /payment/wechat-qrcode                     5.63 kB         143 kB
+├ ○ /pricing                                   3.24 kB         232 kB
+├ ○ /privacy                                   2.82 kB         232 kB
+├ ○ /profile                                   8.21 kB         234 kB
+├ ○ /settings                                    432 B         249 kB
+├ ○ /settings/security                           433 B         249 kB
+├ ○ /settings/sessions                           431 B         249 kB
+├ ƒ /signup                                      340 B         102 kB
+├ ○ /terms                                     2.98 kB         232 kB
+├ ƒ /verify/document/[token]                   2.59 kB         187 kB
+└ ○ /wechat                                    4.89 kB         114 kB
++ First Load JS shared by all                   102 kB
+  ├ chunks/1601-bee26681e09c700d.js              46 kB
+  ├ chunks/d58bb8b6-d4623d81ceeac6fc.js        53.3 kB
+  └ other shared chunks (total)                 2.2 kB
+
+
+ƒ Middleware                                   37.2 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

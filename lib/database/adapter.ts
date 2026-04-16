@@ -1,77 +1,39 @@
-/**
- * 数据库服务适配器
- *
- * 使用腾讯云 CloudBase 集合数据库（NoSQL）
- * 适配器模式用于支持多个数据库后端，但当前项目仅使用 CloudBase 集合数据库
- */
-
+import { getDatabase as getCloudBaseDatabase } from "@/lib/cloudbase/cloudbase-service";
 import { isChinaRegion } from "@/lib/config/region";
 import { DataValidators } from "@/lib/models/database";
 
-/**
- * 数据库适配器接口
- */
 export interface DatabaseAdapter {
-  /**
-   * 查询数据
-   * @param table 表名/集合名
-   * @param filter 过滤条件
-   * @returns 查询结果
-   */
   query<T>(table: string, filter?: Record<string, any>): Promise<T[]>;
-
-  /**
-   * 插入数据
-   * @param table 表名/集合名
-   * @param data 数据对象
-   * @returns 插入的数据（包含 ID）
-   */
   insert<T>(table: string, data: T): Promise<T & { id: string }>;
-
-  /**
-   * 更新数据
-   * @param table 表名/集合名
-   * @param id 记录 ID
-   * @param data 更新的数据
-   * @returns 更新后的数据
-   */
   update<T>(table: string, id: string, data: Partial<T>): Promise<T>;
-
-  /**
-   * 删除数据
-   * @param table 表名/集合名
-   * @param id 记录 ID
-   */
   delete(table: string, id: string): Promise<void>;
-
-  /**
-   * 根据 ID 查询单条数据
-   * @param table 表名/集合名
-   * @param id 记录 ID
-   * @returns 查询结果
-   */
   getById<T>(table: string, id: string): Promise<T | null>;
 }
 
-/**
- * Supabase 数据库适配器（国际版）
- */
 class SupabaseDatabaseAdapter implements DatabaseAdapter {
   private supabase: any;
+  private initPromise: Promise<any>;
 
   constructor() {
-    // 动态导入 Supabase 客户端
-    import("@/lib/integrations/supabase").then(({ supabase }) => {
-      this.supabase = supabase;
-    });
+    this.initPromise = import("@/lib/integrations/supabase").then(
+      ({ supabase }) => {
+        this.supabase = supabase;
+        return supabase;
+      },
+    );
+  }
+
+  private async ensureSupabase() {
+    if (this.supabase) {
+      return this.supabase;
+    }
+
+    return this.initPromise;
   }
 
   async query<T>(table: string, filter?: Record<string, any>): Promise<T[]> {
-    if (!this.supabase) {
-      throw new Error("Supabase 客户端未初始化");
-    }
-
-    let query = this.supabase.from(table).select("*");
+    const supabase = await this.ensureSupabase();
+    let query = supabase.from(table).select("*");
 
     if (filter) {
       Object.entries(filter).forEach(([key, value]) => {
@@ -80,64 +42,45 @@ class SupabaseDatabaseAdapter implements DatabaseAdapter {
     }
 
     const { data, error } = await query;
-
     if (error) {
-      throw new Error(`查询失败: ${error.message}`);
+      throw new Error(`Query failed: ${error.message}`);
     }
 
-    return data as T[];
+    return (data || []) as T[];
   }
 
   async insert<T>(table: string, data: T): Promise<T & { id: string }> {
-    if (!this.supabase) {
-      throw new Error("Supabase 客户端未初始化");
+    const supabase = await this.ensureSupabase();
+
+    if (table === "user_profiles" && !DataValidators.validateUserProfile(data as any)) {
+      throw new Error("Invalid user profile payload");
+    }
+    if (table === "chat_sessions" && !DataValidators.validateChatSession(data as any)) {
+      throw new Error("Invalid chat session payload");
+    }
+    if (table === "chat_messages" && !DataValidators.validateChatMessage(data as any)) {
+      throw new Error("Invalid chat message payload");
+    }
+    if (table === "payment_records" && !DataValidators.validatePaymentRecord(data as any)) {
+      throw new Error("Invalid payment record payload");
     }
 
-    // 数据验证（如果有对应的验证器）
-    if (
-      table === "user_profiles" &&
-      !DataValidators.validateUserProfile(data as any)
-    ) {
-      throw new Error("用户资料数据格式无效");
-    }
-    if (
-      table === "chat_sessions" &&
-      !DataValidators.validateChatSession(data as any)
-    ) {
-      throw new Error("聊天会话数据格式无效");
-    }
-    if (
-      table === "chat_messages" &&
-      !DataValidators.validateChatMessage(data as any)
-    ) {
-      throw new Error("聊天消息数据格式无效");
-    }
-    if (
-      table === "payment_records" &&
-      !DataValidators.validatePaymentRecord(data as any)
-    ) {
-      throw new Error("支付记录数据格式无效");
-    }
-
-    const { data: result, error } = await this.supabase
+    const { data: result, error } = await supabase
       .from(table)
       .insert(data)
       .select()
       .single();
 
     if (error) {
-      throw new Error(`插入失败: ${error.message}`);
+      throw new Error(`Insert failed: ${error.message}`);
     }
 
     return result as T & { id: string };
   }
 
   async update<T>(table: string, id: string, data: Partial<T>): Promise<T> {
-    if (!this.supabase) {
-      throw new Error("Supabase 客户端未初始化");
-    }
-
-    const { data: result, error } = await this.supabase
+    const supabase = await this.ensureSupabase();
+    const { data: result, error } = await supabase
       .from(table)
       .update(data)
       .eq("id", id)
@@ -145,30 +88,24 @@ class SupabaseDatabaseAdapter implements DatabaseAdapter {
       .single();
 
     if (error) {
-      throw new Error(`更新失败: ${error.message}`);
+      throw new Error(`Update failed: ${error.message}`);
     }
 
     return result as T;
   }
 
   async delete(table: string, id: string): Promise<void> {
-    if (!this.supabase) {
-      throw new Error("Supabase 客户端未初始化");
-    }
-
-    const { error } = await this.supabase.from(table).delete().eq("id", id);
+    const supabase = await this.ensureSupabase();
+    const { error } = await supabase.from(table).delete().eq("id", id);
 
     if (error) {
-      throw new Error(`删除失败: ${error.message}`);
+      throw new Error(`Delete failed: ${error.message}`);
     }
   }
 
   async getById<T>(table: string, id: string): Promise<T | null> {
-    if (!this.supabase) {
-      return null;
-    }
-
-    const { data, error } = await this.supabase
+    const supabase = await this.ensureSupabase();
+    const { data, error } = await supabase
       .from(table)
       .select("*")
       .eq("id", id)
@@ -176,26 +113,66 @@ class SupabaseDatabaseAdapter implements DatabaseAdapter {
 
     if (error) {
       if (error.code === "PGRST116") {
-        // 记录不存在
         return null;
       }
-      throw new Error(`查询失败: ${error.message}`);
+      throw new Error(`Query failed: ${error.message}`);
     }
 
     return data as T;
   }
 }
 
-/**
- * 内存数据库适配器（降级方案）
- * 当 CloudBase 不可用时使用，用于开发和测试
- */
-class MemoryDatabaseAdapter implements DatabaseAdapter {
-  private data: Map<string, Map<string, any>> = new Map();
+class CloudBaseDatabaseAdapter implements DatabaseAdapter {
+  private db: any;
 
   constructor() {
-    console.warn("⚠️ 使用内存数据库适配器（降级模式）- 数据不会持久化");
+    this.db = getCloudBaseDatabase();
   }
+
+  async query<T>(table: string, filter?: Record<string, any>): Promise<T[]> {
+    const collection = this.db.collection(table);
+    const query = filter ? collection.where(filter) : collection;
+    const result = await query.get();
+    return (result?.data || []) as T[];
+  }
+
+  async insert<T>(table: string, data: T): Promise<T & { id: string }> {
+    const created = await this.db
+      .collection(table)
+      .add(data as Record<string, unknown>);
+    const inserted = await this.db.collection(table).doc(created.id).get();
+    const row = inserted?.data?.[0] || {};
+
+    return {
+      ...(row as T),
+      id: String((row as any)._id || (row as any).id || created.id),
+    };
+  }
+
+  async update<T>(table: string, id: string, data: Partial<T>): Promise<T> {
+    await this.db.collection(table).doc(id).update(data as Record<string, unknown>);
+    const updated = await this.getById<T>(table, id);
+
+    if (!updated) {
+      throw new Error(`Record not found after update: ${table}/${id}`);
+    }
+
+    return updated;
+  }
+
+  async delete(table: string, id: string): Promise<void> {
+    await this.db.collection(table).doc(id).remove();
+  }
+
+  async getById<T>(table: string, id: string): Promise<T | null> {
+    const result = await this.db.collection(table).doc(id).get();
+    const row = result?.data?.[0] as T | undefined;
+    return row || null;
+  }
+}
+
+class MemoryDatabaseAdapter implements DatabaseAdapter {
+  private data: Map<string, Map<string, any>> = new Map();
 
   async query<T>(table: string, filter?: Record<string, any>): Promise<T[]> {
     const tableData = this.data.get(table) || new Map();
@@ -203,7 +180,7 @@ class MemoryDatabaseAdapter implements DatabaseAdapter {
 
     if (filter) {
       results = results.filter((item: any) =>
-        Object.entries(filter).every(([key, value]) => item[key] === value)
+        Object.entries(filter).every(([key, value]) => item[key] === value),
       );
     }
 
@@ -217,10 +194,8 @@ class MemoryDatabaseAdapter implements DatabaseAdapter {
 
     const tableData = this.data.get(table)!;
     const id =
-      (data as any).id ||
-      `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      (data as any).id || `mem_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
     const item = { ...data, id };
-
     tableData.set(id, item);
     return item as T & { id: string };
   }
@@ -228,13 +203,12 @@ class MemoryDatabaseAdapter implements DatabaseAdapter {
   async update<T>(table: string, id: string, data: Partial<T>): Promise<T> {
     const tableData = this.data.get(table);
     if (!tableData || !tableData.has(id)) {
-      throw new Error(`记录不存在: ${table}/${id}`);
+      throw new Error(`Record not found: ${table}/${id}`);
     }
 
     const existing = tableData.get(id);
     const updated = { ...existing, ...data };
     tableData.set(id, updated);
-
     return updated as T;
   }
 
@@ -255,59 +229,28 @@ class MemoryDatabaseAdapter implements DatabaseAdapter {
   }
 }
 
-/**
- * 创建数据库适配器实例
- *
- * 注意：此函数已弃用。新代码应直接使用 CloudBase SDK 的集合数据库 API
- *
- * 示例：
- * ```typescript
- * import cloudbase from "@cloudbase/node-sdk";
- *
- * const app = cloudbase.init({
- *   env: process.env.NEXT_PUBLIC_WECHAT_CLOUDBASE_ID,
- *   secretId: process.env.CLOUDBASE_SECRET_ID,
- *   secretKey: process.env.CLOUDBASE_SECRET_KEY,
- * });
- *
- * const db = app.database();
- * const collection = db.collection("web_users");
- *
- * // Query
- * const result = await collection.where({ name: "test" }).get();
- *
- * // Insert
- * const insertResult = await collection.add({ name: "test" });
- *
- * // Update
- * await collection.doc(id).update({ name: "updated" });
- *
- * // Delete
- * await collection.doc(id).delete();
- * ```
- *
- * @deprecated 使用 CloudBase SDK 的集合数据库 API，见注释中的示例
- */
 export function createDatabaseAdapter(): DatabaseAdapter {
-  throw new Error(
-    "❌ createDatabaseAdapter() 已弃用。请直接使用 CloudBase SDK 的集合数据库 API。" +
-    "参考：lib/database/adapter.ts 中的注释或 app/api/auth/phone/route.ts 中的实现"
-  );
+  if (isChinaRegion()) {
+    try {
+      return new CloudBaseDatabaseAdapter();
+    } catch (error) {
+      console.warn(
+        "[database/adapter] CloudBase unavailable, falling back to in-memory adapter.",
+        error,
+      );
+      return new MemoryDatabaseAdapter();
+    }
+  }
+
+  return new SupabaseDatabaseAdapter();
 }
 
-/**
- * 全局数据库实例（单例模式）
- * @deprecated 使用 CloudBase SDK 的集合数据库 API，不再需要此实例
- */
 let dbInstance: DatabaseAdapter | null = null;
 
-/**
- * 获取数据库实例
- * @deprecated 使用 CloudBase SDK 的集合数据库 API，见 createDatabaseAdapter() 中的示例
- */
 export function getDatabase(): DatabaseAdapter {
-  throw new Error(
-    "❌ getDatabase() 已弃用。请直接使用 CloudBase SDK 的集合数据库 API。" +
-    "参考：lib/database/adapter.ts 中 createDatabaseAdapter() 的注释或 app/api/auth/phone/route.ts 中的实现"
-  );
+  if (!dbInstance) {
+    dbInstance = createDatabaseAdapter();
+  }
+
+  return dbInstance;
 }

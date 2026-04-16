@@ -156,15 +156,6 @@ jest.mock(
 );
 
 jest.mock(
-  "@/lib/architecture-modules/layers/third-party/payment/providers/paypal-provider",
-  () => ({
-    PayPalProvider: jest.fn().mockImplementation(() => ({
-      confirmPayment: async () => ({ success: true, transactionId: "pp_txn", amount: 99, currency: "USD" }),
-    })),
-  }),
-);
-
-jest.mock(
   "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider",
   () => ({
     AlipayProvider: jest.fn().mockImplementation(() => ({

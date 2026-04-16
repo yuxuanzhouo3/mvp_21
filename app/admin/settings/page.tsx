@@ -488,7 +488,6 @@ export default function SettingsPage() {
                 { key: 'wechat' as const, label: isEn ? 'WeChat Pay' : '微信支付' },
                 { key: 'alipay' as const, label: 'Alipay' },
                 { key: 'stripe' as const, label: 'Stripe' },
-                { key: 'paypal' as const, label: 'PayPal' },
               ].map((item) => (
                 <ToggleRow
                   key={item.key}

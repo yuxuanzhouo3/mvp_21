@@ -57,10 +57,18 @@ export function performStartupSecurityChecks(): void {
     }
 
     // 检查是否配置了支付提供商
-    const paymentConfigured = [
-      process.env.STRIPE_SECRET_KEY,
-      process.env.PAYPAL_CLIENT_SECRET,
-    ].some((key) => key);
+    const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY);
+    const wechatConfigured = Boolean(
+      process.env.WECHAT_PAY_MCH_ID &&
+        (process.env.WECHAT_PAY_API_V3_KEY || process.env.WECHAT_PAY_API_KEY_V3),
+    );
+    const alipayConfigured = Boolean(
+      process.env.ALIPAY_APP_ID || process.env.NEXT_PUBLIC_ALIPAY_APP_ID,
+    );
+
+    const paymentConfigured = isInternationalDeployment()
+      ? stripeConfigured
+      : wechatConfigured || alipayConfigured;
 
     if (!paymentConfigured) {
       console.warn("⚠️  No payment providers configured in production");

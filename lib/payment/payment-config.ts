@@ -4,7 +4,7 @@
  */
 
 export type BillingCycle = "monthly" | "yearly";
-export type PaymentMethod = "stripe" | "paypal" | "alipay" | "wechat";
+export type PaymentMethod = "stripe" | "alipay" | "wechat";
 
 /**
  * 定价表（唯一的价格定义来源）

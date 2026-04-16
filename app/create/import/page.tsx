@@ -24,6 +24,12 @@ import { useFocusScrollIntoView } from "@/hooks/use-mobile-keyboard";
 import { tokenManager } from "@/lib/auth/frontend-token-manager";
 import { createContractForCurrentUser } from "@/lib/contracts/client";
 import {
+  isOcrImportMethod,
+  resolveContractCreateImportMethod,
+  type ContractCreateImportMethod,
+  type CreateFlowContext,
+} from "@/lib/contracts/create-entrypoints";
+import {
   DEFAULT_ANALYSIS_MAX_CHARS,
   prepareAnalysisInput,
 } from "@/lib/contracts/analysis-input";
@@ -34,7 +40,6 @@ import {
   deriveDraftTitle,
 } from "@/lib/contracts/format";
 
-type SupportedImportMethod = "text" | "screenshot" | "wechat";
 type OcrSourceType = "screenshot" | "wechat" | "feishu";
 
 function fileToDataUrl(file: File) {
@@ -51,8 +56,10 @@ function ImportContent() {
   const searchParams = useSearchParams();
   const { language } = useLanguage();
   const isEn = language === "en";
-  const method = (searchParams.get("method") || "text") as SupportedImportMethod;
-  const flowContext = searchParams.get("ctx") === "dashboard" ? "dashboard" : "standalone";
+  const rawMethod = searchParams.get("method");
+  const { method, isKnown: isKnownMethod } = resolveContractCreateImportMethod(rawMethod);
+  const flowContext: CreateFlowContext =
+    searchParams.get("ctx") === "dashboard" ? "dashboard" : "standalone";
   const templateId = searchParams.get("templateId") || "";
   const [content, setContent] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -65,8 +72,7 @@ function ImportContent() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const handleFocusCapture = useFocusScrollIntoView();
 
-  const supportsOcr = method === "screenshot" || method === "wechat";
-  const isKnownMethod = method === "text" || supportsOcr;
+  const supportsOcr = isOcrImportMethod(method);
   const activeContent = supportsOcr ? ocrText : content;
   const trimmedLength = activeContent.trim().length;
   const backHref = flowContext === "dashboard" ? "/dashboard/contracts/new" : "/create";
@@ -90,7 +96,7 @@ function ImportContent() {
 
   async function createDraftFromContent(
     nextContent: string,
-    sourceType: SupportedImportMethod | OcrSourceType,
+    sourceType: ContractCreateImportMethod | OcrSourceType,
   ) {
     const headers = await tokenManager.getAuthHeaderAsync();
     if (!headers) {

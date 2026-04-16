@@ -1,0 +1,317 @@
+
+> morncontract@0.1.0 test
+> jest --runInBand --passWithNoTests
+
+PASS tests/region-dual-stack-public-routes.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+    console.info
+      [2026-04-15T15:14:03.106Z] INFO: Business Event: operational_chain_metric {"type":"business","event":"operational_chain_metric","timestamp":"2026-04-15T15:14:03.104Z","chain":"team_invite_accept","scope":"default","outcome":"rejected","statusCode":403,"operationId":"invite_accept_1776266043104_49qhh6j3v","durationMs":0,"counts":{"total":1,"success":0,"failure":0,"rejected":1,"slow":0},"threshold":{"windowMs":600000,"failureThreshold":5,"rejectedThreshold":8,"slowThreshold":8,"slowDurationMs":1500},"reason":"accept_failed","error":"TEAM_INVITE_EMAIL_MISMATCH"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+          at Generator.throw (<anonymous>)
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+    console.info
+      [2026-04-15T15:14:03.806Z] INFO: Business Event: operational_chain_metric {"type":"business","event":"operational_chain_metric","timestamp":"2026-04-15T15:14:03.806Z","chain":"team_invite_accept","scope":"default","outcome":"rejected","statusCode":403,"operationId":"invite_accept_1776266043806_rsmdzo1u1","durationMs":0,"counts":{"total":1,"success":0,"failure":0,"rejected":1,"slow":0},"threshold":{"windowMs":600000,"failureThreshold":5,"rejectedThreshold":8,"slowThreshold":8,"slowDurationMs":1500},"reason":"accept_failed","error":"TEAM_INVITE_EMAIL_MISMATCH"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+          at Generator.throw (<anonymous>)
+
+PASS tests/wechat-provider-v3-security.test.ts
+PASS tests/contract-signing-export-e2e.test.ts
+  ● Console
+
+    console.info
+      [/api/contracts/[id] PUT action] { action: 'start_signing', hasParties: true }
+
+      at app/api/contracts/[id]/route.ts:296:15
+
+    console.info
+      [/api/contracts/[id] PUT action] { action: 'confirm_sender', hasParties: true }
+
+      at app/api/contracts/[id]/route.ts:296:15
+
+    console.info
+      [/api/contracts/[id] PUT action] { action: 'confirm_counterparty', hasParties: true }
+
+      at app/api/contracts/[id]/route.ts:296:15
+
+PASS tests/mainline-e2e-simulated.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+    console.info
+      [/api/contracts/[id] PUT action] { action: 'start_signing', hasParties: true }
+
+      at app/api/contracts/[id]/route.ts:296:15
+
+    console.info
+      [/api/contracts/[id] PUT action] { action: 'confirm_sender', hasParties: true }
+
+      at app/api/contracts/[id]/route.ts:296:15
+
+    console.info
+      [/api/contracts/[id] PUT action] { action: 'confirm_counterparty', hasParties: true }
+
+      at app/api/contracts/[id]/route.ts:296:15
+
+    console.info
+      [2026-04-15T15:14:05.484Z] INFO: Business Event: operational_chain_metric {"type":"business","event":"operational_chain_metric","userId":"user_mainline","timestamp":"2026-04-15T15:14:05.484Z","chain":"contract_export","scope":"default","outcome":"success","statusCode":200,"operationId":"contract_export_1776266045484_33h7h1jxe","durationMs":0,"counts":{"total":1,"success":1,"failure":0,"rejected":0,"slow":0},"threshold":{"windowMs":600000,"failureThreshold":5,"rejectedThreshold":8,"slowThreshold":8,"slowDurationMs":2000},"format":"html","contractId":"contract_1"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+
+    console.info
+      [2026-04-15T15:14:05.486Z] INFO: Business Event: payment_confirm_started {"type":"business","event":"payment_confirm_started","userId":"user_mainline","timestamp":"2026-04-15T15:14:05.486Z","operationId":"payment_confirm_1776266045486_zfwqq5d0f","paymentId":"pay_mainline_1","reference":"stripe_order_1","method":"stripe","status":"pending"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+
+    console.info
+      [2026-04-15T15:14:05.488Z] INFO: Business Event: payment_confirm_success {"type":"business","event":"payment_confirm_success","userId":"user_mainline","timestamp":"2026-04-15T15:14:05.488Z","operationId":"payment_confirm_1776266045486_zfwqq5d0f","paymentId":"pay_mainline_1","subscriptionId":"sub_mainline_1","method":"stripe","transactionId":"stripe_txn_1","planType":"pro","billingCycle":"monthly"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+
+    console.info
+      [2026-04-15T15:14:05.488Z] INFO: Business Event: operational_chain_metric {"type":"business","event":"operational_chain_metric","userId":"user_mainline","timestamp":"2026-04-15T15:14:05.488Z","chain":"payment_confirm","scope":"default","outcome":"success","statusCode":200,"operationId":"payment_confirm_1776266045486_zfwqq5d0f","durationMs":2,"counts":{"total":1,"success":1,"failure":0,"rejected":0,"slow":0},"threshold":{"windowMs":600000,"failureThreshold":5,"rejectedThreshold":10,"slowThreshold":8,"slowDurationMs":2500},"reason":"confirmed","paymentId":"pay_mainline_1","subscriptionId":"sub_mainline_1","method":"stripe"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+
+PASS tests/dashboard-management-mainline.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+PASS tests/payment-governance-mainline.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+PASS tests/governance-mainline.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+PASS tests/workspace-invites-store.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+PASS tests/onetime-membership-sync.test.ts
+PASS tests/contracts-generate-jobs-timeout.test.ts
+PASS tests/auth-login-cn-multi-identifier.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+PASS tests/contracts-create-route-timeout.test.ts
+PASS tests/wechat-domain-verify-route.test.ts
+PASS tests/contract-draft-context.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+PASS tests/payment-webhook-routes.test.ts
+PASS tests/contracts-create-entry-degrade.test.ts
+PASS tests/contracts-ai-degrade-routes.test.ts
+PASS tests/contract-text-repair.test.ts
+PASS tests/dashboard-team-route.test.ts
+  ● Console
+
+    console.error
+      [/api/dashboard/team] Invite failed: {
+        code: '42P01',
+        message: 'relation "workspace_invites" does not exist'
+      }
+
+    [0m [90m 116 |[39m     })[33m;[39m
+     [90m 117 |[39m   } [36mcatch[39m (error) {
+    [31m[1m>[22m[39m[90m 118 |[39m     console[33m.[39merror([32m"[/api/dashboard/team] Invite failed:"[39m[33m,[39m error)[33m;[39m
+     [90m     |[39m             [31m[1m^[22m[39m
+     [90m 119 |[39m
+     [90m 120 |[39m     [36mconst[39m message [33m=[39m
+     [90m 121 |[39m       error [36minstanceof[39m [33mError[39m [33m&&[39m error[33m.[39mmessage [33m===[39m [32m"TEAM_INVITE_FORBIDDEN"[39m[0m
+
+      at app/api/dashboard/team/route.ts:118:13
+          at Generator.throw (<anonymous>)
+      at rejected (app/api/dashboard/team/route.ts:6:65)
+
+    console.error
+      [/api/dashboard/team] Invite failed: Error: TEAM_MEMBER_ALREADY_ACTIVE
+          at E:\xiangmu\code\new\tests\dashboard-team-route.test.ts:51:7
+          at Generator.next (<anonymous>)
+          at E:\xiangmu\code\new\tests\dashboard-team-route.test.ts:8:71
+          at new Promise (<anonymous>)
+          at Object.<anonymous>.__awaiter (E:\xiangmu\code\new\tests\dashboard-team-route.test.ts:4:12)
+          at Object.<anonymous> (E:\xiangmu\code\new\tests\dashboard-team-route.test.ts:46:61)
+          at Promise.then.completed (E:\xiangmu\code\new\node_modules\.pnpm\jest-circus@29.7.0\node_modules\jest-circus\build\utils.js:298:28)
+          at new Promise (<anonymous>)
+          at callAsyncCircusFn (E:\xiangmu\code\new\node_modules\.pnpm\jest-circus@29.7.0\node_modules\jest-circus\build\utils.js:231:10)
+          at _callCircusTest (E:\xiangmu\code\new\node_modules\.pnpm\jest-circus@29.7.0\node_modules\jest-circus\build\run.js:316:40)
+          at _runTest (E:\xiangmu\code\new\node_modules\.pnpm\jest-circus@29.7.0\node_modules\jest-circus\build\run.js:252:3)
+          at _runTestsForDescribeBlock (E:\xiangmu\code\new\node_modules\.pnpm\jest-circus@29.7.0\node_modules\jest-circus\build\run.js:126:9)
+          at _runTestsForDescribeBlock (E:\xiangmu\code\new\node_modules\.pnpm\jest-circus@29.7.0\node_modules\jest-circus\build\run.js:121:9)
+          at run (E:\xiangmu\code\new\node_modules\.pnpm\jest-circus@29.7.0\node_modules\jest-circus\build\run.js:71:3)
+          at runAndTransformResultsToJestFormat (E:\xiangmu\code\new\node_modules\.pnpm\jest-circus@29.7.0\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapterInit.js:122:21)
+          at jestAdapter (E:\xiangmu\code\new\node_modules\.pnpm\jest-circus@29.7.0\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapter.js:79:19)
+          at runTestInternal (E:\xiangmu\code\new\node_modules\.pnpm\jest-runner@29.7.0\node_modules\jest-runner\build\runTest.js:367:16)
+          at runTest (E:\xiangmu\code\new\node_modules\.pnpm\jest-runner@29.7.0\node_modules\jest-runner\build\runTest.js:444:34)
+
+    [0m [90m 116 |[39m     })[33m;[39m
+     [90m 117 |[39m   } [36mcatch[39m (error) {
+    [31m[1m>[22m[39m[90m 118 |[39m     console[33m.[39merror([32m"[/api/dashboard/team] Invite failed:"[39m[33m,[39m error)[33m;[39m
+     [90m     |[39m             [31m[1m^[22m[39m
+     [90m 119 |[39m
+     [90m 120 |[39m     [36mconst[39m message [33m=[39m
+     [90m 121 |[39m       error [36minstanceof[39m [33mError[39m [33m&&[39m error[33m.[39mmessage [33m===[39m [32m"TEAM_INVITE_FORBIDDEN"[39m[0m
+
+      at app/api/dashboard/team/route.ts:118:13
+          at Generator.throw (<anonymous>)
+      at rejected (app/api/dashboard/team/route.ts:6:65)
+
+PASS tests/payment-confirm-route.test.ts
+PASS tests/auth-phone-otp-route.test.ts
+PASS tests/team-invite-accept-observability.test.ts
+PASS tests/core-contract-flow-governance.test.ts
+PASS tests/contract-export-signatures.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+PASS tests/contract-export-observability.test.ts
+PASS tests/region-dual-stack-onetime-sync.test.ts
+  ● Console
+
+    console.info
+      [2026-04-15T15:14:08.585Z] INFO: Created fallback payment before unified membership sync {"userId":"user_intl","transactionId":"txn_intl","paymentId":"pay_intl_new"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+
+    console.info
+      [2026-04-15T15:14:08.589Z] INFO: Created fallback payment before unified membership sync {"userId":"user_cn","transactionId":"txn_cn","paymentId":"pay_cn_new"}
+
+      at UniversalLogger.info (lib/utils/logger.ts:34:15)
+
+PASS tests/region-dual-stack-capabilities.test.ts
+PASS tests/admin-api-governance.test.ts
+PASS tests/ocr-contract-chat-fallback.test.ts
+PASS tests/supabase-runtime-config.test.ts
+PASS tests/membership-policy.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+PASS tests/contract-signflow-edgecases.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+PASS tests/auth-state-manager.test.ts
+  ● Console
+
+    console.warn
+      ⚠️ [Auth] Local auth state expired or lost cookie sync
+
+    [0m [90m 154 |[39m
+     [90m 155 |[39m     [36mif[39m ([33m![39msyncAuthCookiesFromStoredState(authState)) {
+    [31m[1m>[22m[39m[90m 156 |[39m       console[33m.[39mwarn([32m"⚠️ [Auth] Local auth state expired or lost cookie sync"[39m)[33m;[39m
+     [90m     |[39m               [31m[1m^[22m[39m
+     [90m 157 |[39m       clearAuthState()[33m;[39m
+     [90m 158 |[39m       [36mreturn[39m [36mnull[39m[33m;[39m
+     [90m 159 |[39m     }[0m
+
+      at getStoredAuthState (lib/auth/auth-state-manager.ts:156:15)
+      at Object.<anonymous> (tests/auth-state-manager.test.ts:108:30)
+
+    console.log
+      🗑️  [Auth] 认证状态已清除
+
+      at clearAuthState (lib/auth/auth-state-manager.ts:341:13)
+
+PASS tests/contract-create-entrypoints.test.ts
+PASS tests/payment-entry-redirects.test.ts
+PASS tests/operational-observability.test.ts
+PASS tests/contract-signflow-guards.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+PASS tests/analysis-input.test.ts
+PASS tests/contract-signflow-mainline.test.ts
+  ● Console
+
+    console.log
+      [deployment] region=CN, auth=cloudbase
+
+      at Object.<anonymous> (lib/config/deployment.config.ts:80:11)
+
+PASS tests/payment-page-route-alignment.test.ts
+PASS tests/routing-governance-mainline.test.ts
+
+Test Suites: 41 passed, 41 total
+Tests:       113 passed, 113 total
+Snapshots:   0 total
+Time:        9.434 s, estimated 10 s
+Ran all test suites.

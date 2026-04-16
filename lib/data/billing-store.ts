@@ -1,13 +1,12 @@
 import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
 import { isChinaRegion } from "@/lib/config/region";
-import { getSupabaseAdmin } from "@/lib/integrations/supabase-admin";
-
 import {
   normalizePaymentRecord,
   normalizeSubscriptionRecord,
   type UnifiedPaymentRecord,
   type UnifiedSubscriptionRecord,
 } from "@/lib/data/unified-models";
+import { getSupabaseAdmin } from "@/lib/integrations/supabase-admin";
 
 interface ListPaymentOptions {
   userId: string;
@@ -20,15 +19,20 @@ interface GetPaymentOptions {
   paymentId: string;
 }
 
-export async function listPaymentsByUser({
-  userId,
-  limit = 20,
-  offset = 0,
-}: ListPaymentOptions): Promise<{
-  payments: UnifiedPaymentRecord[];
-  total: number;
-}> {
-  if (isChinaRegion()) {
+interface BillingRepository {
+  listPaymentsByUser(
+    options: ListPaymentOptions,
+  ): Promise<{ payments: UnifiedPaymentRecord[]; total: number }>;
+  getLatestSubscriptionByUser(
+    userId: string,
+  ): Promise<UnifiedSubscriptionRecord | null>;
+  getPaymentByIdForUser(
+    options: GetPaymentOptions,
+  ): Promise<UnifiedPaymentRecord | null>;
+}
+
+const cnBillingRepository: BillingRepository = {
+  async listPaymentsByUser({ userId, limit = 20, offset = 0 }: ListPaymentOptions) {
     const db = getDatabase();
     const collection = db.collection("payments");
     const baseQuery = collection.where({ user_id: userId });
@@ -45,34 +49,9 @@ export async function listPaymentsByUser({
       ),
       total: countResult.total || 0,
     };
-  }
+  },
 
-  const { data, count, error } = await getSupabaseAdmin()
-    .from("payments")
-    .select(
-      "id,user_id,amount,currency,status,payment_method,transaction_id,external_payment_id,subscription_id,metadata,created_at,updated_at",
-      { count: "exact" },
-    )
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .range(offset, offset + limit - 1);
-
-  if (error) {
-    throw error;
-  }
-
-  return {
-    payments: (data || []).map((record) =>
-      normalizePaymentRecord(record as Record<string, any>),
-    ),
-    total: count || 0,
-  };
-}
-
-export async function getLatestSubscriptionByUser(
-  userId: string,
-): Promise<UnifiedSubscriptionRecord | null> {
-  if (isChinaRegion()) {
+  async getLatestSubscriptionByUser(userId: string) {
     const db = getDatabase();
     const result = await db
       .collection("subscriptions")
@@ -83,30 +62,9 @@ export async function getLatestSubscriptionByUser(
 
     const record = result.data?.[0] as Record<string, any> | undefined;
     return record ? normalizeSubscriptionRecord(record) : null;
-  }
+  },
 
-  const { data, error } = await getSupabaseAdmin()
-    .from("subscriptions")
-    .select(
-      "id,user_id,plan,plan_id,status,price,currency,billing_cycle,payment_method,current_period_end,metadata,created_at,updated_at",
-    )
-    .eq("user_id", userId)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !data) {
-    return null;
-  }
-
-  return normalizeSubscriptionRecord(data as Record<string, any>);
-}
-
-export async function getPaymentByIdForUser({
-  userId,
-  paymentId,
-}: GetPaymentOptions): Promise<UnifiedPaymentRecord | null> {
-  if (isChinaRegion()) {
+  async getPaymentByIdForUser({ userId, paymentId }: GetPaymentOptions) {
     const db = getDatabase();
     const result = await db
       .collection("payments")
@@ -120,20 +78,81 @@ export async function getPaymentByIdForUser({
 
     const record = result.data?.[0] as Record<string, any> | undefined;
     return record ? normalizePaymentRecord(record) : null;
-  }
+  },
+};
 
-  const { data, error } = await getSupabaseAdmin()
-    .from("payments")
-    .select(
-      "id,user_id,amount,currency,status,payment_method,transaction_id,external_payment_id,subscription_id,metadata,created_at,updated_at",
-    )
-    .eq("id", paymentId)
-    .eq("user_id", userId)
-    .maybeSingle();
+const intlBillingRepository: BillingRepository = {
+  async listPaymentsByUser({ userId, limit = 20, offset = 0 }: ListPaymentOptions) {
+    const { data, count, error } = await getSupabaseAdmin()
+      .from("payments")
+      .select(
+        "id,user_id,amount,currency,status,payment_method,transaction_id,external_payment_id,subscription_id,metadata,created_at,updated_at",
+        { count: "exact" },
+      )
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
 
-  if (error || !data) {
-    return null;
-  }
+    if (error) {
+      throw error;
+    }
 
-  return normalizePaymentRecord(data as Record<string, any>);
+    return {
+      payments: (data || []).map((record) =>
+        normalizePaymentRecord(record as Record<string, any>),
+      ),
+      total: count || 0,
+    };
+  },
+
+  async getLatestSubscriptionByUser(userId: string) {
+    const { data, error } = await getSupabaseAdmin()
+      .from("subscriptions")
+      .select(
+        "id,user_id,plan,plan_id,status,price,currency,billing_cycle,payment_method,current_period_end,metadata,created_at,updated_at",
+      )
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) {
+      return null;
+    }
+
+    return normalizeSubscriptionRecord(data as Record<string, any>);
+  },
+
+  async getPaymentByIdForUser({ userId, paymentId }: GetPaymentOptions) {
+    const { data, error } = await getSupabaseAdmin()
+      .from("payments")
+      .select(
+        "id,user_id,amount,currency,status,payment_method,transaction_id,external_payment_id,subscription_id,metadata,created_at,updated_at",
+      )
+      .eq("id", paymentId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error || !data) {
+      return null;
+    }
+
+    return normalizePaymentRecord(data as Record<string, any>);
+  },
+};
+
+function getBillingRepository(): BillingRepository {
+  return isChinaRegion() ? cnBillingRepository : intlBillingRepository;
+}
+
+export async function listPaymentsByUser(options: ListPaymentOptions) {
+  return getBillingRepository().listPaymentsByUser(options);
+}
+
+export async function getLatestSubscriptionByUser(userId: string) {
+  return getBillingRepository().getLatestSubscriptionByUser(userId);
+}
+
+export async function getPaymentByIdForUser(options: GetPaymentOptions) {
+  return getBillingRepository().getPaymentByIdForUser(options);
 }

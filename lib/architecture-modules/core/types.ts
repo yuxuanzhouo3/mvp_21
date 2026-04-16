@@ -33,8 +33,6 @@ export interface EnvironmentConfig {
   // 支付配置
   STRIPE_PUBLIC_KEY?: string;
   STRIPE_SECRET_KEY?: string;
-  PAYPAL_CLIENT_ID?: string;
-  PAYPAL_CLIENT_SECRET?: string;
   WECHAT_APP_ID?: string;
   WECHAT_MCH_ID?: string;
   WECHAT_API_KEY?: string;
