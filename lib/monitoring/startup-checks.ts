@@ -4,6 +4,15 @@ import {
 } from "@/lib/validation/env-validation";
 import { isInternationalDeployment } from "@/lib/config/deployment.config";
 
+function isStrictProductionRuntime(): boolean {
+  const vercelEnv = (process.env.VERCEL_ENV || "").toLowerCase();
+  if (vercelEnv) {
+    return vercelEnv === "production";
+  }
+
+  return process.env.NODE_ENV === "production";
+}
+
 /**
  * 应用启动时的安全检查
  * 这个函数在应用启动时调用，用于验证环境配置的安全性
@@ -34,7 +43,7 @@ export function performStartupSecurityChecks(): void {
   }
 
   // 3. 检查运行环境
-  if (process.env.NODE_ENV === "production") {
+  if (isStrictProductionRuntime()) {
     console.log("🏭 Running in production mode");
 
     // 生产环境额外检查
@@ -97,7 +106,11 @@ export function performStartupSecurityChecks(): void {
 // 使用 Promise.then 确保在事件循环的下一个微任务中执行
 let securityChecksPerformed = false;
 
-if (typeof window === "undefined" && process.env.NODE_ENV !== "test") {
+if (
+  typeof window === "undefined" &&
+  process.env.NODE_ENV !== "test" &&
+  process.env.NEXT_PHASE !== "phase-production-build"
+) {
   // 仅在服务器端且非测试环境
   Promise.resolve().then(() => {
     if (!securityChecksPerformed) {
@@ -115,7 +128,7 @@ if (typeof window === "undefined" && process.env.NODE_ENV !== "test") {
 
         // 在生产环境中，记录警告但继续运行（避免503错误）
         // 这样用户能通过日志看到问题并修复
-        if (process.env.NODE_ENV === "production") {
+        if (isStrictProductionRuntime()) {
           console.warn("⚠️  Production mode: Security checks failed but continuing to serve requests");
           console.warn("⚠️  Please review the errors above and update your environment variables");
           // 不调用 process.exit(1)，让应用继续运行

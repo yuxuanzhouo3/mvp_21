@@ -1,7 +1,17 @@
-'use server';
+﻿'use server';
 
 import { getDatabaseAdapter } from '@/lib/admin/database';
-import type { CreateReleaseData, Platform, Variant } from '@/lib/admin/types';
+import type { AppRelease, CreateReleaseData, Platform, Variant } from '@/lib/admin/types';
+
+const PLATFORM_SET: ReadonlySet<Platform> = new Set(['ios', 'android', 'windows', 'macos', 'linux']);
+
+const VARIANT_OPTIONS: Record<Platform, Variant[]> = {
+  ios: [],
+  android: [],
+  windows: ['x64', 'x86', 'arm64'],
+  macos: ['intel', 'm'],
+  linux: ['deb', 'rpm', 'appimage', 'snap', 'flatpak', 'aur'],
+};
 
 function readString(formData: FormData, ...keys: string[]): string | undefined {
   for (const key of keys) {
@@ -29,6 +39,54 @@ function readBoolean(formData: FormData, ...keys: string[]): boolean | undefined
   return undefined;
 }
 
+function isValidPlatform(value: string): value is Platform {
+  return PLATFORM_SET.has(value as Platform);
+}
+
+function normalizeVariant(platform: Platform, value?: string): Variant | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  const options = VARIANT_OPTIONS[platform];
+
+  if (options.includes(normalized as Variant)) {
+    return normalized as Variant;
+  }
+
+  if (platform === 'macos' && normalized === 'apple-silicon') {
+    return 'm';
+  }
+
+  throw new Error('所选平台与安装包变体不匹配');
+}
+
+function isSameReleaseChannel(left: AppRelease, right: AppRelease) {
+  return left.platform === right.platform && (left.variant || '') === (right.variant || '');
+}
+
+async function deactivateSiblingReleases(current: AppRelease) {
+  if (!current.is_active) {
+    return;
+  }
+
+  const adapter = getDatabaseAdapter();
+  const releases = await adapter.listReleases();
+  const conflicts = releases.filter(
+    (release) =>
+      release.id !== current.id &&
+      release.is_active &&
+      isSameReleaseChannel(release, current),
+  );
+
+  if (conflicts.length === 0) {
+    return;
+  }
+
+  await Promise.all(conflicts.map((release) => adapter.updateRelease(release.id, { is_active: false })));
+}
+
 /**
  * 获取所有发布版本
  */
@@ -52,7 +110,7 @@ export async function createRelease(formData: FormData) {
     console.log('[Actions] 创建发布版本');
 
     const version = readString(formData, 'version');
-    const platform = readString(formData, 'platform') as Platform | undefined;
+    const platformRaw = readString(formData, 'platform');
     const variantRaw = readString(formData, 'variant');
     const fileUrl = readString(formData, 'file_url', 'fileUrl', 'cloudbaseFileId');
     const fileName = readString(formData, 'file_name', 'fileName');
@@ -61,14 +119,25 @@ export async function createRelease(formData: FormData) {
     const isActive = readBoolean(formData, 'is_active', 'isActive');
     const isMandatory = readBoolean(formData, 'is_mandatory', 'isMandatory');
 
-    if (!version || !platform || !fileUrl || !fileName || fileSize === undefined) {
+    if (!version || !platformRaw || !fileUrl || !fileName || fileSize === undefined) {
       throw new Error('缺少必要的发布版本信息');
     }
+
+    if (!isValidPlatform(platformRaw)) {
+      throw new Error('不支持的发布平台');
+    }
+
+    if (fileSize <= 0) {
+      throw new Error('安装包大小必须大于 0');
+    }
+
+    const platform = platformRaw as Platform;
+    const variant = normalizeVariant(platform, variantRaw);
 
     const data: CreateReleaseData = {
       version,
       platform,
-      variant: variantRaw ? (variantRaw as Variant) : undefined,
+      variant,
       file_url: fileUrl,
       file_name: fileName,
       file_size: fileSize,
@@ -79,6 +148,7 @@ export async function createRelease(formData: FormData) {
 
     const adapter = getDatabaseAdapter();
     const release = await adapter.createRelease(data);
+    await deactivateSiblingReleases(release);
     return { success: true, data: release };
   } catch (error) {
     console.error('[Actions] 创建发布版本失败:', error);
@@ -104,6 +174,7 @@ export async function updateRelease(id: string, formData: FormData) {
 
     const adapter = getDatabaseAdapter();
     const release = await adapter.updateRelease(id, data);
+    await deactivateSiblingReleases(release);
     return { success: true, data: release };
   } catch (error) {
     console.error('[Actions] 更新发布版本失败:', error);
@@ -134,6 +205,7 @@ export async function toggleReleaseStatus(id: string, isActive: boolean) {
     console.log('[Actions] 切换发布版本状态:', id, isActive);
     const adapter = getDatabaseAdapter();
     const release = await adapter.toggleReleaseStatus(id, isActive);
+    await deactivateSiblingReleases(release);
     return { success: true, data: release };
   } catch (error) {
     console.error('[Actions] 切换状态失败:', error);

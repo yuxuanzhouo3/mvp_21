@@ -155,7 +155,7 @@ function isPlaceholderValue(value?: string): boolean {
 function validateProductionPlaceholderValues(
   envData: Record<string, string | undefined>,
 ): string[] {
-  if ((envData.NODE_ENV || "development") !== "production") {
+  if (!isStrictProductionEnvironment(envData)) {
     return [];
   }
 
@@ -190,6 +190,17 @@ function validateProductionPlaceholderValues(
   }
 
   return errors;
+}
+
+function isStrictProductionEnvironment(
+  envData: Record<string, string | undefined>,
+): boolean {
+  const vercelEnv = (envData.VERCEL_ENV || "").toLowerCase();
+  if (vercelEnv) {
+    return vercelEnv === "production";
+  }
+
+  return (envData.NODE_ENV || "development") === "production";
 }
 
 /**
@@ -312,11 +323,7 @@ export function validateEnvironment():
       }
     }
 
-    if (
-      region === "CN" &&
-      envData.NODE_ENV === "production" &&
-      !envData.JWT_SECRET?.trim()
-    ) {
+    if (region === "CN" && isStrictProductionEnvironment(envData) && !envData.JWT_SECRET?.trim()) {
       conditionalErrors.push(
         "JWT_SECRET: Required in production when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to CN"
       );

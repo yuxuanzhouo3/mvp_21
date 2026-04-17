@@ -75,10 +75,3 @@ export function isCloudBaseConfigured(): boolean {
   )
 }
 
-// Initialize on module load
-initCloudBase()
-
-
-
-
-

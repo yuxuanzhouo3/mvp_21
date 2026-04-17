@@ -10,6 +10,8 @@ import { getAdminSession } from "@/lib/admin/session";
 import AdminSidebar from "./components/AdminSidebar";
 import { Toaster } from "@/components/ui/sonner";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminLayout({
   children,
 }: {
