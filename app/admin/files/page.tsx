@@ -369,6 +369,7 @@ export default function FilesManagementPage() {
                         </div>
                       ) : (
                         // Supabase 文件直接显示，因为使用的是公开 URL
+                        /* eslint-disable-next-line @next/next/no-img-element */
                         <img
                           src={file.url}
                           alt={file.name}
@@ -707,6 +708,7 @@ export default function FilesManagementPage() {
           {files.map((file, index) => (
             <TableRow key={`${file.name}-${index}`}>
               <TableCell>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={file.url}
                   alt={file.name}
@@ -942,6 +944,7 @@ export default function FilesManagementPage() {
               {/* 媒体预览 */}
               <div className="rounded-lg overflow-hidden border bg-slate-50 dark:bg-slate-900 flex items-center justify-center min-h-[300px]">
                 {getFileType(previewFile.name) === "image" ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
                   <img
                     src={actualPreviewUrl || previewFile.url}
                     alt={previewFile.name}

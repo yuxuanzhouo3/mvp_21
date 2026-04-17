@@ -458,30 +458,34 @@ async function requestJsonCompletion(
   maxTokens: number,
   timeoutMs?: number,
 ) {
-  let response: Awaited<ReturnType<typeof client.chat.completions.create>>;
+  let response: any;
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  const abortController = new AbortController();
+  const effectiveTimeoutMs = clampNumber(
+    timeoutMs,
+    parsePositiveInt(process.env.AI_PROVIDER_TIMEOUT_MS) || 18_000,
+    5_000,
+    300_000,
+  );
 
   try {
-    const completionPromise = client.chat.completions.create({
-      model,
-      temperature,
-      response_format: { type: "json_object" },
-      max_tokens: maxTokens,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    });
-
-    const effectiveTimeoutMs = clampNumber(
-      timeoutMs,
-      parsePositiveInt(process.env.AI_PROVIDER_TIMEOUT_MS) || 18_000,
-      5_000,
-      300_000,
-    );
+    const completionPromise = (client.chat.completions.create as any)(
+      {
+        model,
+        temperature,
+        response_format: { type: "json_object" },
+        max_tokens: maxTokens,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      },
+      { signal: abortController.signal },
+    ) as Promise<Awaited<ReturnType<typeof client.chat.completions.create>>>;
 
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutHandle = setTimeout(() => {
+        abortController.abort("AI_TIMEOUT");
         reject(
           new ContractAIError(
             `AI provider timeout after ${effectiveTimeoutMs}ms`,

@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdminSession } from '@/lib/admin/session'
+import { requireAdmin } from '@/lib/auth/admin-auth'
 import { getAiJob, processAiJob } from '@/lib/admin/ai/orchestrator'
 
 export const runtime = 'nodejs'
 
-export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
-    await requireAdminSession()
+    const admin = await requireAdmin(request)
+    if ('error' in admin) {
+      return admin.error
+    }
     const { id } = await context.params
     const current = await getAiJob(id)
     const result = current.job.status === 'queued' || current.job.status === 'in_progress'

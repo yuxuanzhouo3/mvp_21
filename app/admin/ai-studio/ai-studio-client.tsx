@@ -769,6 +769,7 @@ export default function AiStudioClient({ region: _region, language, route: _rout
 
                     {posterAsset && (
                       <div className="rounded-xl overflow-hidden border border-slate-200">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={posterAsset.public_url} alt="poster" className="w-full object-cover" />
                       </div>
                     )}

@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
-import { requireAdminSession } from '@/lib/admin/session'
+import { requireAdmin } from '@/lib/auth/admin-auth'
 import type { PosterGenerationRequest } from '@/lib/admin/types'
 import { generatePosterPromptBundle } from '@/lib/admin/ai/orchestrator'
 import { resolveAiRegion } from '@/lib/admin/ai/provider-router'
@@ -8,7 +8,10 @@ export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSession()
+    const admin = await requireAdmin(request)
+    if ('error' in admin) {
+      return admin.error
+    }
     const body = await request.json() as PosterGenerationRequest
 
     if (!body?.poster_goal || !body?.audience || !body?.style || !body?.aspect_ratio || !body?.title || !body?.cta) {

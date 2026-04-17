@@ -11,6 +11,7 @@ import {
   getPreferredFileName,
   getPublicDownloadCatalog,
 } from "@/lib/downloads/public-downloads";
+import { getVariantPreferenceOrder, inferPreferredVariant } from "@/lib/downloads/recommendation";
 
 const VARIANT_SET: ReadonlySet<Variant> = new Set([
   "x64",
@@ -25,6 +26,15 @@ const VARIANT_SET: ReadonlySet<Variant> = new Set([
   "flatpak",
   "aur",
 ]);
+
+const PLATFORM_VARIANTS: Record<PlatformType, Variant[]> = {
+  ios: [],
+  android: [],
+  windows: ["x64", "x86", "arm64"],
+  macos: ["intel", "m"],
+  linux: ["deb", "rpm", "appimage", "snap", "flatpak", "aur"],
+  harmonyos: [],
+};
 
 function mapAdminPlatform(platform: string): PlatformType | null {
   switch (platform) {
@@ -70,6 +80,11 @@ function variantToArch(variant?: Variant | null): MacOSArchitecture | undefined 
   return undefined;
 }
 
+function normalizeReleaseVariant(value?: string | null): string | undefined {
+  const normalized = value?.trim().toLowerCase();
+  return normalized || undefined;
+}
+
 function getPlatform(searchParams: URLSearchParams) {
   const platform = searchParams.get("platform");
   if (
@@ -96,8 +111,6 @@ function normalizeRequestedVariant(
   variant: Variant | null,
   arch: MacOSArchitecture | undefined,
 ) {
-  const archVariant = variantToArch(variant) ? variant : undefined;
-
   if (platform === "macos") {
     if (variant && variant !== "intel" && variant !== "m") {
       return { error: "Invalid variant for macOS." } as const;
@@ -114,26 +127,67 @@ function normalizeRequestedVariant(
     return { error: "arch is only supported when platform=macos." } as const;
   }
 
-  return { variant: archVariant && platform !== "macos" ? undefined : variant || undefined } as const;
+  if (variant && !PLATFORM_VARIANTS[platform].includes(variant)) {
+    return { error: "Invalid variant for this platform." } as const;
+  }
+
+  return { variant: variant || undefined } as const;
 }
 
 async function listManagedReleases(): Promise<AppRelease[]> {
-  const adapter = getDatabaseAdapter();
-  const releases = await adapter.listReleases();
+  try {
+    const adapter = getDatabaseAdapter();
+    const releases = await adapter.listReleases();
 
-  return releases
-    .filter((release) => release.is_active)
-    .sort((left, right) => (right.created_at || "").localeCompare(left.created_at || ""));
+    return releases
+      .filter((release) => release.is_active)
+      .sort((left, right) => (right.created_at || "").localeCompare(left.created_at || ""));
+  } catch (error) {
+    console.error("[downloads] Failed to load managed releases, fallback to config:", error);
+    return [];
+  }
 }
 
-async function resolveManagedRelease(platform: PlatformType, variant?: Variant) {
+async function resolveManagedRelease(
+  platform: PlatformType,
+  variant?: Variant,
+  userAgent?: string | null,
+) {
   const releases = await listManagedReleases();
-
-  return releases.find(
-    (release) =>
-      mapAdminPlatform(release.platform) === platform &&
-      (variant ? (release.variant || "") === variant : true),
+  const samePlatformReleases = releases.filter(
+    (release) => mapAdminPlatform(release.platform) === platform,
   );
+
+  if (samePlatformReleases.length === 0) {
+    return undefined;
+  }
+
+  if (variant) {
+    const requestedVariant = variant.toLowerCase();
+    return samePlatformReleases.find(
+      (release) => normalizeReleaseVariant(release.variant) === requestedVariant,
+    );
+  }
+
+  const preferredVariant = inferPreferredVariant(platform, userAgent);
+  const variantOrder = getVariantPreferenceOrder(platform, preferredVariant);
+  for (const candidate of variantOrder) {
+    const matched = samePlatformReleases.find(
+      (release) => normalizeReleaseVariant(release.variant) === candidate,
+    );
+    if (matched) {
+      return matched;
+    }
+  }
+
+  const generic = samePlatformReleases.find(
+    (release) => !normalizeReleaseVariant(release.variant),
+  );
+  if (generic) {
+    return generic;
+  }
+
+  return samePlatformReleases[0];
 }
 
 async function streamCloudBaseFile(fileId: string, fileName: string) {
@@ -180,7 +234,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const managedRelease = await resolveManagedRelease(platform, normalized.variant);
+  const managedRelease = await resolveManagedRelease(
+    platform,
+    normalized.variant,
+    request.headers.get("user-agent"),
+  );
   if (managedRelease) {
     const fileName = getPreferredFileName(
       managedRelease.file_url,
@@ -203,6 +261,13 @@ export async function GET(request: NextRequest) {
       ? managedRelease.file_url
       : new URL(managedRelease.file_url, request.nextUrl.origin).toString();
     return NextResponse.redirect(targetUrl, { status: 302 });
+  }
+
+  if (normalized.variant && platform !== "macos") {
+    return NextResponse.json(
+      { success: false, error: "Requested variant is unavailable for this platform." },
+      { status: 404 },
+    );
   }
 
   const fallbackArch = platform === "macos" ? arch || variantToArch(normalized.variant) : undefined;

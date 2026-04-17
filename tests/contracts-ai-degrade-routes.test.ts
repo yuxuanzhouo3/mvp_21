@@ -69,6 +69,9 @@ import { POST as generatePost } from "@/app/api/contracts/generate/route";
 describe("contracts AI routes degraded mode", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.AI_GENERATE_ROUTE_BUDGET_MS = "45000";
+    process.env.AI_GENERATE_TOTAL_ROUTE_BUDGET_MS = "55000";
+    process.env.AI_GENERATE_ROUTE_SAFETY_BUFFER_MS = "3000";
     mockIsChinaRegion.mockReturnValue(true);
     mockExtractTokenFromRequest.mockReturnValue({
       token: "token_ok",
@@ -160,5 +163,58 @@ describe("contracts AI routes degraded mode", () => {
     expect(payload.data?.sections?.length).toBeGreaterThan(0);
     expect(payload.data?.title).toBeTruthy();
   });
-});
 
+  test("generate route degrades quickly when model call stalls", async () => {
+    process.env.AI_GENERATE_ROUTE_BUDGET_MS = "20";
+    process.env.AI_GENERATE_TOTAL_ROUTE_BUDGET_MS = "80";
+    process.env.AI_GENERATE_ROUTE_SAFETY_BUFFER_MS = "10";
+
+    mockLoadChinaAccountProfile.mockResolvedValue({
+      subscription_plan: "pro",
+      subscription_status: "active",
+    });
+    mockLoadIntlAccountProfile.mockResolvedValue(null);
+    mockLoadAdminSettings.mockResolvedValue({});
+    mockBuildMembershipEntitlements.mockReturnValue({
+      features: { canGenerateContract: true },
+    });
+    mockGetDashboardTemplateById.mockResolvedValue(null);
+    mockGenerateContract.mockImplementation(() => new Promise<never>(() => {}));
+
+    const response = await generatePost(
+      new NextRequest("http://localhost/api/contracts/generate", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer token_ok",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          analysisResult: {
+            contractType: "service",
+            confidence: 0.6,
+            partyA: { name: "Party A" },
+            partyB: { name: "Party B" },
+            keyTerms: [
+              {
+                type: "payment",
+                label: "payment",
+                value: "3 milestones",
+                source: "input",
+                confidence: 0.7,
+              },
+            ],
+            summary: "service agreement",
+          },
+        }),
+      }),
+    );
+
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(payload.success).toBe(true);
+    expect(payload.meta?.degraded).toBe(true);
+    expect(String(payload.meta?.reason || "")).toContain(
+      "AI generation route timeout",
+    );
+  });
+});

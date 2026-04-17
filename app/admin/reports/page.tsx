@@ -10,7 +10,7 @@
  * - 支持处理/驳回操作
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -122,7 +122,7 @@ export default function ReportsManagementPage() {
   }, [reports, filterStatus, filterType, searchQuery]);
 
   // ==================== 数据加载 ====================
-  async function loadReports() {
+  const loadReports = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -147,11 +147,11 @@ export default function ReportsManagementPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [filterStatus, page, pageSize]);
 
   useEffect(() => {
-    loadReports();
-  }, [page, filterStatus]);
+    void loadReports();
+  }, [loadReports]);
 
   // ==================== 操作处理 ====================
   async function handleReportAction(status: "resolved" | "dismissed") {

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState, useTransition } from "react"
+import { useCallback, useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { RefreshCcw, ShieldCheck } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -154,7 +154,7 @@ function LoadingShell() {
 export function MarketDashboardClient({ region }: { region: "CN" | "INTL" }) {
   const router = useRouter()
   const language: Language = region === "CN" ? "zh" : "en"
-  const t = (key: string) => getTranslation(language, key as never)
+  const t = useCallback((key: string) => getTranslation(language, key as never), [language])
 
   const [tab, setTab] = useState<TabKey>("overview")
   const [bootstrap, setBootstrap] = useState<MarketingBootstrapData | null>(null)
@@ -1377,7 +1377,7 @@ export function MarketDashboardClient({ region }: { region: "CN" | "INTL" }) {
     return null
   }
 
-  async function requestJson(url: string, options?: RequestInit) {
+  const requestJson = useCallback(async (url: string, options?: RequestInit) => {
     const response = await fetch(url, {
       cache: "no-store",
       ...options,
@@ -1397,9 +1397,9 @@ export function MarketDashboardClient({ region }: { region: "CN" | "INTL" }) {
       throw new Error(result?.error || t("marketActionFailed"))
     }
     return result
-  }
+  }, [router, t])
 
-  async function loadBootstrap() {
+  const loadBootstrap = useCallback(async () => {
     setLoading(true)
     setError("")
     try {
@@ -1413,7 +1413,7 @@ export function MarketDashboardClient({ region }: { region: "CN" | "INTL" }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [requestJson, startTransition, t])
 
   async function runMutation(label: string, action: () => Promise<void>) {
     setActionLabel(label)
@@ -1432,7 +1432,7 @@ export function MarketDashboardClient({ region }: { region: "CN" | "INTL" }) {
 
   useEffect(() => {
     void loadBootstrap()
-  }, [])
+  }, [loadBootstrap])
 
   async function logout() {
     await fetch("/api/market/auth/logout", { method: "POST" }).catch(() => null)

@@ -19,7 +19,7 @@
     "lint": "next lint",
     "start": "next start",
     "test": "jest --runInBand --passWithNoTests",
-    "test:mainline": "jest --runInBand --passWithNoTests tests/mainline-e2e-simulated.test.ts tests/core-contract-flow-governance.test.ts tests/payment-confirm-route.test.ts tests/payment-webhook-routes.test.ts tests/workspace-invites-store.test.ts",
+    "test:mainline": "jest --runInBand --passWithNoTests tests/mainline-e2e-simulated.test.ts tests/core-contract-flow-governance.test.ts tests/payment-confirm-route.test.ts tests/payment-webhook-routes.test.ts tests/workspace-invites-store.test.ts tests/releases-download-routing-e2e.test.ts",
     "test:release-gate": "npm run test:mainline",
     "test:region-consistency": "jest --runInBand --passWithNoTests tests/region-dual-stack-capabilities.test.ts tests/region-dual-stack-public-routes.test.ts tests/region-dual-stack-onetime-sync.test.ts"
   },

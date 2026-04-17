@@ -11,7 +11,7 @@
  * - 鏀跺叆鍒嗘瀽
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   listPayments,
   getPaymentById,
@@ -119,7 +119,7 @@ export default function PaymentsManagementPage() {
   }, [payments, filterStatus, filterMethod, filterType, searchQuery]);
 
   // ==================== 鏁版嵁鍔犺浇 ====================
-  async function loadPayments() {
+  const loadPayments = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -141,9 +141,9 @@ export default function PaymentsManagementPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [page, pageSize]);
 
-  async function loadStats() {
+  const loadStats = useCallback(async () => {
     setStatsLoading(true);
     try {
       const result = await getPaymentStats();
@@ -155,15 +155,15 @@ export default function PaymentsManagementPage() {
     } finally {
       setStatsLoading(false);
     }
-  }
-
-  useEffect(() => {
-    loadPayments();
-  }, [page]);
-
-  useEffect(() => {
-    loadStats();
   }, []);
+
+  useEffect(() => {
+    void loadPayments();
+  }, [loadPayments]);
+
+  useEffect(() => {
+    void loadStats();
+  }, [loadStats]);
 
   // ==================== 宸ュ叿鍑芥暟 ====================
   function getStatusBadge(status: string) {

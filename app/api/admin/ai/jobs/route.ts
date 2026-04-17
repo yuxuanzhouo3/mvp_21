@@ -1,12 +1,15 @@
-﻿import { NextResponse } from 'next/server'
-import { requireAdminSession } from '@/lib/admin/session'
+﻿import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/auth/admin-auth'
 import { listAiJobs } from '@/lib/admin/ai/orchestrator'
 
 export const runtime = 'nodejs'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    await requireAdminSession()
+    const admin = await requireAdmin(request)
+    if ('error' in admin) {
+      return admin.error
+    }
     const jobs = await listAiJobs()
     return NextResponse.json({ success: true, jobs })
   } catch (error: any) {

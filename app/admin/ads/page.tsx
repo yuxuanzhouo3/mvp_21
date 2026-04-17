@@ -13,7 +13,7 @@
  * - 预览广告
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   listAds,
   getAdStats,
@@ -143,7 +143,7 @@ export default function AdsManagementPage() {
   }, [ads, filterStatus, filterPosition, searchQuery]);
 
   // ==================== 数据加载 ====================
-  async function loadAds() {
+  const loadAds = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -165,9 +165,9 @@ export default function AdsManagementPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [page, pageSize]);
 
-  async function loadStats() {
+  const loadStats = useCallback(async () => {
     setStatsLoading(true);
     try {
       const result = await getAdStats();
@@ -179,15 +179,15 @@ export default function AdsManagementPage() {
     } finally {
       setStatsLoading(false);
     }
-  }
-
-  useEffect(() => {
-    loadAds();
-  }, [page]);
-
-  useEffect(() => {
-    loadStats();
   }, []);
+
+  useEffect(() => {
+    void loadAds();
+  }, [loadAds]);
+
+  useEffect(() => {
+    void loadStats();
+  }, [loadStats]);
 
   // ==================== CRUD 操作 ====================
   async function handleCreateAd() {
@@ -613,6 +613,7 @@ export default function AdsManagementPage() {
                             title="预览"
                           >
                             {ad.type === "image" ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
                               <img
                                 src={ad.fileUrl}
                                 alt={ad.title}
@@ -850,6 +851,7 @@ export default function AdsManagementPage() {
               />
               {formData.type === "image" && formData.file && (
                 <div className="mt-2 h-32 rounded border overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={formData.fileUrl} alt="预览" className="h-full w-full object-cover" />
                 </div>
               )}
@@ -927,6 +929,7 @@ export default function AdsManagementPage() {
                 <h3 className="text-sm font-medium">广告内容</h3>
                 {viewingAd.type === "image" ? (
                   <div className="rounded-lg overflow-hidden border">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={viewingAd.fileUrl}
                       alt={viewingAd.title}

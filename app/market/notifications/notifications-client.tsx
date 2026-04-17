@@ -125,7 +125,7 @@ export function NotificationsClient() {
   const cooldownRemaining = Math.max(0, Math.ceil((cooldownUntil - currentTime) / 1000))
   const isCoolingDown = cooldownRemaining > 0
 
-  const visibleColdUsers = coldSnapshot?.users || []
+  const visibleColdUsers = useMemo(() => coldSnapshot?.users || [], [coldSnapshot?.users])
   const selectedColdUsers = useMemo(
     () => visibleColdUsers.filter((user) => selectedColdUserIds.includes(user.id)),
     [selectedColdUserIds, visibleColdUsers],

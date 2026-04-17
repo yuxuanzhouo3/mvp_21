@@ -335,15 +335,41 @@ async function requireCurrentUserWithGeneratePermission(request: NextRequest) {
 
 function resolveRouteBudgetMs() {
   return clamp(
-    parsePositiveInt(process.env.AI_GENERATE_ROUTE_BUDGET_MS, 60_000),
-    8_000,
+    parsePositiveInt(process.env.AI_GENERATE_ROUTE_BUDGET_MS, 45_000),
+    1_000,
+    180_000,
+  );
+}
+
+function resolveTotalRouteBudgetMs() {
+  return clamp(
+    parsePositiveInt(process.env.AI_GENERATE_TOTAL_ROUTE_BUDGET_MS, 55_000),
+    15_000,
     300_000,
   );
+}
+
+function resolveRouteSafetyBufferMs() {
+  return clamp(
+    parsePositiveInt(process.env.AI_GENERATE_ROUTE_SAFETY_BUFFER_MS, 3_000),
+    1_000,
+    20_000,
+  );
+}
+
+function resolveRemainingGenerateBudgetMs(routeStartedAt: number) {
+  const totalRouteBudgetMs = resolveTotalRouteBudgetMs();
+  const safetyBufferMs = resolveRouteSafetyBufferMs();
+  const elapsedMs = Date.now() - routeStartedAt;
+  const remainingMs = totalRouteBudgetMs - elapsedMs - safetyBufferMs;
+
+  return clamp(remainingMs, 1_000, totalRouteBudgetMs);
 }
 
 export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
+  const startedAt = Date.now();
   const auth = await requireCurrentUserWithGeneratePermission(request);
   if ("error" in auth) {
     return auth.error;
@@ -429,11 +455,14 @@ export async function POST(request: NextRequest) {
     language,
   };
 
-  const startedAt = Date.now();
+  const generateBudgetMs = Math.min(
+    resolveRouteBudgetMs(),
+    resolveRemainingGenerateBudgetMs(startedAt),
+  );
   try {
     const generated = await withTimeout(
       generateContract(requestPayload),
-      resolveRouteBudgetMs(),
+      generateBudgetMs,
       () => {
         throw new ContractAIError("AI generation route timeout", "AI_TIMEOUT", 504);
       },

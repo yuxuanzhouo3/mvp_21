@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import type { ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import {
@@ -177,8 +177,8 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 export function MarketingConsoleClient({ region }: { region: "CN" | "INTL" }) {
   const router = useRouter()
   const language: Language = region === "CN" ? "zh" : "en"
-  const t = (key: string) => getTranslation(language, key as never)
-  const tx = (zh: string, en: string) => (region === "CN" ? zh : en)
+  const t = useCallback((key: string) => getTranslation(language, key as never), [language])
+  const tx = useCallback((zh: string, en: string) => (region === "CN" ? zh : en), [region])
 
   const [tab, setTab] = useState<TabKey>("overview")
   const [loading, setLoading] = useState(true)
@@ -223,7 +223,7 @@ export function MarketingConsoleClient({ region }: { region: "CN" | "INTL" }) {
       { key: "reports" as const, label: tx("数据与报表", "Reports"), icon: TrendingUp },
       { key: "risk" as const, label: tx("风控安全", "Risk"), icon: Shield },
     ],
-    [region],
+    [tx],
   )
 
   const assetRows = accounts?.rows || bootstrap?.accounts.rows || []
@@ -233,7 +233,7 @@ export function MarketingConsoleClient({ region }: { region: "CN" | "INTL" }) {
   const riskListRows = riskLists?.rows || bootstrap?.riskLists.rows || []
   const pendingWithdrawalCount = withdrawalRows.filter((item) => item.status === "pending").length
 
-  const loadBootstrap = async () => {
+  const loadBootstrap = useCallback(async () => {
     const response = await fetchJson<{ success: true; bootstrap: BootstrapData }>("/api/market/admin/marketing/bootstrap")
     setBootstrap(response.bootstrap)
     setAccounts(response.bootstrap.accounts)
@@ -243,54 +243,58 @@ export function MarketingConsoleClient({ region }: { region: "CN" | "INTL" }) {
     setWithdrawals(response.bootstrap.withdrawals)
     setRiskEvents(response.bootstrap.riskEvents)
     setRiskLists(response.bootstrap.riskLists)
-    if (!taskForm.campaignSlug && response.bootstrap.campaigns[0]?.slug) {
-      setTaskForm((current) => ({ ...current, campaignSlug: response.bootstrap.campaigns[0].slug }))
+    if (response.bootstrap.campaigns[0]?.slug) {
+      setTaskForm((current) =>
+        current.campaignSlug
+          ? current
+          : { ...current, campaignSlug: response.bootstrap.campaigns[0].slug },
+      )
     }
-  }
+  }, [])
 
-  const buildFissionQuery = (pageOverride?: number) => {
+  const buildFissionQuery = useCallback((pageOverride?: number) => {
     const params = new URLSearchParams({ search: fissionSearch, status: fissionStatus, datePreset: fissionDatePreset, page: String(pageOverride ?? fissionPage), limit: "8" })
     if (fissionDate) params.set("date", fissionDate)
     return params
-  }
+  }, [fissionDate, fissionDatePreset, fissionPage, fissionSearch, fissionStatus])
 
-  const loadFission = async (pageOverride?: number) => {
+  const loadFission = useCallback(async (pageOverride?: number) => {
     const response = await fetchJson<{ success: true; fission: FissionData }>(`/api/market/admin/marketing/fission?${buildFissionQuery(pageOverride).toString()}`)
     setFission(response.fission)
-  }
+  }, [buildFissionQuery])
 
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
     const params = new URLSearchParams({ page: "1", limit: "10" })
     if (assetQuery.trim()) params.set("query", assetQuery.trim())
     const response = await fetchJson<{ success: true; accounts: MarketingListResult<MarketingAccountBundle> }>(`/api/market/admin/marketing/accounts?${params.toString()}`)
     setAccounts(response.accounts)
-  }
+  }, [assetQuery])
 
-  const loadLedgers = async () => {
+  const loadLedgers = useCallback(async () => {
     const params = new URLSearchParams({ page: "1", limit: "10" })
     if (assetQuery.trim()) params.set("query", assetQuery.trim())
     if (ledgerAssetType !== "all") params.set("assetType", ledgerAssetType)
     const response = await fetchJson<{ success: true; ledgers: MarketingListResult<MarketingAssetLedger> }>(`/api/market/admin/marketing/ledgers?${params.toString()}`)
     setLedgers(response.ledgers)
-  }
+  }, [assetQuery, ledgerAssetType])
 
-  const loadCampaigns = async () => {
+  const loadCampaigns = useCallback(async () => {
     const response = await fetchJson<{ success: true; campaigns: MarketingCampaign[] }>("/api/market/admin/marketing/campaigns")
     setCampaigns(response.campaigns)
-  }
+  }, [])
 
-  const loadTaskTemplates = async () => {
+  const loadTaskTemplates = useCallback(async () => {
     const response = await fetchJson<{ success: true; taskTemplates: MarketingTaskTemplate[] }>("/api/market/admin/marketing/task-templates")
     setTaskTemplates(response.taskTemplates)
-  }
+  }, [])
 
-  const loadWithdrawals = async (nextStatus = withdrawalStatus) => {
+  const loadWithdrawals = useCallback(async (nextStatus = withdrawalStatus) => {
     const query = nextStatus === "all" ? "" : `?status=${nextStatus}&page=1&limit=10`
     const response = await fetchJson<{ success: true; withdrawals: MarketingListResult<MarketingWithdrawal> }>(`/api/market/admin/marketing/withdrawals${query}`)
     setWithdrawals(response.withdrawals)
-  }
+  }, [withdrawalStatus])
 
-  const loadRiskCenter = async (nextStatus = riskStatus) => {
+  const loadRiskCenter = useCallback(async (nextStatus = riskStatus) => {
     const eventQuery = nextStatus === "all" ? "?page=1&limit=10" : `?status=${nextStatus}&page=1&limit=10`
     const [eventsResponse, listsResponse] = await Promise.all([
       fetchJson<{ success: true; riskEvents: MarketingListResult<MarketingRiskEvent> }>(`/api/market/admin/marketing/risk-events${eventQuery}`),
@@ -298,9 +302,9 @@ export function MarketingConsoleClient({ region }: { region: "CN" | "INTL" }) {
     ])
     setRiskEvents(eventsResponse.riskEvents)
     setRiskLists(listsResponse.riskLists)
-  }
+  }, [riskStatus])
 
-  const runAction = async (label: string, action: () => Promise<void>) => {
+  const runAction = useCallback(async (label: string, action: () => Promise<void>) => {
     try {
       setBusyLabel(label)
       setError("")
@@ -312,7 +316,7 @@ export function MarketingConsoleClient({ region }: { region: "CN" | "INTL" }) {
     } finally {
       setBusyLabel("")
     }
-  }
+  }, [t])
 
   useEffect(() => {
     const initialize = async () => {
@@ -326,7 +330,7 @@ export function MarketingConsoleClient({ region }: { region: "CN" | "INTL" }) {
       }
     }
     void initialize()
-  }, [])
+  }, [loadBootstrap, loadFission, t])
 
   const renderOverview = () => {
     if (!bootstrap) return <Section title={t("marketLoadFailed")}><div className="text-sm text-gray-500">{t("marketLoadFailed")}</div></Section>

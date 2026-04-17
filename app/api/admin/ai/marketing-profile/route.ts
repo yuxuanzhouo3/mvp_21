@@ -1,14 +1,17 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
-import { requireAdminSession } from '@/lib/admin/session'
+import { requireAdmin } from '@/lib/auth/admin-auth'
 import type { AiMarketingProfile } from '@/lib/admin/types'
 import { getDatabaseAdapter } from '@/lib/admin/database'
 import { getDefaultMarketingProfile, sanitizeMarketingProfile } from '@/lib/admin/ai/marketing-profile'
 
 export const runtime = 'nodejs'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    await requireAdminSession()
+    const admin = await requireAdmin(request)
+    if ('error' in admin) {
+      return admin.error
+    }
     const adapter = getDatabaseAdapter()
     const stored = await adapter.getConfig('ai_studio_marketing_profile')
 
@@ -28,7 +31,10 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
-    await requireAdminSession()
+    const admin = await requireAdmin(request)
+    if ('error' in admin) {
+      return admin.error
+    }
     const adapter = getDatabaseAdapter()
     const body = await request.json() as AiMarketingProfile
     const profile = sanitizeMarketingProfile(body, { allowEmpty: true })

@@ -1,39 +1,24 @@
-/**
- * 管理员举报管理 API
- *
- * GET: 获取所有举报列表（带分页和状态筛选）
- * PATCH: 更新举报状态（处理/驳回）
- */
-
-import { NextRequest, NextResponse } from 'next/server'
-import { getAdminSession } from '@/lib/admin/session'
+﻿import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/auth/admin-auth'
 import { getUserService } from '@/lib/services'
 
-/**
- * 获取所有举报列表
- * GET /api/admin/reports?status=pending&page=1&limit=20
- */
 export async function GET(request: NextRequest) {
   try {
-    // 验证管理员会话
-    const sessionResult = await getAdminSession()
-    if (!sessionResult.valid || !sessionResult.session) {
-      return NextResponse.json(
-        { error: 'Unauthorized', details: sessionResult.error || '未登录' },
-        { status: 401 }
-      )
+    const admin = await requireAdmin(request)
+    if ('error' in admin) {
+      return admin.error
     }
 
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get('status') || undefined
-    const page = parseInt(searchParams.get('page') || '1', 10)
-    const limit = parseInt(searchParams.get('limit') || '20', 10)
+    const pageValue = Number.parseInt(searchParams.get('page') || '1', 10)
+    const limitValue = Number.parseInt(searchParams.get('limit') || '20', 10)
+    const page = Number.isFinite(pageValue) && pageValue > 0 ? pageValue : 1
+    const limit = Number.isFinite(limitValue) && limitValue > 0 ? Math.min(limitValue, 100) : 20
 
-    // 获取举报列表
     const userService = getUserService()
     const reports = await userService.getAllReports(status)
 
-    // 简单的分页处理
     const offset = (page - 1) * limit
     const paginatedReports = reports.slice(offset, offset + limit)
 
@@ -48,28 +33,19 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error: any) {
-    console.error('获取举报列表失败:', error)
+    console.error('Failed to get reports:', error)
     return NextResponse.json(
-      { error: 'Failed to get reports', details: error.message },
+      { error: 'Failed to get reports', details: error?.message || 'Unknown error' },
       { status: 500 }
     )
   }
 }
 
-/**
- * 更新举报状态
- * PATCH /api/admin/reports
- * Body: { reportId: string, status: 'resolved' | 'dismissed', adminNotes?: string }
- */
 export async function PATCH(request: NextRequest) {
   try {
-    // 验证管理员会话
-    const sessionResult = await getAdminSession()
-    if (!sessionResult.valid || !sessionResult.session) {
-      return NextResponse.json(
-        { error: 'Unauthorized', details: sessionResult.error || '未登录' },
-        { status: 401 }
-      )
+    const admin = await requireAdmin(request)
+    if ('error' in admin) {
+      return admin.error
     }
 
     const body = await request.json()
@@ -89,11 +65,8 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    // 更新举报状态
     const userService = getUserService()
-    const adminId = sessionResult.session.username // 使用管理员用户名作为 ID
-
-    const updatedReport = await userService.updateReport(reportId, adminId, {
+    const updatedReport = await userService.updateReport(reportId, admin.userId, {
       status,
       admin_notes: adminNotes,
     })
@@ -103,9 +76,9 @@ export async function PATCH(request: NextRequest) {
       data: updatedReport,
     })
   } catch (error: any) {
-    console.error('更新举报状态失败:', error)
+    console.error('Failed to update report:', error)
     return NextResponse.json(
-      { error: 'Failed to update report', details: error.message },
+      { error: 'Failed to update report', details: error?.message || 'Unknown error' },
       { status: 500 }
     )
   }

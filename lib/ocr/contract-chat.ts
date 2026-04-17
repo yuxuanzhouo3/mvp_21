@@ -296,32 +296,37 @@ async function callOpenAI(imageBase64: string): Promise<string> {
   });
   const model = getOpenAIOcrModel();
   const timeoutMs = resolveOcrProviderTimeoutMs();
+  const abortController = new AbortController();
 
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  let response: Awaited<ReturnType<typeof client.chat.completions.create>>;
+  let response: any;
   try {
-    const completionPromise = client.chat.completions.create({
-      model,
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: getOcrPrompt() },
-            {
-              type: "image_url",
-              image_url: {
-                url: imageBase64,
+    const completionPromise = (client.chat.completions.create as any)(
+      {
+        model,
+        temperature: 0.1,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: getOcrPrompt() },
+              {
+                type: "image_url",
+                image_url: {
+                  url: imageBase64,
+                },
               },
-            },
-          ],
-        },
-      ],
-    } as any);
+            ],
+          },
+        ],
+      } as any,
+      { signal: abortController.signal },
+    ) as Promise<Awaited<ReturnType<typeof client.chat.completions.create>>>;
 
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutHandle = setTimeout(() => {
+        abortController.abort("OCR_TIMEOUT");
         reject(
           new ContractChatOcrError(
             `OpenAI OCR timeout after ${timeoutMs}ms`,
@@ -353,7 +358,12 @@ async function callOpenAI(imageBase64: string): Promise<string> {
         "openai",
       );
     }
-    if (status === 408 || status === 429 || status === 504 || /timeout|timed out/i.test(message)) {
+    if (
+      status === 408 ||
+      status === 429 ||
+      status === 504 ||
+      /timeout|timed out|abort|aborted/i.test(message)
+    ) {
       throw new ContractChatOcrError(
         `OpenAI OCR timeout: ${message}`,
         "OCR_TIMEOUT",

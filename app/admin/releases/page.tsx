@@ -1,18 +1,29 @@
-"use client";
+﻿"use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  listReleases,
   createRelease,
-  updateRelease,
   deleteRelease,
+  listReleases,
   toggleReleaseStatus,
+  updateRelease,
 } from "@/actions/admin-releases";
 import type { AppRelease, Platform, Variant } from "@/lib/admin/types";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -29,53 +40,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  Loader2,
-  RefreshCw,
-  Eye,
-  EyeOff,
-  Database,
-  Cloud,
-  Search,
-  X,
-  Calendar,
-  HardDrive,
-  Download,
-  ExternalLink,
-  Smartphone,
-  Monitor,
-  Apple,
-  AlertTriangle,
-} from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Apple, Download, Eye, EyeOff, Loader2, Monitor, Pencil, Plus, RefreshCw, Smartphone, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
-// 平台配置
-const PLATFORMS: { value: Platform; label: string; icon: React.ReactNode }[] = [
+const PLATFORMS: Array<{ value: Platform; label: string; icon: React.ReactNode }> = [
   { value: "ios", label: "iOS", icon: <Apple className="h-4 w-4" /> },
   { value: "android", label: "Android", icon: <Smartphone className="h-4 w-4" /> },
   { value: "windows", label: "Windows", icon: <Monitor className="h-4 w-4" /> },
@@ -83,104 +52,97 @@ const PLATFORMS: { value: Platform; label: string; icon: React.ReactNode }[] = [
   { value: "linux", label: "Linux", icon: <Monitor className="h-4 w-4" /> },
 ];
 
-// 变体配置（按平台分组）
-const VARIANTS: Record<Platform, { value: Variant; label: string }[]> = {
+const VARIANTS: Record<Platform, Array<{ value: Variant; label: string }>> = {
   ios: [],
   android: [],
   windows: [
-    { value: "x64", label: "x64 (64位)" },
-    { value: "x86", label: "x86 (32位)" },
+    { value: "x64", label: "x64" },
+    { value: "x86", label: "x86" },
     { value: "arm64", label: "ARM64" },
   ],
   macos: [
-    { value: "intel", label: "Intel 芯片" },
-    { value: "m", label: "Apple Silicon (M系列)" },
+    { value: "intel", label: "Intel" },
+    { value: "m", label: "Apple Silicon" },
   ],
   linux: [
-    { value: "deb", label: "Debian/Ubuntu (.deb)" },
-    { value: "rpm", label: "Red Hat/Fedora (.rpm)" },
+    { value: "deb", label: "DEB" },
+    { value: "rpm", label: "RPM" },
     { value: "appimage", label: "AppImage" },
     { value: "snap", label: "Snap" },
     { value: "flatpak", label: "Flatpak" },
-    { value: "aur", label: "AUR (Arch Linux)" },
+    { value: "aur", label: "AUR" },
   ],
 };
 
-function getVariantLabel(platform: Platform, variant?: Variant | null): string {
+function getVariantLabel(platform: Platform, variant?: Variant | null) {
   if (!variant) return "";
-  const variants = VARIANTS[platform];
-  const config = variants?.find((v) => v.value === variant);
-  return config?.label || variant;
+  return VARIANTS[platform].find((item) => item.value === variant)?.label || variant;
 }
 
-function getPlatformIcon(platform: Platform) {
-  const config = PLATFORMS.find((p) => p.value === platform);
-  return config?.icon || <Monitor className="h-4 w-4" />;
+function formatSize(bytes?: number) {
+  if (!bytes || bytes <= 0) return "-";
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-function getPlatformLabel(platform: Platform) {
-  const config = PLATFORMS.find((p) => p.value === platform);
-  return config?.label || platform;
+function toDownloadUrl(fileUrl: string) {
+  if (!fileUrl) return "";
+  if (fileUrl.startsWith("cloud://")) {
+    return `/api/files/cn-download?download=true&fileId=${encodeURIComponent(fileUrl)}`;
+  }
+  if (fileUrl.startsWith("http://") || fileUrl.startsWith("https://")) {
+    return fileUrl;
+  }
+  return `/api/files/cn-download?download=true&url=${encodeURIComponent(fileUrl)}`;
+}
+
+function buildFileName(platform: Platform, variant: Variant | undefined, version: string, source: string) {
+  const ext = source.includes(".") ? source.split(".").pop() : "bin";
+  return `${platform}${variant ? `-${variant}` : ""}-${version.trim()}-${Date.now()}.${ext}`;
 }
 
 export default function ReleasesManagementPage() {
   const [releases, setReleases] = useState<AppRelease[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<AppRelease | null>(null);
+
+  const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
-  // 新建表单的平台选择（用于动态显示变体选项）
-  const [selectedPlatformForCreate, setSelectedPlatformForCreate] = useState<Platform>("android");
+  const [version, setVersion] = useState("");
+  const [platform, setPlatform] = useState<Platform>("android");
+  const [variant, setVariant] = useState<Variant | undefined>(undefined);
+  const [notes, setNotes] = useState("");
+  const [isActive, setIsActive] = useState(true);
+  const [isMandatory, setIsMandatory] = useState(false);
+  const [fileInputKey, setFileInputKey] = useState(0);
 
-  // 筛选状态
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterPlatform, setFilterPlatform] = useState<string>("all");
-  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [editNotes, setEditNotes] = useState("");
+  const [editActive, setEditActive] = useState(true);
+  const [editMandatory, setEditMandatory] = useState(false);
 
-  // 筛选后的列表
-  const filteredReleases = useMemo(() => {
-    return releases.filter((release) => {
-      if (searchQuery && !release.version.toLowerCase().includes(searchQuery.toLowerCase())) {
-        return false;
-      }
-      if (filterPlatform !== "all" && release.platform !== filterPlatform) {
-        return false;
-      }
-      if (filterStatus !== "all") {
-        const isActive = filterStatus === "active";
-        if (release.is_active !== isActive) {
-          return false;
-        }
-      }
-      return true;
+  const [keyword, setKeyword] = useState("");
+  const [platformFilter, setPlatformFilter] = useState("all");
+
+  const filtered = useMemo(() => {
+    return releases.filter((item) => {
+      const matchKeyword = keyword.trim()
+        ? `${item.version} ${item.file_name || ""} ${item.release_notes || ""}`
+            .toLowerCase()
+            .includes(keyword.toLowerCase())
+        : true;
+      const matchPlatform = platformFilter === "all" ? true : item.platform === platformFilter;
+      return matchKeyword && matchPlatform;
     });
-  }, [releases, searchQuery, filterPlatform, filterStatus]);
+  }, [releases, keyword, platformFilter]);
 
-  // 清除筛选
-  function clearFilters() {
-    setSearchQuery("");
-    setFilterPlatform("all");
-    setFilterStatus("all");
-  }
-
-  const hasFilters = searchQuery || filterPlatform !== "all" || filterStatus !== "all";
-
-  // 格式化文件大小
-  function formatFileSize(bytes?: number) {
-    if (!bytes) return "-";
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  }
-
-  // 加载发布版本列表
-  async function loadReleases() {
+  async function loadData() {
     setLoading(true);
     setError(null);
     try {
@@ -188,356 +150,254 @@ export default function ReleasesManagementPage() {
       if (result.success && result.data) {
         setReleases(result.data);
       } else {
-        setError(result.error || "加载失败");
+        const message = result.error || "加载发布版本失败";
+        setError(message);
+        toast.error(message);
       }
-    } catch (err) {
-      setError("加载发布版本列表失败");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "加载发布版本失败";
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadReleases();
+    void loadData();
   }, []);
 
-  // 创建发布版本
-  async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setCreating(true);
+  useEffect(() => {
+    const options = VARIANTS[platform] || [];
+    if (variant && !options.some((item) => item.value === variant)) {
+      setVariant(undefined);
+    }
+  }, [platform, variant]);
+
+  function resetCreateForm() {
+    setVersion("");
+    setPlatform("android");
+    setVariant(undefined);
+    setNotes("");
+    setIsActive(true);
+    setIsMandatory(false);
+    setFileInputKey((v) => v + 1);
+  }
+
+  async function onCreate(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
     setError(null);
 
     try {
-      const formData = new FormData(e.currentTarget);
-      const file = formData.get("file") as File;
-
-      if (!file || file.size === 0) {
-        setError("请选择要上传的文件");
-        setCreating(false);
+      const form = new FormData(event.currentTarget);
+      const file = form.get("file");
+      if (!version.trim()) {
+        const message = "请输入版本号";
+        setError(message);
+        toast.error(message);
+        return;
+      }
+      if (!file || !(file instanceof File) || file.size <= 0) {
+        const message = "请选择安装包文件";
+        setError(message);
+        toast.error(message);
         return;
       }
 
-      const version = formData.get("version") as string;
-      const platform = formData.get("platform") as string;
-      const variant = formData.get("variant") as string;
-      const ext = file.name.split(".").pop();
-      const variantSuffix = variant ? `-${variant}` : "";
-      const fileName = `${platform}${variantSuffix}-${version}-${Date.now()}.${ext}`;
+      const fileName = buildFileName(platform, variant, version, file.name);
+      const upload = new FormData();
+      upload.append("file", file);
+      upload.append("fileName", fileName);
 
-      // 关键修复: 无论上传目标是什么,都先通过API路由上传文件
-      // 这样可以避免Next.js Server Actions的FormData大小限制
-      console.log("[handleCreate] ========== 开始上传流程 ==========");
-      console.log("[handleCreate] 文件信息:", {
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        sizeInMB: (file.size / 1024 / 1024).toFixed(2) + "MB"
-      });
-      console.log("[handleCreate] 目标文件名:", fileName);
-
-      const uploadFormData = new FormData();
-      uploadFormData.append("file", file);
-      uploadFormData.append("fileName", fileName);
-
-      console.log("[handleCreate] 开始调用 /api/upload/release...");
-
-      let uploadResponse;
-      try {
-        uploadResponse = await fetch("/api/upload/release", {
-          method: "POST",
-          body: uploadFormData,
-        });
-        console.log("[handleCreate] API 响应状态:", uploadResponse.status, uploadResponse.statusText);
-      } catch (fetchError) {
-        console.error("[handleCreate] Fetch 请求失败:", fetchError);
-        setError(`网络请求失败: ${fetchError instanceof Error ? fetchError.message : "未知错误"}`);
-        setCreating(false);
+      const uploadRes = await fetch("/api/upload/release", { method: "POST", body: upload });
+      if (!uploadRes.ok) {
+        const payload = await uploadRes.json().catch(() => null);
+        const message = payload?.error || "上传安装包失败";
+        setError(message);
+        toast.error(message);
         return;
       }
 
-      if (!uploadResponse.ok) {
-        console.error("[handleCreate] API 返回错误状态:", uploadResponse.status);
-
-        // 尝试解析响应
-        let errorMessage = "文件上传失败";
-        try {
-          const contentType = uploadResponse.headers.get("content-type");
-          console.log("[handleCreate] 响应 Content-Type:", contentType);
-
-          if (contentType && contentType.includes("application/json")) {
-            const error = await uploadResponse.json();
-            console.error("[handleCreate] 错误详情 (JSON):", error);
-            errorMessage = error.error || errorMessage;
-          } else {
-            const textError = await uploadResponse.text();
-            console.error("[handleCreate] 错误详情 (Text):", textError.substring(0, 500));
-            errorMessage = `服务器返回非JSON响应 (${uploadResponse.status}): ${textError.substring(0, 100)}`;
-          }
-        } catch (parseError) {
-          console.error("[handleCreate] 解析错误响应失败:", parseError);
-          errorMessage = `上传失败 (${uploadResponse.status}): 无法解析错误信息`;
-        }
-
-        setError(errorMessage);
-        setCreating(false);
+      const uploadPayload = (await uploadRes.json()) as { fileID?: string; fileUrl?: string };
+      const fileRef = uploadPayload.fileID || uploadPayload.fileUrl;
+      if (!fileRef) {
+        const message = "上传成功但未返回文件地址";
+        setError(message);
+        toast.error(message);
         return;
       }
 
-      let uploadResult;
-      try {
-        uploadResult = await uploadResponse.json();
-        console.log("[handleCreate] 上传成功，响应数据:", uploadResult);
-      } catch (jsonError) {
-        console.error("[handleCreate] 解析成功响应失败:", jsonError);
-        setError("上传成功但无法解析响应数据");
-        setCreating(false);
+      const payload = new FormData();
+      payload.append("version", version.trim());
+      payload.append("platform", platform);
+      if (variant) payload.append("variant", variant);
+      payload.append("fileName", fileName);
+      payload.append("fileSize", String(file.size));
+      payload.append("cloudbaseFileId", fileRef);
+      payload.append("releaseNotes", notes.trim());
+      payload.append("isActive", String(isActive));
+      payload.append("isMandatory", String(isMandatory));
+
+      const result = await createRelease(payload);
+      if (!result.success) {
+        const message = result.error || "创建版本失败";
+        setError(message);
+        toast.error(message);
         return;
       }
 
-      const cloudbaseFileId = uploadResult.fileID || uploadResult.fileUrl;
-      console.log("[handleCreate] ✅ 文件上传成功:", cloudbaseFileId);
-
-      // 移除文件,只传递fileID和其他元数据
-      formData.delete("file");
-      formData.append("cloudbaseFileId", cloudbaseFileId);
-      formData.append("fileName", fileName);
-      formData.append("fileSize", file.size.toString());
-
-      const result = await createRelease(formData);
-
-      if (result.success) {
-        setDialogOpen(false);
-        loadReleases();
-      } else {
-        setError(result.error || "创建失败");
-      }
-    } catch (err) {
-      console.error("[handleCreate] 错误:", err);
-      setError(err instanceof Error ? err.message : "创建失败");
+      setDialogOpen(false);
+      resetCreateForm();
+      await loadData();
+      toast.success("版本已创建");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "创建版本失败";
+      setError(message);
+      toast.error(message);
     } finally {
-      setCreating(false);
+      setSaving(false);
     }
   }
 
-  // 更新发布版本
-  async function handleUpdate(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  function openEdit(item: AppRelease) {
+    setEditing(item);
+    setEditNotes(item.release_notes || "");
+    setEditActive(item.is_active);
+    setEditMandatory(item.is_mandatory);
+    setEditOpen(true);
+  }
+
+  async function onSaveEdit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     if (!editing) return;
 
-    setCreating(true);
+    setSaving(true);
     setError(null);
+    try {
+      const payload = new FormData();
+      payload.append("releaseNotes", editNotes.trim());
+      payload.append("isActive", String(editActive));
+      payload.append("isMandatory", String(editMandatory));
 
-    const formData = new FormData(e.currentTarget);
-    const result = await updateRelease(editing.id, formData);
+      const result = await updateRelease(editing.id, payload);
+      if (!result.success) {
+        const message = result.error || "更新失败";
+        setError(message);
+        toast.error(message);
+        return;
+      }
 
-    if (result.success) {
-      setEditDialogOpen(false);
+      setEditOpen(false);
       setEditing(null);
-      loadReleases();
-    } else {
-      setError(result.error || "更新失败");
+      await loadData();
+      toast.success("版本已更新");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "更新失败";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSaving(false);
     }
-    setCreating(false);
   }
 
-  // 删除发布版本
-  async function handleDelete(id: string) {
+  async function onDelete(id: string) {
     setDeleting(id);
-    const result = await deleteRelease(id);
-    if (result.success) {
-      loadReleases();
-    } else {
-      setError(result.error || "删除失败");
+    setError(null);
+    try {
+      const result = await deleteRelease(id);
+      if (!result.success) {
+        const message = result.error || "删除失败";
+        setError(message);
+        toast.error(message);
+        return;
+      }
+      await loadData();
+      toast.success("版本已删除");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "删除失败";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setDeleting(null);
     }
-    setDeleting(null);
   }
 
-  // 切换状态
-  async function handleToggle(id: string, currentStatus: boolean) {
-    setToggling(id);
-    const result = await toggleReleaseStatus(id, !currentStatus);
-    if (result.success) {
-      loadReleases();
-    } else {
-      setError(result.error || "切换状态失败");
+  async function onToggle(item: AppRelease) {
+    setToggling(item.id);
+    setError(null);
+    try {
+      const result = await toggleReleaseStatus(item.id, !item.is_active);
+      if (!result.success) {
+        const message = result.error || "切换状态失败";
+        setError(message);
+        toast.error(message);
+        return;
+      }
+      await loadData();
+      toast.success(item.is_active ? "版本已停用" : "版本已启用");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "切换状态失败";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setToggling(null);
     }
-    setToggling(null);
   }
 
   return (
     <div className="space-y-6">
-      {/* 页头 */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">发布版本</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            管理应用的发布版本，支持多平台（iOS、Android、Windows、macOS、Linux）
-          </p>
+          <h1 className="text-2xl font-bold">发布管理</h1>
+          <p className="text-sm text-muted-foreground">管理多平台安装包发布，支持平台变体与启用状态切换。</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={loadReleases} disabled={loading}>
-            <RefreshCw
-              className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`}
-            />
+          <Button variant="outline" onClick={() => void loadData()} disabled={loading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             刷新
           </Button>
-
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                新增版本
-              </Button>
+              <Button><Plus className="mr-2 h-4 w-4" />新建版本</Button>
             </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>新增发布版本</DialogTitle>
-                <DialogDescription>
-                  上传新版本安装包
-                </DialogDescription>
+                <DialogTitle>新建发布版本</DialogTitle>
+                <DialogDescription>上传安装包并创建发布记录。</DialogDescription>
               </DialogHeader>
-              <form onSubmit={handleCreate} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="version">版本号 *</Label>
-                    <Input
-                      id="version"
-                      name="version"
-                      placeholder="如 1.0.0"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="platform">平台 *</Label>
-                    <Select
-                      name="platform"
-                      defaultValue="android"
-                      onValueChange={(value) => setSelectedPlatformForCreate(value as Platform)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {PLATFORMS.map((p) => (
-                          <SelectItem key={p.value} value={p.value}>
-                            <span className="flex items-center gap-2">
-                              {p.icon}
-                              {p.label}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
+              <form onSubmit={onCreate} className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1"><Label>版本号 *</Label><Input value={version} onChange={(e) => setVersion(e.target.value)} placeholder="例如 1.2.3" /></div>
+                  <div className="space-y-1">
+                    <Label>平台 *</Label>
+                    <Select value={platform} onValueChange={(value) => setPlatform(value as Platform)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{PLATFORMS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                 </div>
 
-                {/* 变体选择（仅对 Windows/macOS/Linux 显示） */}
-                {VARIANTS[selectedPlatformForCreate]?.length > 0 && (
-                  <div className="space-y-2">
-                    <Label htmlFor="variant">架构/格式</Label>
-                    <Select name="variant">
-                      <SelectTrigger>
-                        <SelectValue placeholder="选择架构或格式（可选）" />
-                      </SelectTrigger>
+                {VARIANTS[platform].length > 0 ? (
+                  <div className="space-y-1">
+                    <Label>变体</Label>
+                    <Select value={variant || "none"} onValueChange={(value) => setVariant(value === "none" ? undefined : (value as Variant))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {VARIANTS[selectedPlatformForCreate].map((v) => (
-                          <SelectItem key={v.value} value={v.value}>
-                            {v.label}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="none">默认</SelectItem>
+                        {VARIANTS[platform].map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-muted-foreground">
-                      为不同架构上传单独的安装包
-                    </p>
                   </div>
-                )}
+                ) : null}
 
-                <div className="space-y-2">
-                  <Label htmlFor="file">安装包文件 *</Label>
-                  <Input
-                    id="file"
-                    name="file"
-                    type="file"
-                    accept=".apk,.aab,.ipa,.exe,.dmg,.deb,.rpm,.AppImage,.zip"
-                    required
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    支持 APK、AAB、IPA、EXE、DMG、DEB、RPM 等格式
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="releaseNotes">更新说明</Label>
-                  <Textarea
-                    id="releaseNotes"
-                    name="releaseNotes"
-                    placeholder="本次更新的内容..."
-                    rows={4}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>立即启用</Label>
-                    <div className="flex items-center h-10">
-                      <input type="hidden" name="isActive" value="false" />
-                      <Switch
-                        name="isActive"
-                        defaultChecked={true}
-                        onCheckedChange={(checked) => {
-                          const form = document.querySelector("form");
-                          if (form) {
-                            const hidden = form.querySelector(
-                              'input[name="isActive"][type="hidden"]'
-                            ) as HTMLInputElement;
-                            if (hidden) hidden.value = String(checked);
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>强制更新</Label>
-                    <div className="flex items-center h-10">
-                      <input type="hidden" name="isMandatory" value="false" />
-                      <Switch
-                        name="isMandatory"
-                        defaultChecked={false}
-                        onCheckedChange={(checked) => {
-                          const form = document.querySelector("form");
-                          if (form) {
-                            const hidden = form.querySelector(
-                              'input[name="isMandatory"][type="hidden"]'
-                            ) as HTMLInputElement;
-                            if (hidden) hidden.value = String(checked);
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
+                <div className="space-y-1"><Label>安装包文件 *</Label><Input key={fileInputKey} name="file" type="file" required /></div>
+                <div className="space-y-1"><Label>更新说明</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} /></div>
+                <div className="flex items-center justify-between rounded-md border p-2"><span className="text-sm">立即启用</span><Switch checked={isActive} onCheckedChange={setIsActive} /></div>
+                <div className="flex items-center justify-between rounded-md border p-2"><span className="text-sm">强制更新</span><Switch checked={isMandatory} onCheckedChange={setIsMandatory} /></div>
                 <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setDialogOpen(false)}
-                  >
-                    取消
-                  </Button>
-                  <Button type="submit" disabled={creating}>
-                    {creating ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        上传中...
-                      </>
-                    ) : (
-                      "创建"
-                    )}
-                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>取消</Button>
+                  <Button type="submit" disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "创建"}</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -545,241 +405,78 @@ export default function ReleasesManagementPage() {
         </div>
       </div>
 
-      {/* 错误提示 */}
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
 
-      {/* 搜索和筛选栏 */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-wrap items-center gap-4">
-            {/* 搜索框 */}
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="搜索版本号..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-
-            {/* 平台筛选 */}
-            <Select value={filterPlatform} onValueChange={setFilterPlatform}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="平台" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部平台</SelectItem>
-                {PLATFORMS.map((p) => (
-                  <SelectItem key={p.value} value={p.value}>
-                    <span className="flex items-center gap-2">
-                      {p.icon}
-                      {p.label}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* 状态筛选 */}
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[120px]">
-                <SelectValue placeholder="状态" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部状态</SelectItem>
-                <SelectItem value="active">已启用</SelectItem>
-                <SelectItem value="inactive">已禁用</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* 清除筛选按钮 */}
-            {hasFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters}>
-                <X className="h-4 w-4 mr-1" />
-                清除筛选
-              </Button>
-            )}
-          </div>
-
-          {/* 筛选结果统计 */}
-          {hasFilters && (
-            <div className="mt-3 text-sm text-muted-foreground">
-              找到 {filteredReleases.length} 条结果（共 {releases.length} 条）
-            </div>
-          )}
+        <CardHeader><CardTitle>筛选</CardTitle></CardHeader>
+        <CardContent className="flex gap-3">
+          <Input placeholder="搜索版本/文件/说明" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+          <Select value={platformFilter} onValueChange={setPlatformFilter}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="平台" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部平台</SelectItem>
+              {PLATFORMS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </CardContent>
       </Card>
 
-      {/* 发布版本列表 */}
       <Card>
-        <CardHeader>
-          <CardTitle>版本列表</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>版本列表（{filtered.length}）</CardTitle></CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : filteredReleases.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              {hasFilters ? "没有符合筛选条件的版本" : "暂无发布版本，点击\"新增版本\"开始添加"}
-            </div>
+            <div className="py-10 text-center"><Loader2 className="inline h-6 w-6 animate-spin" /></div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-28">版本号</TableHead>
-                  <TableHead className="w-24">平台</TableHead>
-                  <TableHead className="w-24">大小</TableHead>
-                  <TableHead className="w-36">发布时间</TableHead>
-                  <TableHead className="w-24">强制更新</TableHead>
-                  <TableHead className="w-24">状态</TableHead>
-                  <TableHead className="w-32">操作</TableHead>
+                  <TableHead>版本</TableHead>
+                  <TableHead>平台</TableHead>
+                  <TableHead>大小</TableHead>
+                  <TableHead>说明</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead className="w-44">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredReleases.map((release) => (
-                  <TableRow key={release.id}>
-                    <TableCell className="font-mono font-medium">
-                      v{release.version}
-                    </TableCell>
+                {filtered.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell className="font-mono">v{item.version}</TableCell>
                     <TableCell>
-                      <div className="flex flex-col">
-                        <span className="flex items-center gap-2">
-                          {getPlatformIcon(release.platform)}
-                          {getPlatformLabel(release.platform)}
-                        </span>
-                        {release.variant && (
-                          <span className="text-xs text-muted-foreground ml-6">
-                            {getVariantLabel(release.platform, release.variant)}
-                          </span>
-                        )}
+                      <div className="flex items-center gap-2">
+                        {PLATFORMS.find((p) => p.value === item.platform)?.icon}
+                        {PLATFORMS.find((p) => p.value === item.platform)?.label}
+                        {item.variant ? <span className="text-xs text-muted-foreground">({getVariantLabel(item.platform, item.variant)})</span> : null}
+                      </div>
+                    </TableCell>
+                    <TableCell>{formatSize(item.file_size)}</TableCell>
+                    <TableCell className="max-w-[280px] truncate" title={item.release_notes || ""}>{item.release_notes || "-"}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Badge variant={item.is_active ? "default" : "outline"}>{item.is_active ? "启用" : "停用"}</Badge>
+                        {item.is_mandatory ? <Badge variant="destructive">强制</Badge> : null}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <HardDrive className="h-3 w-3" />
-                        {formatFileSize(release.file_size)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
-                        {release.created_at
-                          ? new Date(release.created_at).toLocaleString("zh-CN", {
-                              year: "numeric",
-                              month: "2-digit",
-                              day: "2-digit",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : "-"}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {release.is_mandatory ? (
-                        <Badge variant="destructive" className="gap-1">
-                          <AlertTriangle className="h-3 w-3" /> 强制
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline">可选</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={
-                          release.is_active
-                            ? "text-green-600"
-                            : "text-muted-foreground"
-                        }
-                        onClick={() => handleToggle(release.id, release.is_active)}
-                        disabled={toggling === release.id}
-                      >
-                        {toggling === release.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : release.is_active ? (
-                          <>
-                            <Eye className="h-4 w-4 mr-1" /> 启用
-                          </>
-                        ) : (
-                          <>
-                            <EyeOff className="h-4 w-4 mr-1" /> 禁用
-                          </>
-                        )}
-                      </Button>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        {/* 下载按钮 */}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            if (!release.file_url) return;
-                            const url = release.file_url.startsWith("cloud://")
-                              ? `/api/files/cn-download?fileId=${encodeURIComponent(release.file_url)}`
-                              : release.file_url;
-                            window.open(url, "_blank");
-                          }}
-                          title="下载"
-                        >
-                          <Download className="h-4 w-4" />
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => window.open(toDownloadUrl(item.file_url), "_blank")}><Download className="h-4 w-4" /></Button>
+                        <Button size="icon" variant="ghost" onClick={() => openEdit(item)}><Pencil className="h-4 w-4" /></Button>
+                        <Button size="icon" variant="ghost" disabled={toggling === item.id} onClick={() => void onToggle(item)}>
+                          {toggling === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : item.is_active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                         </Button>
-
-                        {/* 编辑按钮 */}
                         <Button
-                          variant="ghost"
                           size="icon"
+                          variant="ghost"
+                          className="text-red-600"
+                          disabled={deleting === item.id}
                           onClick={() => {
-                            setEditing(release);
-                            setEditDialogOpen(true);
+                            if (window.confirm(`确认删除版本 v${item.version} 吗？`)) {
+                              void onDelete(item.id);
+                            }
                           }}
-                          title="编辑"
                         >
-                          <Pencil className="h-4 w-4" />
+                          {deleting === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                         </Button>
-
-                        {/* 删除按钮 */}
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                              title="删除"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>确认删除</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                确定要删除版本 &quot;v{release.version}&quot; ({getPlatformLabel(release.platform)}) 吗？此操作不可恢复。
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>取消</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => handleDelete(release.id)}
-                                className="bg-red-600 hover:bg-red-700"
-                              >
-                                {deleting === release.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  "删除"
-                                )}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -790,122 +487,26 @@ export default function ReleasesManagementPage() {
         </CardContent>
       </Card>
 
-      {/* 编辑对话框 */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>编辑发布版本</DialogTitle>
-            <DialogDescription>
-              修改版本信息（版本号和平台不可更改）
-            </DialogDescription>
+            <DialogTitle>编辑版本</DialogTitle>
+            <DialogDescription>修改更新说明、启用状态和强制更新。</DialogDescription>
           </DialogHeader>
-          {editing && (
-            <form onSubmit={handleUpdate} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>版本号</Label>
-                  <Input value={`v${editing.version}`} disabled />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>平台</Label>
-                  <div className="flex items-center h-10 px-3 border rounded-md bg-muted/50">
-                    {getPlatformIcon(editing.platform)}
-                    <span className="ml-2">{getPlatformLabel(editing.platform)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-releaseNotes">更新说明</Label>
-                <Textarea
-                  id="edit-releaseNotes"
-                  name="releaseNotes"
-                  defaultValue={editing.release_notes || ""}
-                  rows={4}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>状态</Label>
-                  <div className="flex items-center h-10">
-                    <input
-                      type="hidden"
-                      name="isActive"
-                      id="edit-isActive-hidden"
-                      defaultValue={String(editing.is_active)}
-                    />
-                    <Switch
-                      defaultChecked={editing.is_active}
-                      onCheckedChange={(checked) => {
-                        const hidden = document.getElementById(
-                          "edit-isActive-hidden"
-                        ) as HTMLInputElement;
-                        if (hidden) hidden.value = String(checked);
-                      }}
-                    />
-                    <span className="ml-2 text-sm text-muted-foreground">
-                      {editing.is_active ? "已启用" : "已禁用"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>强制更新</Label>
-                  <div className="flex items-center h-10">
-                    <input
-                      type="hidden"
-                      name="isMandatory"
-                      id="edit-isMandatory-hidden"
-                      defaultValue={String(editing.is_mandatory)}
-                    />
-                    <Switch
-                      defaultChecked={editing.is_mandatory}
-                      onCheckedChange={(checked) => {
-                        const hidden = document.getElementById(
-                          "edit-isMandatory-hidden"
-                        ) as HTMLInputElement;
-                        if (hidden) hidden.value = String(checked);
-                      }}
-                    />
-                    <span className="ml-2 text-sm text-muted-foreground">
-                      {editing.is_mandatory ? "强制" : "可选"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
+          {editing ? (
+            <form onSubmit={onSaveEdit} className="space-y-3">
+              <div className="space-y-1"><Label>版本</Label><Input value={`v${editing.version}`} disabled /></div>
+              <div className="space-y-1"><Label>更新说明</Label><Textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} rows={3} /></div>
+              <div className="flex items-center justify-between rounded-md border p-2"><span className="text-sm">启用</span><Switch checked={editActive} onCheckedChange={setEditActive} /></div>
+              <div className="flex items-center justify-between rounded-md border p-2"><span className="text-sm">强制更新</span><Switch checked={editMandatory} onCheckedChange={setEditMandatory} /></div>
               <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setEditDialogOpen(false);
-                    setEditing(null);
-                  }}
-                >
-                  取消
-                </Button>
-                <Button type="submit" disabled={creating}>
-                  {creating ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      保存中...
-                    </>
-                  ) : (
-                    "保存"
-                  )}
-                </Button>
+                <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>取消</Button>
+                <Button type="submit" disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "保存"}</Button>
               </DialogFooter>
             </form>
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>
   );
 }
-
-
-
-

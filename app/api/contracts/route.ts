@@ -21,6 +21,7 @@ import { isAdminRole } from "@/lib/auth/user-role";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
+export const maxDuration = 60;
 
 function parsePositiveInt(value: string | null, fallback: number) {
   const parsed = Number.parseInt(value || "", 10);

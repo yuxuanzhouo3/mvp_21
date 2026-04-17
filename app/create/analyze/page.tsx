@@ -289,6 +289,7 @@ function AnalyzePageContent() {
         Number.isFinite(createJobResult.data.pollAfterMs)
           ? Math.max(1_000, Math.min(5_000, createJobResult.data.pollAfterMs))
           : 1_800;
+      let transientGatewayErrorCount = 0;
 
       while (Date.now() - pollStartedAt <= pollDeadlineMs) {
         await sleep(pollAfterMs);
@@ -306,6 +307,19 @@ function AnalyzePageContent() {
             throw new Error("UNAUTHORIZED");
           }
 
+          if (
+            pollResponse.status === 502 ||
+            pollResponse.status === 503 ||
+            pollResponse.status === 504
+          ) {
+            transientGatewayErrorCount += 1;
+            setGenerationStatus("running");
+            pollAfterMs = Math.min(5_000, Math.max(1_800, pollAfterMs + 400));
+            if (transientGatewayErrorCount <= 6) {
+              continue;
+            }
+          }
+
           const message = await readGenerateErrorMessage(pollResponse, isEn);
           throw new Error(
             message ||
@@ -318,6 +332,7 @@ function AnalyzePageContent() {
         const pollPayload = (await pollResponse.json().catch(() => null)) as
           | Record<string, any>
           | null;
+        transientGatewayErrorCount = 0;
 
         if (!pollPayload?.success) {
           throw new Error(

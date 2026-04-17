@@ -49,6 +49,33 @@ interface ChatResult {
   draftSourceContent: string;
 }
 
+async function readApiErrorMessage(response: Response, fallback: string) {
+  const contentType = (response.headers.get("content-type") || "").toLowerCase();
+  if (contentType.includes("application/json")) {
+    const payload = (await response.json().catch(() => null)) as
+      | Record<string, unknown>
+      | null;
+    const errorPayload = payload?.error;
+    if (typeof errorPayload === "string" && errorPayload.trim()) {
+      return errorPayload.trim();
+    }
+    if (errorPayload && typeof errorPayload === "object") {
+      const message = (errorPayload as Record<string, unknown>).message;
+      if (typeof message === "string" && message.trim()) {
+        return message.trim();
+      }
+    }
+    return fallback;
+  }
+
+  const rawText = (await response.text().catch(() => "")) || "";
+  const normalized = rawText.trim();
+  if (!normalized || normalized.startsWith("<")) {
+    return fallback;
+  }
+  return normalized.slice(0, 240);
+}
+
 export function AIContractIntakeScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -134,9 +161,31 @@ export function AIContractIntakeScreen() {
         }),
       });
 
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || (isEn ? "AI chat failed." : "AI 对话失败。"));
+      if (!response.ok) {
+        throw new Error(
+          await readApiErrorMessage(
+            response,
+            isEn ? "AI chat failed. Please retry later." : "AI 对话失败，请稍后重试。",
+          ),
+        );
+      }
+
+      const result = (await response.json().catch(() => null)) as
+        | Record<string, unknown>
+        | null;
+      if (!result?.success) {
+        const errorPayload = result?.error;
+        const message =
+          typeof errorPayload === "string"
+            ? errorPayload
+            : errorPayload &&
+                typeof errorPayload === "object" &&
+                typeof (errorPayload as Record<string, unknown>).message === "string"
+              ? String((errorPayload as Record<string, unknown>).message)
+              : isEn
+                ? "AI chat failed."
+                : "AI 对话失败。";
+        throw new Error(message);
       }
 
       const data = result.data as ChatResult;
@@ -205,16 +254,27 @@ export function AIContractIntakeScreen() {
         }),
       });
 
-      const analysisResult = await analysisResponse.json();
+      if (!analysisResponse.ok) {
+        throw new Error(
+          await readApiErrorMessage(
+            analysisResponse,
+            isEn ? "Analysis failed. Please retry later." : "分析失败，请稍后重试。",
+          ),
+        );
+      }
+
+      const analysisResult = (await analysisResponse.json().catch(() => null)) as
+        | Record<string, any>
+        | null;
       if (preparedInput.truncated || analysisResult?.meta?.input?.truncated) {
         console.info("[AIContractIntakeScreen] Analysis input compacted:", {
           clientInputChars: preparedInput.analyzedChars,
           serverInputChars: analysisResult?.meta?.input?.analyzedChars,
         });
       }
-      if (!analysisResult.success) {
+      if (!analysisResult?.success) {
         throw new Error(
-          analysisResult.error?.message || (isEn ? "Analysis failed." : "分析失败。"),
+          analysisResult?.error?.message || (isEn ? "Analysis failed." : "分析失败。"),
         );
       }
 

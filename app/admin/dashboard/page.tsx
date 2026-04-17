@@ -7,7 +7,7 @@
  * 包含：核心指标卡片、版本对比、趋势图表等
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { getUserStats, getUserTrends } from "@/actions/admin-users";
 import { getPaymentStats, getPaymentTrends } from "@/actions/admin-payments";
 import { Button } from "@/components/ui/button";
@@ -42,7 +42,7 @@ export default function DashboardPage() {
   const [paymentTrends, setPaymentTrends] = useState<any>(null);
 
   // ==================== 数据加载 ====================
-  async function loadAllStats() {
+  const loadAllStats = useCallback(async () => {
     setError(null);
     try {
       console.log("[Dashboard] 开始加载统计数据...");
@@ -103,28 +103,28 @@ export default function DashboardPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }
+  }, [timeRange]);
 
   useEffect(() => {
     setLoading(true);
-    loadAllStats();
+    void loadAllStats();
 
     return () => {
       // No cleanup needed - state persists across visibility changes
     };
-  }, [timeRange]);
+  }, [loadAllStats]);
 
   // Auto-refresh data when tab becomes visible after being idle
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && !loading && !refreshing) {
-        loadAllStats();
+        void loadAllStats();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [loading, refreshing]);
+  }, [loading, refreshing, loadAllStats]);
 
   async function handleRefresh() {
     setRefreshing(true);
