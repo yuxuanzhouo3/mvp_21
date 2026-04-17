@@ -33,6 +33,10 @@ const paymentProviders = deploymentConfig.payment.providers;
 const primaryPaymentMethod =
   paymentProviders[0] || (isChinaRegion() ? "wechat" : "stripe");
 const aiProvider = isChinaRegion() ? "dashscope" : "openai";
+const paymentMethods = isChinaRegion()
+  ? ["wechat", "alipay"]
+  : ["stripe"];
+const paymentCurrency = isChinaRegion() ? "CNY" : "USD";
 
 export const RegionConfig = {
   auth: {
@@ -45,6 +49,8 @@ export const RegionConfig = {
     provider: deploymentConfig.database.provider,
   },
   payment: {
+    methods: paymentMethods,
+    currency: paymentCurrency,
     providers: paymentProviders,
     primary: primaryPaymentMethod,
   },
@@ -67,6 +73,8 @@ export const RegionConfig = {
     apiUrl: process.env.IP_API_URL || "https://ipapi.co/json/",
     cacheTtl: parseInt(process.env.GEO_CACHE_TTL || "3600000", 10),
   },
+  region: isChinaRegion() ? "CN" : "INTL",
+  isDomestic: isChinaRegion(),
 } as const;
 
 export function validateRegionConfig(): { valid: boolean; errors: string[] } {

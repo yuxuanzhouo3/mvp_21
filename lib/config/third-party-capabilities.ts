@@ -57,6 +57,14 @@ function isPresent(value?: string | null) {
   return Boolean(value && value.trim());
 }
 
+function isTruthy(value?: string | null) {
+  if (!value) {
+    return false;
+  }
+
+  return /^(1|true|yes)$/i.test(value.trim());
+}
+
 function looksLikeUrl(value?: string | null) {
   if (!isPresent(value)) {
     return false;
@@ -76,6 +84,27 @@ function normalizeMultilineSecret(value?: string | null) {
 
 function createStatus(enabled: boolean, reason?: string): CapabilityStatus {
   return enabled ? { enabled: true } : { enabled: false, reason };
+}
+
+function isGoogleOAuthManagedByInfra(expectedCallbackUrl?: string) {
+  const declaredManaged = isTruthy(process.env.SUPABASE_GOOGLE_OAUTH_MANAGED);
+  if (!declaredManaged) {
+    return false;
+  }
+
+  const callbackUrl = process.env.SUPABASE_GOOGLE_OAUTH_CALLBACK_URL;
+  if (!looksLikeUrl(callbackUrl)) {
+    return false;
+  }
+
+  if (expectedCallbackUrl && callbackUrl!.replace(/\/$/, "") !== expectedCallbackUrl.replace(/\/$/, "")) {
+    return false;
+  }
+
+  return (
+    isPresent(process.env.SUPABASE_GOOGLE_OAUTH_CLIENT_ID) &&
+    isPresent(process.env.SUPABASE_GOOGLE_OAUTH_CLIENT_SECRET)
+  );
 }
 
 function getSmsAuthStatus(region: Region): CapabilityStatus {
@@ -209,18 +238,21 @@ export function getOAuthReadinessSnapshot(): OAuthReadinessSnapshot {
     };
   }
 
+  const infraManaged = isGoogleOAuthManagedByInfra(expectedCallbackUrl);
+
   return {
     region,
     providers: {
       google: {
         enabled: true,
-        status: "dashboard_check_required",
-        reason:
-          "Environment variables are ready. Verify Google provider toggle and redirect URLs in Supabase Dashboard.",
+        status: infraManaged ? "ready" : "dashboard_check_required",
+        reason: infraManaged
+          ? "Google OAuth is declared as managed by infrastructure configuration."
+          : "Environment variables are ready. Complete IaC rollout or verify provider toggle and redirect URLs in Supabase Dashboard. See docs/deployment/google-oauth-intl.md.",
         checks: {
           envConfigured: true,
           expectedCallbackUrlConfigured: Boolean(expectedCallbackUrl),
-          dashboardProviderVerified: false,
+          dashboardProviderVerified: infraManaged,
         },
         expectedCallbackUrl,
       },

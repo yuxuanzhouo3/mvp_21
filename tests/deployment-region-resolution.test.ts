@@ -25,6 +25,18 @@ describe("deployment region resolution", () => {
     expect(resolved.deprecatedSourceUsed).toBe(true);
   });
 
+  test("supports DEPLOYMENT_REGION when public deployment region is absent", () => {
+    const resolved = resolveDeploymentRegion({
+      DEPLOYMENT_REGION: "INTL",
+      APP_REGION: "CN",
+    });
+
+    expect(resolved.region).toBe("INTL");
+    expect(resolved.source).toBe("DEPLOYMENT_REGION");
+    expect(resolved.deprecatedSourceUsed).toBe(false);
+    expect(resolved.sourceConflict).toBe(true);
+  });
+
   test("defaults to CN when no region env is configured", () => {
     const resolved = resolveDeploymentRegion({});
     expect(resolved.region).toBe("CN");

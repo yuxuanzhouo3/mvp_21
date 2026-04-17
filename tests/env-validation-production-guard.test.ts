@@ -15,6 +15,7 @@ describe("env validation production placeholder guard", () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://prod-project.supabase.co";
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-prod-key";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-prod-key";
+    process.env.OPENAI_MODEL = "gpt-4.1";
     process.env.STRIPE_SECRET_KEY = "sk_test_replace_me";
     process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_test_replace_me";
 
@@ -33,6 +34,7 @@ describe("env validation production placeholder guard", () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://prod-abc123.supabase.co";
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-prod-key";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-prod-key";
+    process.env.OPENAI_MODEL = "gpt-4.1";
     process.env.STRIPE_SECRET_KEY = "sk_live_123456789";
     process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_live_123456789";
 

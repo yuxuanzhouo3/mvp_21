@@ -1,35 +1,47 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  DollarSign,
-  Eye,
-  Loader2,
-  MousePointer,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Trash2,
-  TrendingUp,
-} from 'lucide-react';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import { toast } from 'sonner';
+/**
+ * 管理后台 - 广告管理页面
+ *
+ * 完整功能：
+ * - 广告列表展示（支持分页）
+ * - 创建广告
+ * - 编辑广告
+ * - 删除广告
+ * - 切换广告状态
+ * - 拖拽排序优先级
+ * - 预览广告
+ */
 
-import { useLanguage } from '@/components/language-provider';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect, useMemo } from "react";
+import {
+  listAds,
+  getAdStats,
+  createAd,
+  updateAd,
+  deleteAd,
+  toggleAdStatus,
+  type Advertisement,
+} from "@/actions/admin-ads";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -37,719 +49,983 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Textarea } from '@/components/ui/textarea';
-import { adminFetchJson } from '@/lib/admin/client';
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Loader2,
+  Search,
+  RefreshCw,
+  Plus,
+  Edit,
+  Trash2,
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+  Image as ImageIcon,
+  Video,
+  Power,
+  GripVertical,
+  ExternalLink,
+} from "lucide-react";
 
-type AdStats = {
-  totalImpressions: number;
-  totalClicks: number;
-  ctr: string;
-  revenue: number;
-};
-
-type AdTrend = {
-  date: string;
-  impressions: number;
-  clicks: number;
-  ctr: string;
-};
-
-type AdRecord = {
-  id: string;
-  name: string;
-  position: string;
-  type: string;
-  content: string;
-  link: string;
-  status: string;
-  start_date?: string | null;
-  end_date?: string | null;
-  impressions?: number;
-  clicks?: number;
-  revenue?: number;
-};
-
-type AdFormState = {
-  id?: string;
-  name: string;
-  position: string;
-  type: string;
-  content: string;
-  link: string;
-  status: string;
-  start_date: string;
-  end_date: string;
-};
-
-const EMPTY_FORM: AdFormState = {
-  name: '',
-  position: 'dashboard_top',
-  type: 'banner',
-  content: '',
-  link: '',
-  status: 'draft',
-  start_date: '',
-  end_date: '',
-};
-
-export default function AdsPage() {
-  const { language } = useLanguage();
-  const isEn = language === 'en';
-  const locale = isEn ? 'en-US' : 'zh-CN';
-
-  const [stats, setStats] = useState<AdStats | null>(null);
-  const [trend, setTrend] = useState<AdTrend[]>([]);
-  const [items, setItems] = useState<AdRecord[]>([]);
+export default function AdsManagementPage() {
+  // ==================== 状态管理 ====================
+  const [ads, setAds] = useState<Advertisement[]>([]);
+  const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState<AdFormState>(EMPTY_FORM);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const copy = useMemo(
-    () => ({
-      title: isEn ? 'Ad Management' : '广告位管理',
-      subtitle: isEn
-        ? 'Maintain slot inventory, monitor delivery data, and keep campaign settings tidy.'
-        : '统一维护广告位库存、投放数据和排期配置，方便上线前后持续运营。',
-      refresh: isEn ? 'Refresh' : '刷新',
-      create: isEn ? 'Create Slot' : '新建广告位',
-      retry: isEn ? 'Retry' : '重新加载',
-      loadFailed: isEn ? 'Failed to load ad data.' : '加载广告位数据失败，请稍后重试。',
-      saveFailed: isEn ? 'Failed to save the ad slot.' : '保存广告位失败，请检查后重试。',
-      saveSuccessCreate: isEn ? 'Ad slot created.' : '广告位已创建。',
-      saveSuccessUpdate: isEn ? 'Ad slot updated.' : '广告位已更新。',
-      deleteFailed: isEn ? 'Failed to delete the ad slot.' : '删除广告位失败，请稍后重试。',
-      deleteSuccess: isEn ? 'Ad slot deleted.' : '广告位已删除。',
-      requiredFields: isEn
-        ? 'Name, position, and type are required.'
-        : '请先填写广告位名称、位置和类型。',
-      metricsImpressions: isEn ? 'Impressions' : '展示量',
-      metricsClicks: isEn ? 'Clicks' : '点击量',
-      metricsCtr: isEn ? 'CTR' : '点击率',
-      metricsRevenue: isEn ? 'Estimated Revenue' : '预计收入',
-      trendTitle: isEn ? 'Delivery Trend' : '投放趋势',
-      trendDescription: isEn
-        ? 'Recent impressions and clicks from the current reporting window.'
-        : '展示最近一段时间的展示量与点击量变化。',
-      ctrTitle: isEn ? 'CTR Trend' : '点击率趋势',
-      ctrDescription: isEn
-        ? 'Daily click-through rate helps spot creative fatigue quickly.'
-        : '通过每日点击率快速识别素材表现和疲劳度。',
-      topTitle: isEn ? 'Top Performing Slots' : '高表现广告位',
-      topDescription: isEn
-        ? 'Quickly review the best-performing slots by click volume.'
-        : '按点击量查看当前表现较好的广告位。',
-      tableTitle: isEn ? 'Slot Inventory' : '广告位清单',
-      tableDescription: isEn
-        ? `There are ${items.length} managed slots in the current data source.`
-        : `当前数据源共收录 ${items.length} 个可管理广告位。`,
-      noTrend: isEn ? 'No trend data available yet.' : '暂无趋势数据。',
-      noCtr: isEn ? 'No CTR data available yet.' : '暂无点击率趋势数据。',
-      noTop: isEn ? 'Create the first slot to start tracking performance.' : '先创建广告位，再开始跟踪投放表现。',
-      noItems: isEn ? 'No ad slots found.' : '暂无广告位数据。',
-      slot: isEn ? 'Slot' : '广告位',
-      status: isEn ? 'Status' : '状态',
-      performance: isEn ? 'Performance' : '表现',
-      schedule: isEn ? 'Schedule' : '投放周期',
-      actions: isEn ? 'Actions' : '操作',
-      edit: isEn ? 'Edit' : '编辑',
-      delete: isEn ? 'Delete' : '删除',
-      dialogCreateTitle: isEn ? 'Create Ad Slot' : '新建广告位',
-      dialogEditTitle: isEn ? 'Edit Ad Slot' : '编辑广告位',
-      dialogDescription: isEn
-        ? 'Update slot metadata, creative notes, and delivery schedule.'
-        : '维护广告位基础信息、投放状态、素材说明和排期。',
-      name: isEn ? 'Slot Name' : '广告位名称',
-      position: isEn ? 'Position' : '位置',
-      type: isEn ? 'Type' : '类型',
-      link: isEn ? 'Target Link' : '跳转链接',
-      content: isEn ? 'Creative Notes' : '素材说明',
-      startDate: isEn ? 'Start Time' : '开始时间',
-      endDate: isEn ? 'End Time' : '结束时间',
-      cancel: isEn ? 'Cancel' : '取消',
-      submitCreate: isEn ? 'Create Slot' : '创建广告位',
-      submitUpdate: isEn ? 'Save Changes' : '保存修改',
-      placeholderName: isEn ? 'Homepage banner - Spring campaign' : '例如：首页 Banner - 春季活动',
-      placeholderLink: isEn ? 'https://example.com/landing' : '请输入跳转链接',
-      placeholderContent: isEn
-        ? 'Describe the material, audience, or delivery notes...'
-        : '填写素材说明、投放目标或备注信息...',
-      dateNotSet: isEn ? 'Not set' : '未设置',
-      dateOpenEnded: isEn ? 'Long-running' : '长期投放',
-      deleteConfirm: (name: string) =>
-        isEn ? `Delete ad slot "${name}"?` : `确认删除广告位“${name}”吗？此操作不可撤销。`,
-      active: isEn ? 'Active' : '投放中',
-      paused: isEn ? 'Paused' : '已暂停',
-      archived: isEn ? 'Archived' : '已归档',
-      draft: isEn ? 'Draft' : '草稿',
-    }),
-    [isEn, items.length],
-  );
+  // 分页状态
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [total, setTotal] = useState(0);
 
-  const positionOptions = useMemo(
-    () => [
-      { value: 'dashboard_top', label: isEn ? 'Dashboard Top' : '控制台顶部' },
-      { value: 'dashboard_sidebar', label: isEn ? 'Dashboard Sidebar' : '控制台侧边栏' },
-      { value: 'create_page', label: isEn ? 'Create Page' : '创建页' },
-      { value: 'contract_detail', label: isEn ? 'Contract Detail' : '合同详情页' },
-      { value: 'marketing_home', label: isEn ? 'Marketing Homepage' : '营销首页' },
-    ],
-    [isEn],
-  );
+  // 筛选状态
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterPosition, setFilterPosition] = useState<string>("all");
 
-  const typeOptions = useMemo(
-    () => [
-      { value: 'banner', label: isEn ? 'Banner' : '横幅' },
-      { value: 'card', label: isEn ? 'Card' : '卡片' },
-      { value: 'popup', label: isEn ? 'Popup' : '弹窗' },
-      { value: 'native', label: isEn ? 'Native' : '原生位' },
-    ],
-    [isEn],
-  );
+  // 对话框状态
+  const [viewingAd, setViewingAd] = useState<Advertisement | null>(null);
+  const [editingAd, setEditingAd] = useState<Advertisement | null>(null);
+  const [creatingAd, setCreatingAd] = useState(false);
+  const [deletingAd, setDeletingAd] = useState<Advertisement | null>(null);
 
-  const statusOptions = useMemo(
-    () => [
-      { value: 'draft', label: copy.draft },
-      { value: 'active', label: copy.active },
-      { value: 'paused', label: copy.paused },
-      { value: 'archived', label: copy.archived },
-    ],
-    [copy.active, copy.archived, copy.draft, copy.paused],
-  );
+  // 表单状态
+  const [formData, setFormData] = useState({
+    title: "",
+    type: "image" as "image" | "video",
+    position: "top" as Advertisement["position"],
+    fileUrl: "",
+    fileUrlCn: "",
+    fileUrlIntl: "",
+    linkUrl: "",
+    priority: 0,
+    status: "active" as "active" | "inactive",
+    startDate: "",
+    endDate: "",
+    fileSize: 0 as number,
+    file: null as File | null,
+  });
 
-  const fetchData = useCallback(async () => {
+  // ==================== 筛选后的广告列表 ====================
+  const filteredAds = useMemo(() => {
+    return ads.filter((ad) => {
+      if (filterStatus !== "all" && ad.status !== filterStatus) {
+        return false;
+      }
+      if (filterPosition !== "all" && ad.position !== filterPosition) {
+        return false;
+      }
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        return ad.title.toLowerCase().includes(query);
+      }
+      return true;
+    });
+  }, [ads, filterStatus, filterPosition, searchQuery]);
+
+  // ==================== 数据加载 ====================
+  async function loadAds() {
     setLoading(true);
-    setError('');
+    setError(null);
 
     try {
-      const result = await adminFetchJson<{
-        success: true;
-        data: {
-          stats: AdStats;
-          trend: AdTrend[];
-          items: AdRecord[];
-        };
-      }>('/api/admin/ads');
+      const offset = (page - 1) * pageSize;
+      const result = await listAds({
+        limit: pageSize,
+        offset,
+      });
 
-      setStats(result.data.stats);
-      setTrend(result.data.trend || []);
-      setItems(result.data.items || []);
-    } catch (fetchError) {
-      const message = fetchError instanceof Error ? fetchError.message : copy.loadFailed;
-      setError(message);
-      setStats(null);
-      setTrend([]);
-      setItems([]);
-      toast.error(copy.loadFailed);
+      if (result.success && result.data) {
+        setAds(result.data.items || []);
+        setTotal(result.data.total || 0);
+      } else {
+        setError(result.error || "加载失败");
+      }
+    } catch (err) {
+      setError("加载广告失败");
     } finally {
       setLoading(false);
     }
-  }, [copy.loadFailed]);
+  }
+
+  async function loadStats() {
+    setStatsLoading(true);
+    try {
+      const result = await getAdStats();
+      if (result.success && result.data) {
+        setStats(result.data);
+      }
+    } catch (err) {
+      console.error("加载统计失败:", err);
+    } finally {
+      setStatsLoading(false);
+    }
+  }
 
   useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+    loadAds();
+  }, [page]);
 
-  const formatCurrency = useCallback(
-    (amount: number) =>
-      new Intl.NumberFormat(locale, {
-        style: 'currency',
-        currency: isEn ? 'USD' : 'CNY',
-        maximumFractionDigits: 2,
-      }).format(amount),
-    [isEn, locale],
-  );
+  useEffect(() => {
+    loadStats();
+  }, []);
 
-  const formatDate = useCallback(
-    (value?: string | null) => {
-      if (!value) {
-        return copy.dateNotSet;
-      }
-
-      const parsed = new Date(value);
-      return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString(locale);
-    },
-    [copy.dateNotSet, locale],
-  );
-
-  const openCreateDialog = () => {
-    setForm(EMPTY_FORM);
-    setDialogOpen(true);
-  };
-
-  const openEditDialog = (item: AdRecord) => {
-    setForm({
-      id: item.id,
-      name: item.name || '',
-      position: item.position || 'dashboard_top',
-      type: item.type || 'banner',
-      content: item.content || '',
-      link: item.link || '',
-      status: item.status || 'draft',
-      start_date: item.start_date || '',
-      end_date: item.end_date || '',
-    });
-    setDialogOpen(true);
-  };
-
-  const updateForm = (key: keyof AdFormState, value: string) => {
-    setForm((current) => ({ ...current, [key]: value }));
-  };
-
-  const saveAd = async () => {
-    if (!form.name.trim() || !form.position.trim() || !form.type.trim()) {
-      setError(copy.requiredFields);
-      toast.error(copy.requiredFields);
-      return;
-    }
-
-    setSaving(true);
-    setError('');
+  // ==================== CRUD 操作 ====================
+  async function handleCreateAd() {
+    setSubmitting(true);
+    setError(null);
 
     try {
-      if (form.id) {
-        await adminFetchJson(`/api/admin/ads/${form.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form),
-        });
+      // 构造 FormData
+      const formDataToSend = new FormData();
+      formDataToSend.append("title", formData.title);
+      formDataToSend.append("type", formData.type);
+      formDataToSend.append("position", formData.position);
+      formDataToSend.append("linkUrl", formData.linkUrl || "");
+      formDataToSend.append("priority", String(formData.priority));
+      formDataToSend.append("status", formData.status);
+
+      // 添加文件
+      if (formData.file) {
+        formDataToSend.append("file", formData.file);
       } else {
-        await adminFetchJson('/api/admin/ads', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form),
-        });
+        setError("请上传广告文件");
+        setSubmitting(false);
+        return;
       }
 
-      setDialogOpen(false);
-      setForm(EMPTY_FORM);
-      toast.success(form.id ? copy.saveSuccessUpdate : copy.saveSuccessCreate);
-      await fetchData();
-    } catch (saveError) {
-      const message = saveError instanceof Error ? saveError.message : copy.saveFailed;
-      setError(message);
-      toast.error(copy.saveFailed);
+      const result = await createAd(formDataToSend);
+
+      if (result.success) {
+        setCreatingAd(false);
+        resetForm();
+        loadAds();
+        loadStats();
+      } else {
+        setError(result.error || "创建失败");
+      }
+    } catch (err) {
+      setError("创建失败");
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
-  };
+  }
 
-  const deleteAd = async (item: AdRecord) => {
-    const confirmed = window.confirm(copy.deleteConfirm(item.name));
-    if (!confirmed) {
-      return;
-    }
+  async function handleUpdateAd() {
+    if (!editingAd) return;
 
-    setSaving(true);
-    setError('');
+    setSubmitting(true);
+    setError(null);
 
     try {
-      await adminFetchJson(`/api/admin/ads/${item.id}`, {
-        method: 'DELETE',
-      });
-      toast.success(copy.deleteSuccess);
-      await fetchData();
-    } catch (deleteError) {
-      const message = deleteError instanceof Error ? deleteError.message : copy.deleteFailed;
-      setError(message);
-      toast.error(copy.deleteFailed);
+      const result = await updateAd(editingAd.id, formData);
+
+      if (result.success) {
+        setEditingAd(null);
+        resetForm();
+        loadAds();
+        loadStats();
+      } else {
+        setError(result.error || "更新失败");
+      }
+    } catch (err) {
+      setError("更新失败");
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
-  };
+  }
 
-  const statusBadge = useCallback(
-    (value: string) => {
-      const normalized = value?.toLowerCase?.() || 'draft';
-      const variant: 'default' | 'secondary' | 'outline' =
-        normalized === 'active' ? 'default' : normalized === 'archived' ? 'outline' : 'secondary';
-      const labelMap: Record<string, string> = {
-        active: copy.active,
-        paused: copy.paused,
-        archived: copy.archived,
-        draft: copy.draft,
-      };
+  async function handleDelete(ad: Advertisement) {
+    setSubmitting(true);
 
-      return <Badge variant={variant}>{labelMap[normalized] || normalized}</Badge>;
-    },
-    [copy.active, copy.archived, copy.draft, copy.paused],
-  );
+    try {
+      const result = await deleteAd(ad.id);
 
-  const topPerformers = useMemo(
-    () => [...items].sort((left, right) => (right.clicks || 0) - (left.clicks || 0)).slice(0, 3),
-    [items],
-  );
+      if (result.success) {
+        setDeletingAd(null);
+        loadAds();
+        loadStats();
+      } else {
+        setError(result.error || "删除失败");
+      }
+    } catch (err) {
+      setError("删除失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
-  if (loading && !stats) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+  async function handleToggleStatus(ad: Advertisement) {
+    try {
+      const result = await toggleAdStatus(ad.id);
+
+      if (result.success) {
+        loadAds();
+        loadStats();
+      } else {
+        setError(result.error || "切换状态失败");
+      }
+    } catch (err) {
+      setError("切换状态失败");
+    }
+  }
+
+  // ==================== 表单处理 ====================
+  function resetForm() {
+    setFormData({
+      title: "",
+      type: "image",
+      position: "top",
+      fileUrl: "",
+      fileUrlCn: "",
+      fileUrlIntl: "",
+      linkUrl: "",
+      priority: 0,
+      status: "active",
+      startDate: "",
+      endDate: "",
+      fileSize: 0,
+      file: null,
+    });
+  }
+
+  function openCreateDialog() {
+    resetForm();
+    setCreatingAd(true);
+  }
+
+  function openEditDialog(ad: Advertisement) {
+    setFormData({
+      title: ad.title,
+      type: ad.type,
+      position: ad.position,
+      fileUrl: ad.fileUrl,
+      fileUrlCn: ad.fileUrlCn || "",
+      fileUrlIntl: ad.fileUrlIntl || "",
+      linkUrl: ad.linkUrl || "",
+      priority: ad.priority,
+      status: ad.status,
+      startDate: ad.startDate || "",
+      endDate: ad.endDate || "",
+      fileSize: ad.file_size || 0,
+      file: null,
+    });
+    setEditingAd(ad);
+  }
+
+  // ==================== 工具函数 ====================
+  function getStatusBadge(status: string) {
+    return status === "active" ? (
+      <Badge variant="default" className="bg-green-600 gap-1">
+        <Power className="h-3 w-3" />
+        上架
+      </Badge>
+    ) : (
+      <Badge variant="outline" className="gap-1">
+        <Power className="h-3 w-3" />
+        下架
+      </Badge>
     );
   }
 
+  function formatFileSize(bytes: number): string {
+    if (!bytes) return "-";
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function formatUploadTime(dateStr: string): string {
+    if (!dateStr) return "-";
+    const date = new Date(dateStr);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}/${month}/${day} ${hours}:${minutes}`;
+  }
+
+  function getTypeBadge(type: string) {
+    return type === "image" ? (
+      <Badge variant="secondary" className="gap-1">
+        <ImageIcon className="h-3 w-3" />
+        图片
+      </Badge>
+    ) : (
+      <Badge variant="secondary" className="gap-1">
+        <Video className="h-3 w-3" />
+        视频
+      </Badge>
+    );
+  }
+
+  function getPositionLabel(position: string) {
+    const labels: Record<string, string> = {
+      top: "顶部",
+      bottom: "底部",
+      left: "左侧",
+      right: "右侧",
+      "bottom-left": "左下角",
+      "bottom-right": "右下角",
+      sidebar: "侧边栏",
+    };
+    return labels[position] || position;
+  }
+
+  function formatDate(dateStr: string | undefined) {
+    if (!dateStr) return "-";
+    return new Date(dateStr).toLocaleDateString("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+  }
+
+  function formatCtr(ad: Advertisement): string {
+    const impressions = ad.impression_count || 0;
+    const clicks = ad.click_count || 0;
+    if (impressions <= 0) return "-";
+    return `${((clicks / impressions) * 100).toFixed(1)}%`;
+  }
+
+  // ==================== 分页 ====================
+  const totalPages = Math.ceil(total / pageSize);
+
+  // ==================== 渲染 ====================
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      {/* 页头 */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{copy.title}</h1>
-          <p className="text-muted-foreground">{copy.subtitle}</p>
+          <h1 className="text-2xl font-bold">广告管理</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            管理网站广告内容，共 {total} 条广告
+          </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => void fetchData()} disabled={loading}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            {copy.refresh}
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={loadAds} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            刷新
           </Button>
           <Button onClick={openCreateDialog}>
-            <Plus className="mr-2 h-4 w-4" />
-            {copy.create}
+            <Plus className="h-4 w-4 mr-2" />
+            新建广告
           </Button>
         </div>
       </div>
 
-      {error ? (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      ) : null}
+      {/* 错误提示 */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{copy.metricsImpressions}</CardTitle>
-            <Eye className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{(stats?.totalImpressions || 0).toLocaleString(locale)}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{copy.metricsClicks}</CardTitle>
-            <MousePointer className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{(stats?.totalClicks || 0).toLocaleString(locale)}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{copy.metricsCtr}</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.ctr || '0'}%</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{copy.metricsRevenue}</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats?.revenue || 0)}</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.2fr,1.2fr,0.9fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>{copy.trendTitle}</CardTitle>
-            <CardDescription>{copy.trendDescription}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {trend.length === 0 ? (
-              <div className="flex min-h-[280px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-                {copy.noTrend}
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={trend}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="impressions" stroke="#2563eb" strokeWidth={2} name={copy.metricsImpressions} />
-                  <Line type="monotone" dataKey="clicks" stroke="#16a34a" strokeWidth={2} name={copy.metricsClicks} />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{copy.ctrTitle}</CardTitle>
-            <CardDescription>{copy.ctrDescription}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {trend.length === 0 ? (
-              <div className="flex min-h-[280px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-                {copy.noCtr}
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={trend}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="ctr" fill="#f59e0b" name={copy.metricsCtr} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{copy.topTitle}</CardTitle>
-            <CardDescription>{copy.topDescription}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {topPerformers.length === 0 ? (
-              <div className="flex min-h-[280px] items-center justify-center rounded-lg border border-dashed px-6 text-center text-sm text-muted-foreground">
-                {copy.noTop}
-              </div>
-            ) : (
-              topPerformers.map((item) => (
-                <div key={item.id} className="rounded-lg border p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-medium">{item.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {item.position} / {item.type}
-                      </div>
-                    </div>
-                    {statusBadge(item.status)}
-                  </div>
-                  <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
-                    <div>
-                      <div className="text-muted-foreground">{copy.metricsImpressions}</div>
-                      <div className="font-medium">{(item.impressions || 0).toLocaleString(locale)}</div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground">{copy.metricsClicks}</div>
-                      <div className="font-medium">{(item.clicks || 0).toLocaleString(locale)}</div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground">{copy.metricsRevenue}</div>
-                      <div className="font-medium">{formatCurrency(item.revenue || 0)}</div>
-                    </div>
-                  </div>
+      {/* 统计卡片 */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {statsLoading ? (
+          // 骨架屏：加载时显示
+          <>
+            {[1, 2, 3, 4].map((i) => (
+              <Card key={i}>
+                <CardHeader className="pb-2">
+                  <Skeleton className="h-4 w-24" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-8 w-16" />
+                </CardContent>
+              </Card>
+            ))}
+          </>
+        ) : stats ? (
+          // 数据加载完成：显示实际数据
+          <>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  总广告数
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.total}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  激活中
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">{stats.active}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  已禁用
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-muted-foreground">{stats.inactive}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  图片/视频
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-lg font-bold">
+                  {stats.byType?.image || 0} / {stats.byType?.video || 0}
                 </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </>
+        ) : null}
       </div>
 
+      {/* 搜索和筛选栏 */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="搜索广告标题..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="w-[120px]">
+                <SelectValue placeholder="状态" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部状态</SelectItem>
+                <SelectItem value="active">上架</SelectItem>
+                <SelectItem value="inactive">下架</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={filterPosition} onValueChange={setFilterPosition}>
+              <SelectTrigger className="w-[120px]">
+                <SelectValue placeholder="位置" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部位置</SelectItem>
+                <SelectItem value="top">顶部</SelectItem>
+                <SelectItem value="bottom">底部</SelectItem>
+                <SelectItem value="left">左侧</SelectItem>
+                <SelectItem value="right">右侧</SelectItem>
+                <SelectItem value="bottom-left">左下角</SelectItem>
+                <SelectItem value="bottom-right">右下角</SelectItem>
+                <SelectItem value="sidebar">侧边栏</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* 清除筛选 */}
+            {(searchQuery || filterStatus !== "all" || filterPosition !== "all") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearchQuery("");
+                  setFilterStatus("all");
+                  setFilterPosition("all");
+                }}
+              >
+                清除筛选
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 广告列表 */}
       <Card>
         <CardHeader>
-          <CardTitle>{copy.tableTitle}</CardTitle>
-          <CardDescription>{copy.tableDescription}</CardDescription>
+          <CardTitle>广告列表</CardTitle>
         </CardHeader>
         <CardContent>
-          {items.length === 0 ? (
-            <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-              {copy.noItems}
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredAds.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              {searchQuery || filterStatus !== "all" || filterPosition !== "all"
+                ? "没有符合筛选条件的广告"
+                : "暂无广告"}
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{copy.slot}</TableHead>
-                  <TableHead>{copy.status}</TableHead>
-                  <TableHead>{copy.performance}</TableHead>
-                  <TableHead>{copy.schedule}</TableHead>
-                  <TableHead className="text-right">{copy.actions}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="font-medium">{item.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {item.position} / {item.type}
-                        </div>
-                        {item.link ? (
-                          <a
-                            href={item.link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="line-clamp-1 text-xs text-primary hover:underline"
+            <>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[100px]">预览</TableHead>
+                      <TableHead>标题</TableHead>
+                      <TableHead className="w-[100px]">位置</TableHead>
+                      <TableHead className="w-[80px]">类型</TableHead>
+                      <TableHead className="w-[100px]">大小</TableHead>
+                      <TableHead className="w-[140px]">上传时间</TableHead>
+                      <TableHead className="w-[80px]">优先级</TableHead>
+                      <TableHead className="w-[90px]">曝光</TableHead>
+                      <TableHead className="w-[90px]">点击</TableHead>
+                      <TableHead className="w-[90px]">CTR</TableHead>
+                      <TableHead className="w-[80px]">状态</TableHead>
+                      <TableHead className="text-right">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredAds.map((ad) => (
+                      <TableRow key={ad.id}>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-10 w-10"
+                            onClick={() => setViewingAd(ad)}
+                            title="预览"
                           >
-                            {item.link}
-                          </a>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>{statusBadge(item.status)}</TableCell>
-                    <TableCell>
-                      <div className="space-y-1 text-sm">
-                        <div>{copy.metricsImpressions}: {(item.impressions || 0).toLocaleString(locale)}</div>
-                        <div>{copy.metricsClicks}: {(item.clicks || 0).toLocaleString(locale)}</div>
-                        <div>{copy.metricsRevenue}: {formatCurrency(item.revenue || 0)}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      <div>{formatDate(item.start_date)}</div>
-                      <div>{item.end_date ? formatDate(item.end_date) : copy.dateOpenEnded}</div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => openEditDialog(item)}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          {copy.edit}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void deleteAd(item)}
-                          disabled={saving}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          {copy.delete}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                            {ad.type === "image" ? (
+                              <img
+                                src={ad.fileUrl}
+                                alt={ad.title}
+                                className="h-8 w-8 object-cover rounded"
+                              />
+                            ) : (
+                              <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center">
+                                <Video className="h-4 w-4 text-primary" />
+                              </div>
+                            )}
+                          </Button>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium text-sm">{ad.title}</div>
+                          <div className="text-xs text-muted-foreground">
+                            ID: {ad.id.slice(0, 8)}...
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{getPositionLabel(ad.position)}</Badge>
+                        </TableCell>
+                        <TableCell>{getTypeBadge(ad.type)}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {ad.file_size ? formatFileSize(ad.file_size) : "-"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {formatUploadTime(ad.created_at)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{ad.priority}</Badge>
+                        </TableCell>
+                        <TableCell className="text-sm">{ad.impression_count || 0}</TableCell>
+                        <TableCell className="text-sm">{ad.click_count || 0}</TableCell>
+                        <TableCell className="text-sm">{formatCtr(ad)}</TableCell>
+                        <TableCell>{getStatusBadge(ad.status)}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleToggleStatus(ad)}
+                              title={ad.status === "active" ? "下架" : "上架"}
+                            >
+                              <Power className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => openEditDialog(ad)}
+                              title="编辑"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  title="删除"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>确认删除</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    确定要删除广告 &quot;{ad.title}&quot; 吗？此操作不可恢复。
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>取消</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => {
+                                      setDeletingAd(ad);
+                                      handleDelete(ad);
+                                    }}
+                                    className="bg-red-600 hover:bg-red-700"
+                                    disabled={submitting}
+                                  >
+                                    {submitting ? (
+                                      <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        删除中...
+                                      </>
+                                    ) : (
+                                      "删除"
+                                    )}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* 分页 */}
+              {total > pageSize && (
+                <div className="flex items-center justify-between mt-4">
+                  <div className="text-sm text-muted-foreground">
+                    显示第 {(page - 1) * pageSize + 1} -{" "}
+                    {Math.min(page * pageSize, total)} 条，共 {total} 条
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      上一页
+                    </Button>
+                    <div className="text-sm">
+                      第 <span className="font-medium">{page}</span> /{" "}
+                      <span>{totalPages}</span> 页
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page >= totalPages}
+                    >
+                      下一页
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-2xl">
+      {/* 创建/编辑广告对话框 */}
+      <Dialog open={creatingAd || !!editingAd} onOpenChange={(open) => {
+        if (!open) {
+          setCreatingAd(false);
+          setEditingAd(null);
+          resetForm();
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{form.id ? copy.dialogEditTitle : copy.dialogCreateTitle}</DialogTitle>
-            <DialogDescription>{copy.dialogDescription}</DialogDescription>
+            <DialogTitle>{editingAd ? "编辑广告" : "新建广告"}</DialogTitle>
+            <DialogDescription>
+              {editingAd ? "修改广告信息和设置" : "创建新的广告内容"}
+            </DialogDescription>
           </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="title">广告标题 *</Label>
+                <Input
+                  id="title"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="输入广告标题"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="type">广告类型 *</Label>
+                <Select
+                  value={formData.type}
+                  onValueChange={(value: any) => setFormData({ ...formData, type: value })}
+                >
+                  <SelectTrigger id="type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="image">图片广告</SelectItem>
+                    <SelectItem value="video">视频广告</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="position">显示位置 *</Label>
+                <Select
+                  value={formData.position}
+                  onValueChange={(value: any) => setFormData({ ...formData, position: value })}
+                >
+                  <SelectTrigger id="position">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="top">顶部</SelectItem>
+                    <SelectItem value="bottom">底部</SelectItem>
+                    <SelectItem value="left">左侧</SelectItem>
+                    <SelectItem value="right">右侧</SelectItem>
+                    <SelectItem value="bottom-left">左下角</SelectItem>
+                    <SelectItem value="bottom-right">右下角</SelectItem>
+                    <SelectItem value="sidebar">侧边栏</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="priority">优先级</Label>
+                <Input
+                  id="priority"
+                  type="number"
+                  value={formData.priority}
+                  onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) || 0 })}
+                  placeholder="数字越大优先级越高"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
-              <Label htmlFor="ad-name">{copy.name}</Label>
+              <Label htmlFor="file">上传文件 *</Label>
               <Input
-                id="ad-name"
-                value={form.name}
-                placeholder={copy.placeholderName}
-                onChange={(event) => updateForm('name', event.target.value)}
+                id="file"
+                type="file"
+                accept="image/*,video/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setFormData({
+                      ...formData,
+                      file: file,
+                      fileSize: file.size,
+                      fileUrl: URL.createObjectURL(file)
+                    });
+                  }
+                }}
               />
+              {formData.type === "image" && formData.file && (
+                <div className="mt-2 h-32 rounded border overflow-hidden">
+                  <img src={formData.fileUrl} alt="预览" className="h-full w-full object-cover" />
+                </div>
+              )}
+              {formData.fileSize > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  文件大小: {formatFileSize(formData.fileSize)}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="ad-position">{copy.position}</Label>
-              <Select value={form.position} onValueChange={(value) => updateForm('position', value)}>
-                <SelectTrigger id="ad-position">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {positionOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                <Label htmlFor="status">状态</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value: any) => setFormData({ ...formData, status: value })}
+                >
+                  <SelectTrigger id="status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">上架</SelectItem>
+                    <SelectItem value="inactive">下架</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
             <div className="space-y-2">
-              <Label htmlFor="ad-type">{copy.type}</Label>
-              <Select value={form.type} onValueChange={(value) => updateForm('type', value)}>
-                <SelectTrigger id="ad-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {typeOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="ad-status">{copy.status}</Label>
-              <Select value={form.status} onValueChange={(value) => updateForm('status', value)}>
-                <SelectTrigger id="ad-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {statusOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="ad-link">{copy.link}</Label>
+              <Label htmlFor="linkUrl">跳转链接</Label>
               <Input
-                id="ad-link"
-                value={form.link}
-                placeholder={copy.placeholderLink}
-                onChange={(event) => updateForm('link', event.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="ad-start">{copy.startDate}</Label>
-              <Input
-                id="ad-start"
-                type="datetime-local"
-                value={form.start_date}
-                onChange={(event) => updateForm('start_date', event.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="ad-end">{copy.endDate}</Label>
-              <Input
-                id="ad-end"
-                type="datetime-local"
-                value={form.end_date}
-                onChange={(event) => updateForm('end_date', event.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="ad-content">{copy.content}</Label>
-              <Textarea
-                id="ad-content"
-                rows={5}
-                value={form.content}
-                placeholder={copy.placeholderContent}
-                onChange={(event) => updateForm('content', event.target.value)}
+                id="linkUrl"
+                value={formData.linkUrl}
+                onChange={(e) => setFormData({ ...formData, linkUrl: e.target.value })}
+                placeholder="https://example.com"
               />
             </div>
           </div>
-
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              {copy.cancel}
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCreatingAd(false);
+                setEditingAd(null);
+                resetForm();
+              }}
+              disabled={submitting}
+            >
+              取消
             </Button>
-            <Button onClick={() => void saveAd()} disabled={saving}>
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {form.id ? copy.submitUpdate : copy.submitCreate}
+            <Button
+              onClick={editingAd ? handleUpdateAd : handleCreateAd}
+              disabled={submitting || !formData.title || !formData.fileUrl}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {editingAd ? "更新中..." : "创建中..."}
+                </>
+              ) : (
+                editingAd ? "更新" : "创建"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 预览广告对话框 */}
+      <Dialog open={!!viewingAd} onOpenChange={() => setViewingAd(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>广告预览</DialogTitle>
+          </DialogHeader>
+          {viewingAd && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">广告内容</h3>
+                {viewingAd.type === "image" ? (
+                  <div className="rounded-lg overflow-hidden border">
+                    <img
+                      src={viewingAd.fileUrl}
+                      alt={viewingAd.title}
+                      className="w-full"
+                    />
+                  </div>
+                ) : (
+                  <div className="rounded-lg overflow-hidden border bg-black aspect-video flex items-center justify-center">
+                    <Video className="h-12 w-12 text-white/50" />
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">标题：</span>
+                  <div className="mt-1">{viewingAd.title}</div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">类型：</span>
+                  <div className="mt-1">{getTypeBadge(viewingAd.type)}</div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">位置：</span>
+                  <div className="mt-1">
+                    <Badge variant="outline">{getPositionLabel(viewingAd.position)}</Badge>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">状态：</span>
+                  <div className="mt-1">{getStatusBadge(viewingAd.status)}</div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">优先级：</span>
+                  <div className="mt-1">{viewingAd.priority}</div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">跳转链接：</span>
+                  <div className="mt-1">
+                    {viewingAd.linkUrl ? (
+                      <a
+                        href={viewingAd.linkUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary flex items-center gap-1 hover:underline"
+                      >
+                        {viewingAd.linkUrl}
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : (
+                      "-"
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">有效期：</span>
+                  <div className="mt-1">
+                    {formatDate(viewingAd.startDate)} - {formatDate(viewingAd.endDate)}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">创建时间：</span>
+                  <div className="mt-1">{formatDate(viewingAd.created_at)}</div>
+                </div>
+              </div>
+
+              {(viewingAd.fileUrlCn || viewingAd.fileUrlIntl) && (
+                <div className="space-y-2">
+                  <h3 className="text-sm font-medium">区域化文件</h3>
+                  <ScrollArea className="h-24 w-full rounded-md border p-4">
+                    <div className="space-y-2 text-sm">
+                      {viewingAd.fileUrlCn && (
+                        <div>
+                          <span className="text-muted-foreground">国内版：</span>
+                          <a href={viewingAd.fileUrlCn} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline ml-2">
+                            {viewingAd.fileUrlCn}
+                          </a>
+                        </div>
+                      )}
+                      {viewingAd.fileUrlIntl && (
+                        <div>
+                          <span className="text-muted-foreground">国际版：</span>
+                          <a href={viewingAd.fileUrlIntl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline ml-2">
+                            {viewingAd.fileUrlIntl}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setViewingAd(null)}
+            >
+              关闭
             </Button>
           </DialogFooter>
         </DialogContent>

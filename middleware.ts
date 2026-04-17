@@ -8,7 +8,6 @@ const WECHAT_VERIFY_CONTENT = "4e8934892f52479d1dd06c4ece98bf58";
 
 // 需要登录才能访问的路由前缀
 const PROTECTED_ROUTES = [
-  "/admin",
   "/create",
   "/dashboard",
   "/contracts",
@@ -51,20 +50,37 @@ export async function middleware(request: NextRequest) {
   // =====================
   // 认证路由保护
   // =====================
-  const isProtectedRoute = PROTECTED_ROUTES.some((r) => pathname.startsWith(r));
+  if (
+    !BYPASS_AUTH_FOR_PREVIEW &&
+    pathname.startsWith("/admin") &&
+    pathname !== "/admin/login"
+  ) {
+    const adminSession = request.cookies.get("admin_session");
+    if (!adminSession) {
+      return NextResponse.redirect(new URL("/admin/login", request.url));
+    }
+  }
+
+  if (
+    !BYPASS_AUTH_FOR_PREVIEW &&
+    pathname.startsWith("/market") &&
+    pathname !== "/market/login"
+  ) {
+    const marketAdminSession = request.cookies.get("market_admin_session");
+    if (!marketAdminSession) {
+      return NextResponse.redirect(new URL("/market/login", request.url));
+    }
+  }
+
+  const isProtectedRoute = PROTECTED_ROUTES.some((r) =>
+    pathname.startsWith(r),
+  );
   if (!BYPASS_AUTH_FOR_PREVIEW && isProtectedRoute) {
     const loggedIn = request.cookies.get("auth-logged-in")?.value;
     if (!loggedIn) {
       const loginUrl = new URL("/auth?mode=signin", request.url);
       loginUrl.searchParams.set("redirect", pathname);
       return NextResponse.redirect(loginUrl);
-    }
-
-    if (pathname.startsWith("/admin")) {
-      const role = request.cookies.get("auth-role")?.value?.toLowerCase();
-      if (role && role !== "admin" && role !== "super_admin") {
-        return NextResponse.redirect(new URL("/dashboard", request.url));
-      }
     }
   }
 

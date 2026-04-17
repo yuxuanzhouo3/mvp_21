@@ -87,13 +87,17 @@ export function getQwenModel(): string {
 }
 
 export function getOpenAIModel(): string {
-  const baseUrl = getOpenAIBaseUrl().toLowerCase();
-  const defaultModel = baseUrl.includes("dashscope.aliyuncs.com")
-    ? "qwen-plus"
-    : "gpt-4.1-mini";
+  const model = pickFirstNonEmpty(process.env.OPENAI_MODEL);
+  if (model) {
+    if (!/^gpt-4/i.test(model)) {
+      throw new Error("OPENAI_MODEL must be an explicit GPT-4 series model (for example: gpt-4.1).");
+    }
+    return model;
+  }
 
-  return pickFirstNonEmpty(
-    process.env.OPENAI_MODEL,
-    defaultModel,
-  );
+  if (process.env.NODE_ENV === "test") {
+    return "gpt-4.1";
+  }
+
+  throw new Error("OPENAI_MODEL is required and must be set explicitly.");
 }

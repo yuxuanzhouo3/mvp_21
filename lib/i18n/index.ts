@@ -65,3 +65,16 @@ export function useTranslations(language: Language): Translations {
 export function getTranslations(language: Language): Translations {
   return translations[language] || translations.zh;
 }
+
+export function getTranslation(
+  language: Language,
+  key: keyof typeof translations.en,
+): string {
+  const dictionary = getTranslations(language) as Record<string, unknown>;
+  const value = dictionary[key as string];
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return String(value ?? key);
+}

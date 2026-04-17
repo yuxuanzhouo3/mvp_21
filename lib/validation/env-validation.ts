@@ -71,6 +71,7 @@ const envSchema = z.object({
 
   // AI提供商配置
   OPENAI_API_KEY: z.string().regex(/^sk-/).optional(),
+  OPENAI_MODEL: z.string().min(1).optional(),
   OPENAI_BASE_URL: z.string().url().optional(),
   AI_ANALYZE_SOFT_TIMEOUT_MS: z.string().regex(/^\d+$/).optional(),
   AI_ANALYZE_INPUT_MAX_CHARS: z.string().regex(/^\d+$/).optional(),
@@ -240,6 +241,17 @@ export function validateEnvironment():
       if (!envData.SUPABASE_SERVICE_ROLE_KEY) {
         conditionalErrors.push(
           "SUPABASE_SERVICE_ROLE_KEY: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to INTL"
+        );
+      }
+
+      const openAiModel = envData.OPENAI_MODEL?.trim();
+      if (!openAiModel) {
+        conditionalErrors.push(
+          "OPENAI_MODEL: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to INTL"
+        );
+      } else if (!/^gpt-4/i.test(openAiModel)) {
+        conditionalErrors.push(
+          "OPENAI_MODEL: Must be an explicit GPT-4 series model when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to INTL"
         );
       }
     }

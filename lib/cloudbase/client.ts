@@ -1,47 +1,84 @@
+import cloudbase from '@cloudbase/node-sdk'
+
+let cloudbaseApp: any = null
+let cloudbaseDb: any = null
+
 /**
- * CloudBase 认证客户端
- * 仅用于认证功能，不再涉及数据库操作
+ * Initialize CloudBase client
+ * This should be called once at startup
  */
+export function initCloudBase() {
+  if (cloudbaseApp) {
+    return cloudbaseApp
+  }
 
-import cloudbase from "@cloudbase/js-sdk";
+  const envId = process.env.CLOUDBASE_ENV_ID
+  const secretId = process.env.CLOUDBASE_SECRET_ID
+  const secretKey = process.env.CLOUDBASE_SECRET_KEY
 
-// 延迟初始化，避免SSR错误
-let app: any = null;
-let auth: any = null;
-
-// 初始化函数（仅在浏览器端初始化）
-function initCloudBase() {
-  if (app) return { app, auth }; // 已初始化
-
-  // 只在浏览器端初始化，避免SSR时window undefined错误
-  if (typeof window === "undefined") {
-    return { app: null, auth: null };
+  if (!envId || !secretId || !secretKey) {
+    console.warn('CloudBase environment variables not configured')
+    return null
   }
 
   try {
-    const envId =
-      process.env.NEXT_PUBLIC_WECHAT_CLOUDBASE_ID ||
-      "multigpt-6g9pqxiz52974a7c";
-
-    app = cloudbase.init({
+    cloudbaseApp = cloudbase.init({
       env: envId,
-    });
+      secretId: secretId,
+      secretKey: secretKey,
+    })
 
-    auth = app.auth();
+    cloudbaseDb = cloudbaseApp.database()
 
-    console.log("✅ [CloudBase] 认证初始化成功:", envId);
-  } catch (error) {
-    console.error("❌ [CloudBase] 认证初始化失败:", error);
+    console.log('[CloudBase] Initialized successfully with env:', envId)
+    return cloudbaseApp
+  } catch (error: any) {
+    console.error('[CloudBase] Initialization failed:', {
+      error: error.message,
+      code: error.code,
+      envId: envId ? 'SET' : 'NOT SET',
+      secretId: secretId ? 'SET' : 'NOT SET',
+      secretKey: secretKey ? 'SET' : 'NOT SET',
+    })
+    return null
   }
-
-  return { app, auth };
 }
 
-// 浏览器端立即初始化
-if (typeof window !== "undefined") {
-  initCloudBase();
+/**
+ * Get CloudBase app instance
+ */
+export function getCloudBaseApp() {
+  if (!cloudbaseApp) {
+    initCloudBase()
+  }
+  return cloudbaseApp
 }
 
-// 导出认证实例
-export { auth };
-export default app;
+/**
+ * Get CloudBase database instance
+ */
+export function getCloudBaseDb() {
+  if (!cloudbaseDb) {
+    initCloudBase()
+  }
+  return cloudbaseDb
+}
+
+/**
+ * Check if CloudBase is configured
+ */
+export function isCloudBaseConfigured(): boolean {
+  return !!(
+    process.env.CLOUDBASE_ENV_ID &&
+    process.env.CLOUDBASE_SECRET_ID &&
+    process.env.CLOUDBASE_SECRET_KEY
+  )
+}
+
+// Initialize on module load
+initCloudBase()
+
+
+
+
+

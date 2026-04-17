@@ -1,17 +1,17 @@
-// app/api/payment/onetime/create/route.ts - 一次性支付创建API
+﻿// app/api/payment/onetime/create/route.ts - 涓€娆℃€ф敮浠樺垱寤篈PI
 import { NextRequest, NextResponse } from "next/server";
 import { StripeProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/stripe-provider";
 import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
-import { supabaseAdmin } from "@/lib/integrations/supabase-admin";
 import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
-import { getDatabase } from "@/lib/auth/auth-utils";
 import { getPaymentMethodStatus } from "@/lib/config/third-party-capabilities";
-import { isChinaRegion } from "@/lib/config/region";
 import {
   getAppUrl,
   getWechatPayApiV3Key,
   getWechatPayAppId,
+  getWechatPayMerchantId,
+  getWechatPayPrivateKey,
+  getWechatPaySerialNo,
 } from "@/lib/config/runtime-env";
 import { paymentRateLimit } from "@/lib/security/rate-limit";
 import { captureException } from "@/lib/integrations/sentry";
@@ -21,6 +21,12 @@ import {
   getDaysByBillingCycle,
 } from "@/lib/payment/payment-config";
 import type { PaymentMethod, BillingCycle } from "@/lib/payment/payment-config";
+import {
+  createPendingPaymentRecord,
+  findRecentPaymentByFingerprint,
+  type PaymentRecordLike,
+} from "@/lib/payment/payment-record-store";
+import { buildSubscriptionPaymentFields } from "@/lib/payment/subscription-payment-sync";
 
 type CreatedPaymentResult = {
   success: boolean;
@@ -32,7 +38,7 @@ type CreatedPaymentResult = {
 };
 
 export async function POST(request: NextRequest) {
-  // 应用速率限制
+  // 搴旂敤閫熺巼闄愬埗
   return new Promise<NextResponse>((resolve) => {
     const mockRes = {
       status: (code: number) => ({
@@ -55,7 +61,7 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
     .substr(2, 9)}`;
 
   try {
-    // 验证用户认证
+    // 楠岃瘉鐢ㄦ埛璁よ瘉
     const authResult = await requireAuth(request);
     if (!authResult) {
       return createAuthErrorResponse();
@@ -75,7 +81,7 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
       billingCycle,
     });
 
-    // 验证必需参数
+    // 楠岃瘉蹇呴渶鍙傛暟
     if (!method || !billingCycle) {
       logWarn("Missing required parameters", {
         operationId,
@@ -89,7 +95,7 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
       );
     }
 
-    // 验证 billingCycle
+    // 楠岃瘉 billingCycle
     if (!["monthly", "yearly"].includes(billingCycle)) {
       return NextResponse.json(
         {
@@ -120,59 +126,25 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
       );
     }
 
-    // 使用统一的支付配置获取货币和金额
+    // 浣跨敤缁熶竴鐨勬敮浠橀厤缃幏鍙栬揣甯佸拰閲戦
     const pricing = getPricingByMethod(method);
     const currency = pricing.currency;
     const amount = pricing[billingCycle];
     const days = getDaysByBillingCycle(billingCycle);
 
-    // 检查最�?分钟内是否有相同的pending或completed支付(防止重复点击)
+    // 妫€鏌ユ渶锟?鍒嗛挓鍐呮槸鍚︽湁鐩稿悓鐨刾ending鎴朿ompleted鏀粯(闃叉閲嶅鐐瑰嚮)
     const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
-    let recentPayments: any[] = [];
-    let checkError: any = null;
+    let recentPayment: PaymentRecordLike | null = null;
 
-    if (isChinaRegion()) {
-      // CloudBase 查询
-      try {
-        const db = getDatabase();
-        const _ = db.command;
-        const result = await db
-          .collection("payments")
-          .where({
-            user_id: user.id,
-            amount: amount,
-            currency: currency,
-            payment_method: method,
-            created_at: _.gte(oneMinuteAgo),
-            status: _.in(["pending", "completed"]),
-          })
-          .orderBy("created_at", "desc")
-          .limit(1)
-          .get();
-
-        recentPayments = result.data || [];
-      } catch (error) {
-        checkError = error;
-      }
-    } else {
-      // Supabase 查询
-      const result = await supabaseAdmin
-        .from("payments")
-        .select("id, status, created_at")
-        .eq("user_id", user.id)
-        .eq("amount", amount)
-        .eq("currency", currency)
-        .eq("payment_method", method)
-        .gte("created_at", oneMinuteAgo)
-        .in("status", ["pending", "completed"])
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      recentPayments = result.data || [];
-      checkError = result.error;
-    }
-
-    if (checkError && (!isChinaRegion() || checkError.code !== "PGRST116")) {
+    try {
+      recentPayment = await findRecentPaymentByFingerprint({
+        userId: user.id,
+        amount,
+        currency,
+        paymentMethod: method,
+        sinceIso: oneMinuteAgo,
+      });
+    } catch (checkError) {
       logError("Error checking existing payment", checkError, {
         operationId,
         userId: user.id,
@@ -186,15 +158,17 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
       );
     }
 
-    if (recentPayments && recentPayments.length > 0) {
-      const latestPayment = recentPayments[0];
+    if (recentPayment) {
+      const latestPayment = recentPayment;
+      const recentCreatedAt =
+        latestPayment.created_at || latestPayment.createdAt || new Date().toISOString();
       const paymentAge =
-        Date.now() - new Date(latestPayment.created_at).getTime();
+        Date.now() - new Date(recentCreatedAt).getTime();
 
       logWarn("Duplicate payment request blocked", {
         operationId,
         userId: user.id,
-        existingPaymentId: latestPayment.id,
+        existingPaymentId: latestPayment.id || latestPayment._id,
         paymentAge: `${Math.floor(paymentAge / 1000)}s`,
       });
 
@@ -204,14 +178,13 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
           error:
             "You have a recent payment request. Please wait a moment before trying again.",
           code: "DUPLICATE_PAYMENT_REQUEST",
-          existingPaymentId: latestPayment.id,
+          existingPaymentId: latestPayment.id || latestPayment._id,
           waitTime: Math.ceil((60000 - paymentAge) / 1000),
         },
         { status: 429 }
       );
     }
-
-    // 创建支付订单数据
+    // 鍒涘缓鏀粯璁㈠崟鏁版嵁
     const order = {
       amount,
       currency,
@@ -222,13 +195,13 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
       billingCycle,
       metadata: {
         userId: user.id,
-        days, // 会员天数
+        days, // 浼氬憳澶╂暟
         paymentType: "onetime",
         billingCycle,
       },
     };
 
-    // 根据支付方式创建支付
+    // 鏍规嵁鏀粯鏂瑰紡鍒涘缓鏀粯
     let result: CreatedPaymentResult | null = null;
 
     try {
@@ -239,7 +212,7 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
           amount,
         });
         const stripeProvider = new StripeProvider(process.env);
-        // Stripe 一次性支�?使用 payment mode 而不�?subscription mode)
+        // Stripe 涓€娆℃€ф敮锟?浣跨敤 payment mode 鑰屼笉锟?subscription mode)
         result = await stripeProvider.createOnetimePayment(order);
       } else if (method === "alipay") {
         logInfo("Creating Alipay one-time payment", {
@@ -256,35 +229,25 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
           amount,
         });
 
-        if (!isChinaRegion()) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: "WeChat payment is only available in China region",
-            },
-            { status: 400 }
-          );
-        }
-
         const outTradeNo = `WX${Date.now()}${Math.random()
           .toString(36)
           .substr(2, 9)
           .toUpperCase()}`;
 
-        // 初始化微信支付提供商
+        // 鍒濆鍖栧井淇℃敮浠樻彁渚涘晢
         const wechatProvider = new WechatProviderV3({
           appId: getWechatPayAppId(),
-          mchId: process.env.WECHAT_PAY_MCH_ID!,
+          mchId: getWechatPayMerchantId(),
           apiV3Key: getWechatPayApiV3Key(),
-          privateKey: process.env.WECHAT_PAY_PRIVATE_KEY!,
-          serialNo: process.env.WECHAT_PAY_SERIAL_NO!,
+          privateKey: getWechatPayPrivateKey(),
+          serialNo: getWechatPaySerialNo(),
           notifyUrl: `${getAppUrl()}/api/payment/webhook/wechat`,
         });
 
-        // 创建微信 NATIVE 支付订单
+        // 鍒涘缓寰俊 NATIVE 鏀粯璁㈠崟
         const wechatResponse = await wechatProvider.createNativePayment({
           out_trade_no: outTradeNo,
-          amount: Math.round(amount * 100), // 转换为分
+          amount: Math.round(amount * 100), // 杞崲涓哄垎
           description: order.description,
         });
 
@@ -319,62 +282,35 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
       );
     }
 
-    // 记录到数据库
+    // 璁板綍鍒版暟鎹簱
     if (result && result.success && result.paymentId) {
-      const paymentData: any = {
-        user_id: user.id,
-        amount,
-        currency,
-        status: "pending",
-        payment_method: method,
-        transaction_id: result.paymentId,
-        metadata: {
-          days,
-          paymentType: "onetime",
-          billingCycle,
-        },
-      };
-
-      if (method === "alipay" || method === "wechat") {
-        paymentData.out_trade_no = result.paymentId;
-      }
-
-      // 微信支付额外字段
-      if (method === "wechat") {
-        paymentData.code_url = result.codeUrl;
-        paymentData.client_type = "native";
-      }
+      const normalizedFields = buildSubscriptionPaymentFields({
+        planType: "onetime",
+        billingCycle,
+        days,
+      });
+      const nowIso = new Date().toISOString();
 
       try {
-        if (isChinaRegion()) {
-          // CloudBase 插入
-          const db = getDatabase();
-          await db.collection("payments").add(paymentData);
-        } else {
-          // Supabase 插入
-          const { data: insertedPayment, error: paymentRecordError } =
-            await supabaseAdmin
-              .from("payments")
-              .insert([paymentData])
-              .select("id, metadata");
-
-          if (paymentRecordError) {
-            throw paymentRecordError;
-          }
-
-          if (insertedPayment && insertedPayment.length > 0) {
-            const payment = insertedPayment[0];
-            logInfo("Payment record created", {
-              operationId,
-              userId: user.id,
-              paymentId: payment.id,
-              transactionId: result.paymentId,
-              amount,
-              days,
-              metadataSaved: payment.metadata,
-            });
-          }
-        }
+        await createPendingPaymentRecord({
+          userId: user.id,
+          amount,
+          currency,
+          paymentMethod: method,
+          orderId: result.paymentId,
+          transactionId: result.transactionId || result.paymentId,
+          codeUrl: result.codeUrl,
+          nowIso,
+          paymentFields: {
+            ...normalizedFields,
+            metadata: {
+              ...normalizedFields.metadata,
+              paymentType: "onetime",
+              source: "onetime-create-route",
+            },
+          },
+          clientType: method === "wechat" ? "native" : undefined,
+        });
       } catch (paymentRecordError) {
         logError(
           "Failed to persist one-time payment record",
@@ -436,6 +372,7 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
     );
   }
 }
+
 
 
 

@@ -9,10 +9,14 @@ afterEach(() => {
 });
 
 describe("oauth readiness snapshot", () => {
-  test("returns dashboard_check_required when INTL Google env is ready", async () => {
+  test("returns ready when INTL Google OAuth is declared as infra-managed", async () => {
     process.env.APP_URL = "https://www.mornhub.quest";
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";
+    process.env.SUPABASE_GOOGLE_OAUTH_MANAGED = "true";
+    process.env.SUPABASE_GOOGLE_OAUTH_CLIENT_ID = "google-client-id";
+    process.env.SUPABASE_GOOGLE_OAUTH_CLIENT_SECRET = "google-client-secret";
+    process.env.SUPABASE_GOOGLE_OAUTH_CALLBACK_URL = "https://www.mornhub.quest/auth/callback";
 
     jest.doMock("@/lib/config/deployment.config", () => ({
       currentRegion: "INTL",
@@ -23,8 +27,9 @@ describe("oauth readiness snapshot", () => {
     const capabilities = await import("@/lib/config/third-party-capabilities");
     const snapshot = capabilities.getOAuthReadinessSnapshot();
 
-    expect(snapshot.providers.google.status).toBe("dashboard_check_required");
+    expect(snapshot.providers.google.status).toBe("ready");
     expect(snapshot.providers.google.checks.envConfigured).toBe(true);
+    expect(snapshot.providers.google.checks.dashboardProviderVerified).toBe(true);
     expect(snapshot.providers.google.expectedCallbackUrl).toBe(
       "https://www.mornhub.quest/auth/callback",
     );
