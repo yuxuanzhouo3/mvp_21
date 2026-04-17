@@ -67,11 +67,11 @@ function validateSourceEnv(targetName, envEntries) {
       "NEXT_PUBLIC_SUPABASE_ANON_KEY",
       "SUPABASE_SERVICE_ROLE_KEY",
       "OPENAI_MODEL",
+      "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
     ],
   };
 
   const errors = [];
-  const warnings = [];
 
   for (const key of regionKeys) {
     if (!hasValue(envEntries, key)) {
@@ -93,17 +93,7 @@ function validateSourceEnv(targetName, envEntries) {
     }
   }
 
-  if (targetName === "intl") {
-    const hasStripeSecret = hasValue(envEntries, "STRIPE_SECRET_KEY");
-    const hasStripePublic = hasValue(envEntries, "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY");
-    if (hasStripeSecret && !hasStripePublic) {
-      warnings.push(
-        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is missing while STRIPE_SECRET_KEY is set (Stripe client checkout may fail)",
-      );
-    }
-  }
-
-  return { errors, warnings };
+  return { errors };
 }
 
 const rootDir = process.cwd();
@@ -125,13 +115,6 @@ if (validation.errors.length > 0) {
     console.error(`- ${issue}`);
   }
   process.exit(1);
-}
-
-if (validation.warnings.length > 0) {
-  console.log(`Env warnings for ${sourceMap[target]}:`);
-  for (const warning of validation.warnings) {
-    console.log(`- ${warning}`);
-  }
 }
 
 fs.copyFileSync(sourceFile, targetFile);

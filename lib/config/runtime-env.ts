@@ -18,13 +18,6 @@ export function getAppUrl(): string {
   );
 }
 
-export function getWechatOAuthAppId(): string {
-  return pickFirstNonEmpty(
-    process.env.NEXT_PUBLIC_WECHAT_APP_ID,
-    process.env.WECHAT_APP_ID,
-  );
-}
-
 export function getWechatPayAppId(): string {
   return pickFirstNonEmpty(
     process.env.WECHAT_APP_ID,

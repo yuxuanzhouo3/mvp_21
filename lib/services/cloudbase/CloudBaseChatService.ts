@@ -179,6 +179,12 @@ export class CloudBaseChatService implements IChatService {
       }
 
       const conversationIds = membershipsResult.data.map((m: any) => m.conversation_id)
+      const membershipByConversation = new Map<string, { last_read_at?: string }>(
+        membershipsResult.data.map((membership: any) => [
+          membership.conversation_id,
+          membership,
+        ])
+      )
 
       // 获取会话详情
       const conversationsResult = await db
@@ -191,10 +197,12 @@ export class CloudBaseChatService implements IChatService {
       // 获取每个会话的详情
       const result: ConversationWithDetails[] = []
       for (const conv of conversationsResult.data) {
+        const conversationId = conv._id || conv.id
+
         // 获取成员
         const membersResult = await db
           .collection('conversation_members')
-          .where({ conversation_id: conv._id })
+          .where({ conversation_id: conversationId })
           .get()
 
         const memberIds = membersResult.data?.map((m: any) => m.user_id) || []
@@ -204,17 +212,32 @@ export class CloudBaseChatService implements IChatService {
         const lastMsgResult = await db
           .collection('messages')
           .where({
-            conversation_id: conv._id,
+            conversation_id: conversationId,
             is_deleted: false,
           })
           .orderBy('created_at', 'desc')
           .limit(1)
           .get()
 
+        const membership = membershipByConversation.get(conversationId)
+        const unreadWhere: Record<string, any> = {
+          conversation_id: conversationId,
+          is_deleted: false,
+          sender_id: db.command.neq(userId),
+        }
+        if (membership?.last_read_at) {
+          unreadWhere.created_at = db.command.gt(membership.last_read_at)
+        }
+
+        const unreadCountResult = await db
+          .collection('messages')
+          .where(unreadWhere)
+          .count()
+
         result.push({
           ...this.normalizeConversation(conv),
           members: users,
-          unread_count: 0,
+          unread_count: unreadCountResult.total || 0,
           last_message: lastMsgResult.data?.[0]
             ? this.normalizeMessage(lastMsgResult.data[0])
             : undefined,

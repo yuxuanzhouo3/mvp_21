@@ -18,7 +18,6 @@ export interface DeploymentConfig {
     features: {
       emailAuth: boolean;
       phoneOtpAuth: boolean;
-      wechatAuth: boolean;
       googleAuth: boolean;
       githubAuth: boolean;
     };
@@ -50,7 +49,6 @@ function generateConfig(region: DeploymentRegion): DeploymentConfig {
       features: {
         emailAuth: true,
         phoneOtpAuth: isChinaRegion,
-        wechatAuth: false,
         googleAuth: !isChinaRegion,
         githubAuth: false,
       },

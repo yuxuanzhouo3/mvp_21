@@ -231,20 +231,6 @@ export interface Subscription {
   updated_at: string;
 }
 
-export interface WechatLogin {
-  _id?: string;
-  user_id?: string;
-  open_id: string;
-  nickname?: string;
-  avatar?: string;
-  union_id?: string;
-  status: "active" | "inactive";
-  last_login_at: string;
-  region: string;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface SecurityLog {
   _id?: string;
   user_id?: string;
@@ -310,7 +296,6 @@ export const CLOUDBASE_COLLECTIONS = {
   PAYMENTS: "payments",
   TOKENS: "tokens",
   SUBSCRIPTIONS: "subscriptions",
-  WECHAT_LOGINS: "wechat_logins",
   SECURITY_LOGS: "security_logs",
   REFRESH_TOKENS: "refresh_tokens",
   EMAIL_VERIFICATION_CODES: "email_verification_codes",
@@ -369,10 +354,6 @@ export const CLOUDBASE_INDEXES = {
     { key: { user_id: 1 } },
     { key: { status: 1 } },
     { key: { current_period_end: 1 } },
-  ],
-  [CLOUDBASE_COLLECTIONS.WECHAT_LOGINS]: [
-    { key: { open_id: 1 }, unique: true },
-    { key: { user_id: 1 } },
   ],
   [CLOUDBASE_COLLECTIONS.SECURITY_LOGS]: [
     { key: { user_id: 1, created_at: -1 } },

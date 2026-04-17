@@ -8,13 +8,11 @@ export interface AuthConfig {
   features: {
     emailAuth: boolean;
     phoneOtpAuth: boolean;
-    wechatAuth: boolean;
     googleAuth: boolean;
     githubAuth: boolean;
   };
   availability?: {
     sms?: { enabled: boolean; reason?: string };
-    wechat?: { enabled: boolean; reason?: string };
     google?: { enabled: boolean; reason?: string };
   };
   appUrl: string | undefined;
@@ -30,7 +28,6 @@ export function useAuthConfig() {
     features: {
       emailAuth: true,
       phoneOtpAuth: true,
-      wechatAuth: false,
       googleAuth: false,
       githubAuth: false,
     },

@@ -17,7 +17,6 @@ import { useTranslations } from "@/lib/i18n";
 import { RegionType } from "@/lib/architecture-modules/core/types";
 import { isChinaDeployment } from "@/lib/config/deployment.config";
 import { useAuthConfig } from "@/lib/hooks/useAuthConfig";
-import { detectClientRuntime, type ClientRuntime } from "@/lib/integrations/wechat-runtime";
 
 function AuthPageContent() {
   const authClient = useMemo(() => getAuthClient(), []);
@@ -50,7 +49,6 @@ function AuthPageContent() {
   const [cnLoginChannel, setCnLoginChannel] = useState<"email" | "phone">("email");
   const [forgotStep, setForgotStep] = useState<"off" | "request" | "verify" | "reset">("off");
   const [region, setRegion] = useState<RegionType>(isChinaDeployment() ? RegionType.CHINA : RegionType.USA);
-  const [clientRuntime, setClientRuntime] = useState<ClientRuntime>("web");
   const authActionLockRef = useRef(false);
   const redirectingRef = useRef(false);
   const supportsOtp = true;
@@ -71,15 +69,6 @@ function AuthPageContent() {
     region === RegionType.CHINA && cnLoginChannel === "phone" ? "tel" : "email";
   const thirdPartyUnavailable =
     region !== RegionType.CHINA && !config.features.googleAuth;
-  const isWechatMiniProgramRuntime = clientRuntime === "wechat-mini-program";
-  const isWechatMiniProgramLoginEnabled =
-    region === RegionType.CHINA &&
-    isWechatMiniProgramRuntime &&
-    config.features.wechatAuth;
-  const miniProgramLoginLabel =
-    language === "en" ? "Sign in with WeChat" : "微信登录";
-  const miniProgramLoggingInLabel =
-    language === "en" ? "Signing in with WeChat..." : "正在使用微信登录...";
 
   const buildUrl = useCallback((path: string, extra?: Record<string, string>) => {
     const params = new URLSearchParams();
@@ -107,23 +96,6 @@ function AuthPageContent() {
   }, [config.region, configLoading]);
 
   useEffect(() => {
-    let active = true;
-
-    const resolveRuntime = async () => {
-      const runtime = await detectClientRuntime();
-      if (active) {
-        setClientRuntime(runtime);
-      }
-    };
-
-    void resolveRuntime();
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
     if (!otpMethodAvailable && loginMethod === "otp") {
       setLoginMethod("password");
       setOtp("");
@@ -146,18 +118,6 @@ function AuthPageContent() {
       setOtpSent(false);
     }
   }, [cnLoginChannel, loginMethod, region]);
-
-  useEffect(() => {
-    if (!isWechatMiniProgramLoginEnabled) {
-      return;
-    }
-
-    setForgotStep("off");
-    setCnLoginChannel("phone");
-    setLoginMethod("otp");
-    setOtp("");
-    setOtpSent(false);
-  }, [isWechatMiniProgramLoginEnabled]);
 
   const clearFeedback = () => {
     setNotice("");
@@ -307,62 +267,6 @@ function AuthPageContent() {
         }
       } catch (err) {
         setError(msg(err));
-      } finally {
-        setLoading(false);
-      }
-    });
-  };
-
-  const requestMiniProgramLoginCode = useCallback(async () => {
-    if (typeof window === "undefined") {
-      throw new Error("Current runtime does not support WeChat mini program login.");
-    }
-
-    type WechatLoginSuccess = { code?: string; errMsg?: string };
-    type WechatLoginFailure = { errMsg?: string };
-    type WechatApi = {
-      login?: (args: {
-        success?: (result: WechatLoginSuccess) => void;
-        fail?: (error: WechatLoginFailure) => void;
-      }) => void;
-    };
-
-    const wxApi = (window as Window & { wx?: WechatApi }).wx;
-    if (!wxApi?.login) {
-      throw new Error("WeChat mini program API is unavailable in this environment.");
-    }
-
-    return new Promise<string>((resolve, reject) => {
-      wxApi.login?.({
-        success: (result) => {
-          if (result?.code) {
-            resolve(result.code);
-            return;
-          }
-
-          reject(new Error(result?.errMsg || "Failed to get WeChat login code."));
-        },
-        fail: (error) => {
-          reject(new Error(error?.errMsg || "Failed to request WeChat login code."));
-        },
-      });
-    });
-  }, []);
-
-  const onMiniProgramWechatSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (loading || !requirePrivacy()) return;
-
-    await runLockedAuthAction(async () => {
-      clearFeedback();
-      setLoading(true);
-      try {
-        const code = await requestMiniProgramLoginCode();
-        const { error: err } = await authClient.signInWithWechatMiniProgram({ code });
-        if (err) throw err;
-        goSignedIn();
-      } catch (err) {
-        setError(msg(err) || "微信登录失败，请稍后再试。");
       } finally {
         setLoading(false);
       }
@@ -544,19 +448,17 @@ function AuthPageContent() {
     }
   };
 
-  const signInButton = isWechatMiniProgramLoginEnabled
-    ? (loading ? miniProgramLoggingInLabel : miniProgramLoginLabel)
-    : loading
-      ? loginMethod === "password"
-        ? t.auth.loggingIn
-        : otpSent
-          ? t.auth.verifying
-          : t.auth.sending
-      : loginMethod === "password"
-        ? t.auth.signInButton
-        : otpSent
-          ? t.auth.verifyOtp
-          : t.auth.sendOtp;
+  const signInButton = loading
+    ? loginMethod === "password"
+      ? t.auth.loggingIn
+      : otpSent
+        ? t.auth.verifying
+        : t.auth.sending
+    : loginMethod === "password"
+      ? t.auth.signInButton
+      : otpSent
+        ? t.auth.verifyOtp
+        : t.auth.sendOtp;
 
   const privacy = (
     <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
@@ -613,21 +515,7 @@ function AuthPageContent() {
     );
 
   const signInFormEnhanced =
-    isWechatMiniProgramLoginEnabled ? (
-      <form onSubmit={onMiniProgramWechatSignIn} className="space-y-4">
-        <Alert>
-          <AlertDescription>
-            {language === "en"
-              ? "Mini program environment detected. Continue with WeChat sign-in."
-              : "检测到小程序环境，请使用微信登录继续。"}
-          </AlertDescription>
-        </Alert>
-        {privacy}
-        <Button type="submit" className="w-full" disabled={loading}>
-          {signInButton}
-        </Button>
-      </form>
-    ) : supportsOtp && forgotStep !== "off" ? forgotForm : (
+    supportsOtp && forgotStep !== "off" ? forgotForm : (
       <form onSubmit={loginMethod === "password" ? onSignIn : onOtp} className="space-y-4">
         {region === RegionType.CHINA ? (
           <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
@@ -838,18 +726,6 @@ function AuthPageContent() {
               </TabsList>
               <TabsContent value="signin" className="space-y-6">
                 {signInFormEnhanced}
-                {isWechatMiniProgramRuntime &&
-                region === RegionType.CHINA &&
-                !configLoading &&
-                !config.features.wechatAuth ? (
-                  <Alert>
-                    <AlertDescription>
-                      {language === "en"
-                        ? `WeChat sign-in is not available: ${config.availability?.wechat?.reason || "missing configuration."}`
-                        : `当前未启用微信登录：${config.availability?.wechat?.reason || "配置缺失。"}`}
-                    </AlertDescription>
-                  </Alert>
-                ) : null}
                 {region !== RegionType.CHINA ? (
                   <>
                     <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-sm"><span className="bg-white px-4 text-gray-500">{t.auth.or}</span></div></div>

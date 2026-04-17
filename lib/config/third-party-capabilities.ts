@@ -7,7 +7,7 @@ import {
 
 type Region = "CN" | "INTL";
 type PaymentMethod = "stripe" | "wechat" | "alipay";
-type AuthMethod = "sms" | "wechat" | "google";
+type AuthMethod = "sms" | "google";
 
 export interface CapabilityStatus {
   enabled: boolean;
@@ -19,7 +19,6 @@ export interface PublicAuthConfig {
   features: {
     emailAuth: boolean;
     phoneOtpAuth: boolean;
-    wechatAuth: boolean;
     googleAuth: boolean;
     githubAuth: boolean;
   };
@@ -155,24 +154,9 @@ function getGoogleAuthStatus(region: Region): CapabilityStatus {
   return createStatus(true);
 }
 
-function getWechatAuthStatus(region: Region): CapabilityStatus {
-  if (region !== "CN" || !isAuthFeatureSupported("wechatAuth")) {
-    return createStatus(
-      false,
-      "WeChat sign-in is not supported in this deployment (retired).",
-    );
-  }
-
-  return createStatus(
-    false,
-    "WeChat sign-in is not supported in this deployment (retired).",
-  );
-}
-
 export function getPublicAuthConfig(): PublicAuthConfig {
   const region = currentRegion;
   const sms = getSmsAuthStatus(region);
-  const wechat = getWechatAuthStatus(region);
   const google = getGoogleAuthStatus(region);
 
   return {
@@ -180,13 +164,11 @@ export function getPublicAuthConfig(): PublicAuthConfig {
     features: {
       emailAuth: isAuthFeatureSupported("emailAuth"),
       phoneOtpAuth: sms.enabled,
-      wechatAuth: wechat.enabled,
       googleAuth: google.enabled,
       githubAuth: false,
     },
     availability: {
       sms,
-      wechat,
       google,
     },
   };

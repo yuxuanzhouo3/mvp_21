@@ -8,6 +8,26 @@ afterEach(() => {
 });
 
 describe("env validation production placeholder guard", () => {
+  test("fails when INTL deployment misses NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", () => {
+    process.env.NODE_ENV = "production";
+    process.env.NEXT_PUBLIC_DEPLOYMENT_REGION = "INTL";
+    process.env.APP_URL = "https://app.example.org";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://prod-project.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-prod-key";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-prod-key";
+    process.env.OPENAI_MODEL = "gpt-4.1";
+    process.env.STRIPE_SECRET_KEY = "sk_live_123456789";
+    delete process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+
+    const result = validateEnvironment();
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errors.join("\n")).toContain(
+        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to INTL",
+      );
+    }
+  });
+
   test("fails when production uses test Stripe keys", () => {
     process.env.NODE_ENV = "production";
     process.env.NEXT_PUBLIC_DEPLOYMENT_REGION = "INTL";

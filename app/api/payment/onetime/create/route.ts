@@ -145,10 +145,16 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
         sinceIso: oneMinuteAgo,
       });
     } catch (checkError) {
-      logError("Error checking existing payment", checkError, {
+      logError(
+        "Error checking existing payment",
+        checkError instanceof Error
+          ? checkError
+          : new Error(String(checkError)),
+        {
         operationId,
         userId: user.id,
-      });
+        }
+      );
       return NextResponse.json(
         {
           success: false,

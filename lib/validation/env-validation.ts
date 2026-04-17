@@ -244,6 +244,12 @@ export function validateEnvironment():
         );
       }
 
+      if (!envData.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) {
+        conditionalErrors.push(
+          "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to INTL"
+        );
+      }
+
       const openAiModel = envData.OPENAI_MODEL?.trim();
       if (!openAiModel) {
         conditionalErrors.push(

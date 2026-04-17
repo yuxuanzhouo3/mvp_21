@@ -145,12 +145,18 @@ export class SupabaseChatService implements IChatService {
     // 获取用户参与的会话
     const { data: memberships } = await supabase
       .from('conversation_members')
-      .select('conversation_id')
+      .select('conversation_id, last_read_at')
       .eq('user_id', userId)
 
     if (!memberships || memberships.length === 0) return []
 
     const conversationIds = memberships.map((m) => m.conversation_id)
+    const lastReadAtByConversation = new Map(
+      memberships.map((membership) => [
+        membership.conversation_id,
+        membership.last_read_at || null,
+      ])
+    )
 
     const { data: conversations } = await supabase
       .from('conversations')
@@ -182,10 +188,24 @@ export class SupabaseChatService implements IChatService {
         .limit(1)
         .single()
 
+      const lastReadAt = lastReadAtByConversation.get(conv.id)
+      let unreadQuery = supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('conversation_id', conv.id)
+        .eq('is_deleted', false)
+        .neq('sender_id', userId)
+
+      if (lastReadAt) {
+        unreadQuery = unreadQuery.gt('created_at', lastReadAt)
+      }
+
+      const { count: unreadTotal } = await unreadQuery
+
       result.push({
         ...conv,
         members: users,
-        unread_count: 0, // TODO: 实现未读计数
+        unread_count: unreadTotal || 0,
         last_message: lastMessage || undefined,
       } as ConversationWithDetails)
     }

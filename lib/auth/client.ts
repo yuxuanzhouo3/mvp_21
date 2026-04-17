@@ -50,13 +50,6 @@ export interface AuthClient {
     email: string;
     options?: any;
   }): Promise<{ error: Error | null }>;
-  signInWithWechatMiniProgram(params: {
-    code: string;
-    profile?: {
-      nickname?: string;
-      avatar?: string;
-    };
-  }): Promise<AuthResponse>;
   verifyOtp(params: {
     email: string;
     token: string;
@@ -232,15 +225,6 @@ class SupabaseAuthClient implements AuthClient {
             : new Error("Supabase client not initialized"),
       };
     }
-  }
-
-  async signInWithWechatMiniProgram(): Promise<AuthResponse> {
-    return {
-      data: { user: null, session: null },
-      error: new Error(
-        "WeChat mini program login is not supported in the current region.",
-      ),
-    };
   }
 
   async verifyOtp(params: {
@@ -637,22 +621,6 @@ class CloudBaseAuthClient implements AuthClient {
     }
   }
 
-  async signInWithWechatMiniProgram(params: {
-    code: string;
-    profile?: {
-      nickname?: string;
-      avatar?: string;
-    };
-  }): Promise<AuthResponse> {
-    void params;
-    return {
-      data: { user: null, session: null },
-      error: new Error(
-        "WeChat mini program login is retired. Use email/password or SMS OTP instead.",
-      ),
-    };
-  }
-
   async verifyOtp(params: {
     email: string;
     token: string;
@@ -927,13 +895,6 @@ export const auth = {
   }) => getAuthClient().signUp(params),
   signInWithOtp: (params: { email: string; options?: any }) =>
     getAuthClient().signInWithOtp(params),
-  signInWithWechatMiniProgram: (params: {
-    code: string;
-    profile?: {
-      nickname?: string;
-      avatar?: string;
-    };
-  }) => getAuthClient().signInWithWechatMiniProgram(params),
   verifyOtp: (params: { email: string; token: string; type: string }) =>
     getAuthClient().verifyOtp(params),
   signOut: () => getAuthClient().signOut(),

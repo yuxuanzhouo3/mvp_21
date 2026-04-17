@@ -16,7 +16,6 @@ async function loadCapabilities(region: "CN" | "INTL") {
       region === "CN" ? ["wechat", "alipay"] : ["stripe"],
     isAuthFeatureSupported: (feature: string) => {
       if (feature === "emailAuth") return true;
-      if (feature === "wechatAuth") return region === "CN";
       if (feature === "googleAuth") return region === "INTL";
       return false;
     },
@@ -24,7 +23,6 @@ async function loadCapabilities(region: "CN" | "INTL") {
 
   jest.doMock("@/lib/config/runtime-env", () => ({
     getAppUrl: () => "https://example.com",
-    getWechatOAuthAppId: () => "wx-app-id",
     getWechatPayApiV3Key: () => "1".repeat(32),
     getWechatPayAppId: () => "wx-app-id",
   }));
@@ -65,7 +63,7 @@ describe("region dual-stack capability matrix", () => {
     expect(paymentSnapshot.methods.alipay.reason).toContain("not supported");
 
     expect(authSnapshot.region).toBe("INTL");
-    expect(authSnapshot.availability.wechat.enabled).toBe(false);
-    expect(authSnapshot.availability.wechat.reason).toContain("not supported");
+    expect(authSnapshot.availability.sms.enabled).toBe(false);
+    expect(authSnapshot.availability.sms.reason).toContain("not supported");
   });
 });
