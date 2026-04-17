@@ -23,16 +23,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useFocusScrollIntoView } from "@/hooks/use-mobile-keyboard";
 import { tokenManager } from "@/lib/auth/frontend-token-manager";
 import { createContractForCurrentUser } from "@/lib/contracts/client";
-import {
-  isOcrImportMethod,
-  resolveContractCreateImportMethod,
-  type ContractCreateImportMethod,
-  type CreateFlowContext,
-} from "@/lib/contracts/create-entrypoints";
-import {
-  DEFAULT_ANALYSIS_MAX_CHARS,
-  prepareAnalysisInput,
-} from "@/lib/contracts/analysis-input";
 import { prepareDraftAnalysisForCurrentUser } from "@/lib/contracts/draft-context";
 import {
   buildContractParties,
@@ -40,6 +30,7 @@ import {
   deriveDraftTitle,
 } from "@/lib/contracts/format";
 
+type SupportedImportMethod = "text" | "screenshot" | "wechat";
 type OcrSourceType = "screenshot" | "wechat" | "feishu";
 
 function fileToDataUrl(file: File) {
@@ -51,42 +42,13 @@ function fileToDataUrl(file: File) {
   });
 }
 
-async function readApiErrorMessage(response: Response, fallback: string) {
-  const contentType = (response.headers.get("content-type") || "").toLowerCase();
-  if (contentType.includes("application/json")) {
-    const payload = (await response.json().catch(() => null)) as
-      | Record<string, unknown>
-      | null;
-    const errorPayload = payload?.error;
-    if (typeof errorPayload === "string" && errorPayload.trim()) {
-      return errorPayload.trim();
-    }
-    if (errorPayload && typeof errorPayload === "object") {
-      const message = (errorPayload as Record<string, unknown>).message;
-      if (typeof message === "string" && message.trim()) {
-        return message.trim();
-      }
-    }
-    return fallback;
-  }
-
-  const rawText = (await response.text().catch(() => "")) || "";
-  const normalized = rawText.trim();
-  if (!normalized || normalized.startsWith("<")) {
-    return fallback;
-  }
-  return normalized.slice(0, 240);
-}
-
 function ImportContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { language } = useLanguage();
   const isEn = language === "en";
-  const rawMethod = searchParams.get("method");
-  const { method, isKnown: isKnownMethod } = resolveContractCreateImportMethod(rawMethod);
-  const flowContext: CreateFlowContext =
-    searchParams.get("ctx") === "dashboard" ? "dashboard" : "standalone";
+  const method = (searchParams.get("method") || "text") as SupportedImportMethod;
+  const flowContext = searchParams.get("ctx") === "dashboard" ? "dashboard" : "standalone";
   const templateId = searchParams.get("templateId") || "";
   const [content, setContent] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -99,7 +61,8 @@ function ImportContent() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const handleFocusCapture = useFocusScrollIntoView();
 
-  const supportsOcr = isOcrImportMethod(method);
+  const supportsOcr = method === "screenshot" || method === "wechat";
+  const isKnownMethod = method === "text" || supportsOcr;
   const activeContent = supportsOcr ? ocrText : content;
   const trimmedLength = activeContent.trim().length;
   const backHref = flowContext === "dashboard" ? "/dashboard/contracts/new" : "/create";
@@ -123,57 +86,21 @@ function ImportContent() {
 
   async function createDraftFromContent(
     nextContent: string,
-    sourceType: ContractCreateImportMethod | OcrSourceType,
+    sourceType: SupportedImportMethod | OcrSourceType,
   ) {
-    const headers = await tokenManager.getAuthHeaderAsync();
-    if (!headers) {
-      throw new Error("UNAUTHORIZED");
-    }
-
-    const preparedInput = prepareAnalysisInput(nextContent, {
-      maxChars: DEFAULT_ANALYSIS_MAX_CHARS,
-    });
-    if (preparedInput.analyzedChars < 20) {
-      throw new Error(
-        isEn
-          ? "Conversation is too short. Please provide more detail before analysis."
-          : "对话内容过短，请补充更多细节后再分析。",
-      );
-    }
-
     const analysisResponse = await fetch("/api/contracts/analyze", {
       method: "POST",
-      headers: {
-        ...headers,
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        content: preparedInput.content,
+        content: nextContent,
         sourceType,
       }),
     });
 
-    if (!analysisResponse.ok) {
+    const analysisResult = await analysisResponse.json();
+    if (!analysisResult.success) {
       throw new Error(
-        await readApiErrorMessage(
-          analysisResponse,
-          isEn ? "Analysis failed. Please retry later." : "分析失败，请稍后重试。",
-        ),
-      );
-    }
-
-    const analysisResult = (await analysisResponse.json().catch(() => null)) as
-      | Record<string, any>
-      | null;
-    if (preparedInput.truncated || analysisResult?.meta?.input?.truncated) {
-      console.info("[CreateImportPage] Analysis input compacted:", {
-        clientInputChars: preparedInput.analyzedChars,
-        serverInputChars: analysisResult?.meta?.input?.analyzedChars,
-      });
-    }
-    if (!analysisResult?.success) {
-      throw new Error(
-        analysisResult?.error?.message || (isEn ? "Analysis failed" : "分析失败"),
+        analysisResult.error?.message || (isEn ? "Analysis failed" : "分析失败"),
       );
     }
 
@@ -323,31 +250,9 @@ function ImportContent() {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(
-          await readApiErrorMessage(
-            response,
-            isEn ? "OCR failed. Please retry later." : "OCR 识别失败，请稍后重试。",
-          ),
-        );
-      }
-
-      const result = (await response.json().catch(() => null)) as
-        | Record<string, any>
-        | null;
-      if (!result?.success) {
-        const errorPayload = result?.error;
-        const message =
-          typeof errorPayload === "string"
-            ? errorPayload
-            : errorPayload &&
-                typeof errorPayload === "object" &&
-                typeof (errorPayload as Record<string, unknown>).message === "string"
-              ? String((errorPayload as Record<string, unknown>).message)
-              : isEn
-                ? "OCR failed"
-                : "OCR 识别失败";
-        throw new Error(message);
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || (isEn ? "OCR failed" : "OCR 识别失败"));
       }
 
       setOcrText(result.data?.conversationText || "");

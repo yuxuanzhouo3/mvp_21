@@ -21,7 +21,6 @@ import { isAdminRole } from "@/lib/auth/user-role";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
-export const maxDuration = 60;
 
 function parsePositiveInt(value: string | null, fallback: number) {
   const parsed = Number.parseInt(value || "", 10);
@@ -29,34 +28,6 @@ function parsePositiveInt(value: string | null, fallback: number) {
     return fallback;
   }
   return parsed;
-}
-
-function parseEnvPositiveInt(value: string | undefined, fallback: number) {
-  const parsed = Number.parseInt(String(value || ""), 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return fallback;
-  }
-  return parsed;
-}
-
-async function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  fallback: T,
-): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((resolve) => {
-        timer = setTimeout(() => resolve(fallback), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
 }
 
 function asPlainRecord(value: unknown): Record<string, unknown> {
@@ -89,11 +60,7 @@ async function requireCurrentUser(request: NextRequest) {
     };
   }
 
-  const authResult = await withTimeout(
-    verifyAuthToken(token),
-    parseEnvPositiveInt(process.env.AUTH_VERIFY_TIMEOUT_MS, 5_000),
-    { success: false, error: "AUTH_TIMEOUT" },
-  );
+  const authResult = await verifyAuthToken(token);
   if (!authResult.success || !authResult.userId) {
     return {
       error: NextResponse.json(
@@ -128,20 +95,12 @@ async function requireCurrentUser(request: NextRequest) {
 
   try {
     const profile = isChinaRegion()
-      ? await withTimeout(
-          loadChinaAccountProfile(authResult.userId),
-          parseEnvPositiveInt(process.env.MEMBERSHIP_PROFILE_TIMEOUT_MS, 4_000),
-          null,
-        )
-      : await withTimeout(
-          loadIntlAccountProfile(
-            authResult.userId,
-            authResult.user && "user_metadata" in authResult.user
-              ? authResult.user
-              : undefined,
-          ),
-          parseEnvPositiveInt(process.env.MEMBERSHIP_PROFILE_TIMEOUT_MS, 4_000),
-          null,
+      ? await loadChinaAccountProfile(authResult.userId)
+      : await loadIntlAccountProfile(
+          authResult.userId,
+          authResult.user && "user_metadata" in authResult.user
+            ? authResult.user
+            : undefined,
         );
 
     if (profile) {
@@ -180,18 +139,13 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parsePositiveInt(searchParams.get("limit"), DEFAULT_LIMIT), MAX_LIMIT);
     const status = searchParams.get("status") || "";
 
-    const listResult = await withTimeout(
-      listContracts({
-        userId: auth.user.id,
-        status,
-        isAdmin: isAdminRole(auth.user.role),
-        limit,
-        offset: Math.max(page - 1, 0) * limit,
-      }),
-      parseEnvPositiveInt(process.env.CONTRACTS_LIST_TIMEOUT_MS, 7_000),
-      { contracts: [], total: 0 },
-    );
-    const { contracts, total } = listResult;
+    const { contracts, total } = await listContracts({
+      userId: auth.user.id,
+      status,
+      isAdmin: isAdminRole(auth.user.role),
+      limit,
+      offset: Math.max(page - 1, 0) * limit,
+    });
 
     return NextResponse.json({
       success: true,
@@ -265,99 +219,70 @@ export async function POST(request: NextRequest) {
     }
 
     if (!isAdminRole(auth.user.role)) {
-      const settings = await withTimeout(
-        loadAdminSettings(),
-        parseEnvPositiveInt(process.env.MEMBERSHIP_SETTINGS_TIMEOUT_MS, 4_000),
-        null,
+      const settings = await loadAdminSettings();
+      const entitlements = buildMembershipEntitlements(
+        {
+          plan: auth.user.subscriptionPlan,
+          status: auth.user.subscriptionStatus,
+          membershipExpiresAt: auth.user.membershipExpiresAt,
+          subscriptionExpiresAt: auth.user.subscriptionExpiresAt,
+        },
+        settings,
       );
-      if (settings) {
-        const entitlements = buildMembershipEntitlements(
-          {
-            plan: auth.user.subscriptionPlan,
-            status: auth.user.subscriptionStatus,
-            membershipExpiresAt: auth.user.membershipExpiresAt,
-            subscriptionExpiresAt: auth.user.subscriptionExpiresAt,
-          },
-          settings,
-        );
 
-        const contractLimit = entitlements.limits.contractsPerMonth;
-        if (contractLimit !== null) {
-          const monthWindow = getCurrentMonthWindow();
-          const createdThisMonth = await withTimeout(
-            countContractsByUserInRange({
-              userId: auth.user.id,
-              startAt: monthWindow.startAt,
-              endBefore: monthWindow.endBefore,
-            }),
-            parseEnvPositiveInt(process.env.CONTRACTS_QUOTA_TIMEOUT_MS, 5_000),
-            -1,
-          );
+      const contractLimit = entitlements.limits.contractsPerMonth;
+      if (contractLimit !== null) {
+        const monthWindow = getCurrentMonthWindow();
+        const createdThisMonth = await countContractsByUserInRange({
+          userId: auth.user.id,
+          startAt: monthWindow.startAt,
+          endBefore: monthWindow.endBefore,
+        });
 
-          if (createdThisMonth >= contractLimit && createdThisMonth >= 0) {
-            return NextResponse.json(
-              {
-                success: false,
-                error: {
-                  message:
-                    "Monthly contract quota exceeded for your current membership plan.",
-                  code: "CONTRACT_QUOTA_EXCEEDED",
-                },
-                data: {
-                  limit: contractLimit,
-                  used: createdThisMonth,
-                  plan: entitlements.membership.plan,
-                  resetAt: monthWindow.endBefore,
-                },
+        if (createdThisMonth >= contractLimit) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                message:
+                  "Monthly contract quota exceeded for your current membership plan.",
+                code: "CONTRACT_QUOTA_EXCEEDED",
               },
-              { status: 403 },
-            );
-          }
+              data: {
+                limit: contractLimit,
+                used: createdThisMonth,
+                plan: entitlements.membership.plan,
+                resetAt: monthWindow.endBefore,
+              },
+            },
+            { status: 403 },
+          );
         }
-      } else {
-        console.warn("[/api/contracts] Membership settings timeout. Bypassing quota check.");
       }
     }
 
-    const contract = await withTimeout(
-      createContractRecord({
-        userId: auth.user.id,
-        title: title.trim(),
-        type: typeof type === "string" && type.trim() ? type.trim() : "custom",
-        status: normalizeContractStatus(status),
-        content: asPlainRecord(content),
-        sourceType:
-          typeof sourceType === "string" && sourceType.trim()
-            ? sourceType.trim()
-            : "text",
-        sourceContent:
-          typeof sourceContent === "string"
-            ? sourceContent
-            : typeof source_text === "string"
-              ? source_text
-              : "",
-        analysisResult: asNullableRecord(analysisResult, analysis_result),
-        parties: Array.isArray(parties) ? parties : [],
-        signatures: Array.isArray(signatures) ? signatures : [],
-        metadata: asPlainRecord(metadata),
-        region: typeof region === "string" && region.trim() ? region.trim() : undefined,
-      }),
-      parseEnvPositiveInt(process.env.CONTRACTS_CREATE_TIMEOUT_MS, 8_000),
-      null,
-    );
-
-    if (!contract) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            message: "Contract creation timed out. Please retry.",
-            code: "CONTRACT_CREATE_TIMEOUT",
-          },
-        },
-        { status: 503 },
-      );
-    }
+    const contract = await createContractRecord({
+      userId: auth.user.id,
+      title: title.trim(),
+      type: typeof type === "string" && type.trim() ? type.trim() : "custom",
+      status: normalizeContractStatus(status),
+      content: asPlainRecord(content),
+      sourceType:
+        typeof sourceType === "string" && sourceType.trim()
+          ? sourceType.trim()
+          : "text",
+      sourceContent:
+        typeof sourceContent === "string"
+          ? sourceContent
+          : typeof source_text === "string"
+            ? source_text
+            : "",
+      analysisResult: asNullableRecord(analysisResult, analysis_result),
+      parties: Array.isArray(parties) ? parties : [],
+      signatures: Array.isArray(signatures) ? signatures : [],
+      metadata: asPlainRecord(metadata),
+      region: typeof region === "string" && region.trim() ? region.trim() : undefined,
+    });
 
     return NextResponse.json({
       success: true,

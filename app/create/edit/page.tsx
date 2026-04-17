@@ -8,13 +8,10 @@ import {
   AlignRight,
   Bold,
   CheckCircle2,
-  ChevronDown,
   Copy,
   Download,
   Edit3,
   Eye,
-  FileText,
-  FileType2,
   Italic,
   List,
   ListOrdered,
@@ -31,19 +28,12 @@ import { MobileActionBar } from "@/components/create/mobile-action-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFocusScrollIntoView } from "@/hooks/use-mobile-keyboard";
 import { getContractTypeDisplayName } from "@/lib/ai/prompts/generate";
 import { ContractContent } from "@/lib/ai/types";
 import {
-  type ContractExportFormat,
   downloadContractForCurrentUser,
   type ContractDetail,
   getContractForCurrentUser,
@@ -73,8 +63,7 @@ function EditPageContent() {
   const [contract, setContract] = useState<ContractContent | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [exportingFormat, setExportingFormat] =
-    useState<ContractExportFormat | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
   const [activeTab, setActiveTab] = useState<EditorTab>("edit");
   const [contractTitle, setContractTitle] = useState("");
   const [editedContent, setEditedContent] = useState("");
@@ -232,38 +221,21 @@ function EditPageContent() {
     }
   };
 
-  const handleSaveAndDownload = async (format: ContractExportFormat) => {
+  const handleExport = async () => {
     if (!contractRecord) return;
 
-    setExportingFormat(format);
+    setIsExporting(true);
     try {
       await persistDraft(true);
-      await downloadContractForCurrentUser(contractRecord.id, format);
+      await downloadContractForCurrentUser(contractRecord.id);
       toast.success(isEn ? "Contract exported" : "合同已导出");
     } catch (error) {
       console.error("[CreateEditPage] Failed to export contract:", error);
       toast.error(isEn ? "Export failed, please retry." : "导出失败，请重试。");
     } finally {
-      setExportingFormat(null);
+      setIsExporting(false);
     }
   };
-
-  const isExporting = exportingFormat !== null;
-  const exportingLabel = isExporting
-    ? exportingFormat === "pdf"
-      ? isEn
-        ? "Exporting PDF..."
-        : "导出 PDF 中..."
-      : exportingFormat === "word"
-        ? isEn
-          ? "Exporting Word..."
-          : "导出 Word 中..."
-        : isEn
-          ? "Exporting HTML..."
-          : "导出 HTML 中..."
-    : isEn
-      ? "Save and Download"
-      : "保存并下载";
 
   const handleCopy = async () => {
     try {
@@ -332,42 +304,14 @@ function EditPageContent() {
                   )}
                   {isEn ? "Save" : "保存"}
                 </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm" disabled={isExporting}>
-                      {isExporting ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Download className="mr-2 h-4 w-4" />
-                      )}
-                      {exportingLabel}
-                      {!isExporting ? <ChevronDown className="ml-2 h-4 w-4" /> : null}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      disabled={isExporting}
-                      onClick={() => void handleSaveAndDownload("pdf")}
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      {isEn ? "Save and Download PDF" : "保存并下载 PDF"}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      disabled={isExporting}
-                      onClick={() => void handleSaveAndDownload("word")}
-                    >
-                      <FileType2 className="mr-2 h-4 w-4" />
-                      {isEn ? "Save and Download Word" : "保存并下载 Word"}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      disabled={isExporting}
-                      onClick={() => void handleSaveAndDownload("html")}
-                    >
-                      <FileText className="mr-2 h-4 w-4" />
-                      {isEn ? "Save and Download HTML" : "保存并下载 HTML"}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Button size="sm" onClick={handleExport} disabled={isExporting}>
+                  {isExporting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                  )}
+                  {isEn ? "Download HTML" : "下载 HTML"}
+                </Button>
               </div>
             </div>
           </CardHeader>
@@ -489,47 +433,19 @@ function EditPageContent() {
                 : "重要合同在签署前，仍建议由法务或律师进行复核。"}
             </span>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button disabled={isExporting}>
-                {isExporting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {exportingLabel}
-                  </>
-                ) : (
-                  <>
-                    <Download className="mr-2 h-4 w-4" />
-                    {isEn ? "Save and Download" : "保存并下载"}
-                    <ChevronDown className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                disabled={isExporting}
-                onClick={() => void handleSaveAndDownload("pdf")}
-              >
+          <Button onClick={handleExport} disabled={isExporting}>
+            {isExporting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {isEn ? "Exporting..." : "导出中..."}
+              </>
+            ) : (
+              <>
                 <Download className="mr-2 h-4 w-4" />
-                {isEn ? "Save and Download PDF" : "保存并下载 PDF"}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={isExporting}
-                onClick={() => void handleSaveAndDownload("word")}
-              >
-                <FileType2 className="mr-2 h-4 w-4" />
-                {isEn ? "Save and Download Word" : "保存并下载 Word"}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={isExporting}
-                onClick={() => void handleSaveAndDownload("html")}
-              >
-                <FileText className="mr-2 h-4 w-4" />
-                {isEn ? "Save and Download HTML" : "保存并下载 HTML"}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {isEn ? "Save and Download" : "保存并下载"}
+              </>
+            )}
+          </Button>
         </div>
 
         <MobileActionBar>
@@ -546,49 +462,23 @@ function EditPageContent() {
             )}
             <span className="ml-2">{isEn ? "Save" : "保存"}</span>
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                disabled={isExporting}
-                className="h-10 flex-[1.2] text-xs min-[390px]:text-sm"
-              >
-                {isExporting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {isEn ? "Exporting..." : "导出中..."}
-                  </>
-                ) : (
-                  <>
-                    <Download className="mr-2 h-4 w-4" />
-                    {isEn ? "Save and Download" : "保存并下载"}
-                  </>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                disabled={isExporting}
-                onClick={() => void handleSaveAndDownload("pdf")}
-              >
+          <Button
+            onClick={handleExport}
+            disabled={isExporting}
+            className="h-10 flex-[1.2] text-xs min-[390px]:text-sm"
+          >
+            {isExporting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {isEn ? "Exporting..." : "导出中..."}
+              </>
+            ) : (
+              <>
                 <Download className="mr-2 h-4 w-4" />
-                {isEn ? "Save and Download PDF" : "保存并下载 PDF"}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={isExporting}
-                onClick={() => void handleSaveAndDownload("word")}
-              >
-                <FileType2 className="mr-2 h-4 w-4" />
-                {isEn ? "Save and Download Word" : "保存并下载 Word"}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={isExporting}
-                onClick={() => void handleSaveAndDownload("html")}
-              >
-                <FileText className="mr-2 h-4 w-4" />
-                {isEn ? "Save and Download HTML" : "保存并下载 HTML"}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {isEn ? "Save and Download" : "保存并下载"}
+              </>
+            )}
+          </Button>
         </MobileActionBar>
       </div>
     </CreateFlowShell>

@@ -17,12 +17,10 @@ import { CreateFlowShell } from "@/components/create/flow-shell";
 import { MobileActionBar } from "@/components/create/mobile-action-bar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  buildContractCreateRoute,
-  type ContractCreateMethod,
-  type CreateFlowContext,
-} from "@/lib/contracts/create-entrypoints";
 import { cn } from "@/lib/utils";
+
+type ImportMethod = "text" | "screenshot" | "wechat" | "ai-chat";
+type CreateFlowContext = "standalone" | "dashboard";
 
 interface CreateContractScreenProps {
   showSidebarTrigger?: boolean;
@@ -38,10 +36,10 @@ export function CreateContractScreen({
   const router = useRouter();
   const { language } = useLanguage();
   const isEn = language === "en";
-  const [selectedMethod, setSelectedMethod] = useState<ContractCreateMethod>("text");
+  const [selectedMethod, setSelectedMethod] = useState<ImportMethod>("text");
 
   const importMethods: Array<{
-    id: ContractCreateMethod;
+    id: ImportMethod;
     title: string;
     description: string;
     icon: ElementType;
@@ -96,12 +94,27 @@ export function CreateContractScreen({
 
   const handleNext = () => {
     if (!selectedMethodInfo?.available) return;
-    router.push(
-      buildContractCreateRoute(selectedMethod, {
-        flowContext,
-        templateId: initialTemplateId,
-      }),
-    );
+
+    if (selectedMethod === "ai-chat") {
+      const params = new URLSearchParams();
+      if (flowContext === "dashboard") {
+        params.set("ctx", "dashboard");
+      }
+      if (initialTemplateId) {
+        params.set("templateId", initialTemplateId);
+      }
+      router.push(`/create/ai-chat${params.toString() ? `?${params.toString()}` : ""}`);
+      return;
+    }
+
+    const params = new URLSearchParams({ method: selectedMethod });
+    if (flowContext === "dashboard") {
+      params.set("ctx", "dashboard");
+    }
+    if (initialTemplateId) {
+      params.set("templateId", initialTemplateId);
+    }
+    router.push(`/create/import?${params.toString()}`);
   };
 
   return (
@@ -222,7 +235,7 @@ export function CreateContractScreen({
                   <span>
                     {isEn
                       ? "You can review all extracted fields before contract generation."
-                      : "在生成合同前，你可以人工核对所有提取字段。"}
+                      : "在生成合同前，你可以人工校对所有提取字段。"}
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
@@ -241,7 +254,7 @@ export function CreateContractScreen({
 
       <div className="mt-6 hidden flex-col-reverse gap-3 rounded-xl border border-border/70 bg-card/80 p-4 md:flex md:flex-row md:items-center md:justify-between">
         <p className="text-sm text-muted-foreground">
-          {isEn ? "Selected:" : "已选择："}
+          {isEn ? "Selected:" : "已选择:"}
           <span className="ml-1 font-medium text-foreground">
             {selectedMethodInfo?.title}
           </span>
@@ -259,7 +272,7 @@ export function CreateContractScreen({
 
       <MobileActionBar innerClassName="justify-between">
         <p className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground min-[390px]:text-xs min-[430px]:text-sm">
-          {isEn ? "Selected:" : "已选择："}
+          {isEn ? "Selected:" : "已选择:"}
           <span className="ml-1 font-medium text-foreground">
             {selectedMethodInfo?.title}
           </span>

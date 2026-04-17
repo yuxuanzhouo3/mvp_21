@@ -38,8 +38,16 @@ import { tokenManager } from "@/lib/auth/frontend-token-manager";
 import {
   type ContractDetail,
   getContractForCurrentUser,
+  updateContractForCurrentUser,
 } from "@/lib/contracts/client";
 import type { ActiveCompanyProfileSnapshot } from "@/lib/contracts/draft-context";
+import {
+  appendContractVersionHistory,
+  buildContractParties,
+  createVersionEntry,
+  deriveDraftTitle,
+  normalizeContractContent,
+} from "@/lib/contracts/format";
 import { cn } from "@/lib/utils";
 
 function normalizeActiveCompanyProfile(
@@ -74,42 +82,6 @@ function normalizeActiveCompanyProfile(
   };
 }
 
-async function readGenerateErrorMessage(
-  response: Response,
-  isEn: boolean,
-): Promise<string | null> {
-  const contentType = response.headers.get("content-type") || "";
-  const isJson = contentType.toLowerCase().includes("application/json");
-
-  if (isJson) {
-    const payload = (await response.json().catch(() => null)) as
-      | Record<string, any>
-      | null;
-    const message = payload?.error?.message;
-    return typeof message === "string" && message.trim() ? message.trim() : null;
-  }
-
-  const rawText = (await response.text().catch(() => "")) || "";
-  const normalized = rawText.trim();
-  if (!normalized) {
-    return null;
-  }
-
-  if (normalized.startsWith("<")) {
-    return isEn
-      ? `Request failed (${response.status}). The server returned a non-JSON error page.`
-      : `请求失败（${response.status}）。服务器返回了非 JSON 错误页。`;
-  }
-
-  return normalized.slice(0, 240);
-}
-
-function sleep(ms: number) {
-  return new Promise<void>((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
-
 function AnalyzePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -124,9 +96,6 @@ function AnalyzePageContent() {
   const [analysis, setAnalysis] = useState<AIAnalysisResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationStatus, setGenerationStatus] = useState<
-    "submitting" | "queued" | "running" | null
-  >(null);
   const [editingTerm, setEditingTerm] = useState<string | null>(null);
   const handleFocusCapture = useFocusScrollIntoView();
 
@@ -218,7 +187,6 @@ function AnalyzePageContent() {
   const handleGenerate = async () => {
     if (!analysis || !contractRecord) return;
     setIsGenerating(true);
-    setGenerationStatus("submitting");
 
     try {
       const headers = (await tokenManager.getAuthHeaderAsync()) || {};
@@ -226,165 +194,70 @@ function AnalyzePageContent() {
         typeof contractRecord.metadata?.templateId === "string"
           ? contractRecord.metadata.templateId
           : undefined;
-      const createJobResponse = await fetch("/api/contracts/generate/jobs", {
+
+      const response = await fetch("/api/contracts/generate", {
         method: "POST",
         headers: {
           ...headers,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          contractId: contractRecord.id,
           analysisResult: analysis,
           templateId,
         }),
       });
+      const result = await response.json();
 
-      if (!createJobResponse.ok) {
-        if (createJobResponse.status === 401) {
-          throw new Error("UNAUTHORIZED");
-        }
-        const message = await readGenerateErrorMessage(createJobResponse, isEn);
+      if (!result.success) {
         throw new Error(
-          message ||
-            (isEn
-              ? `Failed to create generation task (${createJobResponse.status})`
-              : `创建生成任务失败（${createJobResponse.status}）`),
+          result.error?.message || (isEn ? "Generation failed" : "生成失败"),
         );
       }
 
-      const createJobResult = (await createJobResponse.json().catch(() => null)) as
-        | Record<string, any>
-        | null;
-      if (!createJobResult?.success) {
-        throw new Error(
-          typeof createJobResult?.error?.message === "string"
-            ? createJobResult.error.message
-            : isEn
-              ? "Failed to create generation task"
-              : "创建生成任务失败",
-        );
-      }
-
-      const jobId =
-        typeof createJobResult?.data?.job?.id === "string"
-          ? createJobResult.data.job.id
-          : "";
-
-      if (!jobId) {
-        throw new Error(
-          isEn
-            ? "Generation task started but no job ID was returned."
-            : "生成任务已创建，但未返回任务 ID。",
-        );
-      }
-
-      const initialJobStatus =
-        createJobResult?.data?.job?.status === "running" ? "running" : "queued";
-      setGenerationStatus(initialJobStatus);
-
-      const pollStartedAt = Date.now();
-      const pollDeadlineMs = 10 * 60_000;
-      let pollAfterMs =
-        typeof createJobResult?.data?.pollAfterMs === "number" &&
-        Number.isFinite(createJobResult.data.pollAfterMs)
-          ? Math.max(1_000, Math.min(5_000, createJobResult.data.pollAfterMs))
-          : 1_800;
-      let transientGatewayErrorCount = 0;
-
-      while (Date.now() - pollStartedAt <= pollDeadlineMs) {
-        await sleep(pollAfterMs);
-
-        const pollResponse = await fetch(
-          `/api/contracts/generate/jobs/${encodeURIComponent(jobId)}`,
-          {
-            headers,
-            cache: "no-store",
+      const hadGeneratedContent = Boolean(
+        normalizeContractContent(contractRecord.content),
+      );
+      const updatedContract = await updateContractForCurrentUser(
+        contractRecord.id,
+        {
+          title: result.data.title || deriveDraftTitle(analysis),
+          type:
+            result.data.contractType ||
+            analysis.contractType ||
+            contractRecord.type,
+          status: "draft",
+          content: result.data,
+          analysisResult: analysis,
+          parties: buildContractParties(analysis),
+          metadata: {
+            ...appendContractVersionHistory(
+              contractRecord.metadata,
+              createVersionEntry({
+                action: "analysis_generated",
+                title: result.data.title || deriveDraftTitle(analysis),
+                summary: hadGeneratedContent
+                  ? isEn
+                    ? "Regenerated contract body from the latest analysis."
+                    : "已根据最新分析结果重新生成合同正文。"
+                  : isEn
+                    ? "Generated the first full contract body from analysis."
+                    : "已根据分析结果生成首版合同正文。",
+              }),
+            ),
+            draftStage: "generated",
+            flowVersion: "create-v2",
+            templateId:
+              typeof contractRecord.metadata?.templateId === "string"
+                ? contractRecord.metadata.templateId
+                : undefined,
           },
-        );
+        },
+      );
 
-        if (!pollResponse.ok) {
-          if (pollResponse.status === 401) {
-            throw new Error("UNAUTHORIZED");
-          }
-
-          if (
-            pollResponse.status === 502 ||
-            pollResponse.status === 503 ||
-            pollResponse.status === 504
-          ) {
-            transientGatewayErrorCount += 1;
-            setGenerationStatus("running");
-            pollAfterMs = Math.min(5_000, Math.max(1_800, pollAfterMs + 400));
-            if (transientGatewayErrorCount <= 6) {
-              continue;
-            }
-          }
-
-          const message = await readGenerateErrorMessage(pollResponse, isEn);
-          throw new Error(
-            message ||
-              (isEn
-                ? `Failed to query task status (${pollResponse.status})`
-                : `查询任务状态失败（${pollResponse.status}）`),
-          );
-        }
-
-        const pollPayload = (await pollResponse.json().catch(() => null)) as
-          | Record<string, any>
-          | null;
-        transientGatewayErrorCount = 0;
-
-        if (!pollPayload?.success) {
-          throw new Error(
-            typeof pollPayload?.error?.message === "string"
-              ? pollPayload.error.message
-              : isEn
-                ? "Failed to query task status"
-                : "查询任务状态失败",
-          );
-        }
-
-        const job = pollPayload?.data?.job as Record<string, any> | undefined;
-        const status =
-          job?.status === "queued" ||
-          job?.status === "running" ||
-          job?.status === "succeeded" ||
-          job?.status === "failed"
-            ? job.status
-            : "running";
-
-        if (status === "queued" || status === "running") {
-          setGenerationStatus(status);
-          pollAfterMs =
-            typeof pollPayload?.data?.pollAfterMs === "number" &&
-            Number.isFinite(pollPayload.data.pollAfterMs)
-              ? Math.max(1_000, Math.min(5_000, pollPayload.data.pollAfterMs))
-              : 1_800;
-          continue;
-        }
-
-        if (status === "failed") {
-          throw new Error(
-            typeof job?.error?.message === "string" && job.error.message.trim()
-              ? job.error.message.trim()
-              : isEn
-                ? "Generation failed. Please retry."
-                : "生成失败，请重试。",
-          );
-        }
-
-        router.push(
-          flowContext === "dashboard"
-            ? `/create/edit?id=${contractRecord.id}&ctx=dashboard`
-            : `/create/edit?id=${contractRecord.id}`,
-        );
-        return;
-      }
-
-      throw new Error(
-        isEn
-          ? "Generation is taking too long. Please retry from the analysis page."
-          : "生成耗时过长，请返回分析页后重试。",
+      router.push(
+        flowContext === "dashboard"
+          ? `/create/edit?id=${updatedContract.id}&ctx=dashboard`
+          : `/create/edit?id=${updatedContract.id}`,
       );
     } catch (error) {
       console.error("[CreateAnalyzePage] Failed to generate contract:", error);
@@ -402,7 +275,6 @@ function AnalyzePageContent() {
             : "生成失败，请重试。",
       );
     } finally {
-      setGenerationStatus(null);
       setIsGenerating(false);
     }
   };
@@ -452,32 +324,6 @@ function AnalyzePageContent() {
       colorClass: "bg-muted text-muted-foreground",
     },
   };
-
-  const generatingCtaText =
-    generationStatus === "queued"
-      ? isEn
-        ? "Task queued..."
-        : "任务排队中..."
-      : generationStatus === "running"
-        ? isEn
-          ? "Generating contract..."
-          : "正在生成合同..."
-        : isEn
-          ? "Submitting task..."
-          : "正在提交任务...";
-
-  const generatingHintText =
-    generationStatus === "queued"
-      ? isEn
-        ? "Task queued. Generation starts soon."
-        : "任务已入队，马上开始生成。"
-      : generationStatus === "running"
-        ? isEn
-          ? "Generating in background. This can take 2-3 minutes."
-          : "后台生成中，可能需要 2-3 分钟。"
-        : isEn
-          ? "Creating generation task..."
-          : "正在创建生成任务...";
 
   return (
     <CreateFlowShell
@@ -705,17 +551,13 @@ function AnalyzePageContent() {
         <div className="hidden flex-col-reverse gap-3 rounded-xl border border-border/70 bg-card/80 p-4 md:flex md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <CheckCircle2 className="h-4 w-4 text-primary" />
-            {isGenerating
-              ? generatingHintText
-              : isEn
-                ? "Generate the contract draft after confirmation"
-                : "确认无误后生成合同草稿"}
+            {isEn ? "Generate the contract draft after confirmation" : "确认无误后生成合同草稿"}
           </div>
           <Button size="lg" onClick={handleGenerate} disabled={isGenerating}>
             {isGenerating ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {generatingCtaText}
+                {isEn ? "Generating contract..." : "正在生成合同..."}
               </>
             ) : (
               <>
@@ -728,11 +570,7 @@ function AnalyzePageContent() {
 
         <MobileActionBar>
           <div className="min-w-0 flex-1 text-[11px] text-muted-foreground min-[390px]:text-xs min-[430px]:text-sm">
-            {isGenerating
-              ? generatingHintText
-              : isEn
-                ? "Ready to generate draft"
-                : "已准备好生成草稿"}
+            {isEn ? "Ready to generate draft" : "已准备好生成草稿"}
           </div>
           <Button
             onClick={handleGenerate}
@@ -742,7 +580,7 @@ function AnalyzePageContent() {
             {isGenerating ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {generatingCtaText}
+                {isEn ? "Generating..." : "生成中..."}
               </>
             ) : (
               <>

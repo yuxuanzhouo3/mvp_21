@@ -3,8 +3,6 @@
 import { isChinaRegion } from "@/lib/config/region";
 import {
   getDashScopeBaseUrl,
-  getOpenAIBaseUrl,
-  getOpenAIModel,
   getQwenModel,
 } from "@/lib/config/runtime-env";
 
@@ -159,20 +157,10 @@ function getIntakePrompt(messages: IntakeChatMessage[]) {
 }
 
 function getChatClient() {
-  if (isChinaRegion()) {
-    if (!process.env.DASHSCOPE_API_KEY?.trim()) {
-      throw new Error("AI_CHAT_KEY_UNAVAILABLE");
-    }
+  if (process.env.DASHSCOPE_API_KEY?.trim()) {
     return new OpenAI({
       apiKey: process.env.DASHSCOPE_API_KEY,
       baseURL: getDashScopeBaseUrl(),
-    });
-  }
-
-  if (process.env.OPENAI_API_KEY?.trim()) {
-    return new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      baseURL: getOpenAIBaseUrl(),
     });
   }
 
@@ -180,22 +168,7 @@ function getChatClient() {
 }
 
 function getChatModel() {
-  if (!isChinaRegion()) {
-    return getOpenAIModel();
-  }
-
   return getQwenModel();
-}
-
-function parsePositiveInt(raw: string | undefined) {
-  const parsed = Number.parseInt(String(raw || ""), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-function resolveChatProviderTimeoutMs() {
-  const fallback = parsePositiveInt(process.env.AI_PROVIDER_TIMEOUT_MS) || 12_000;
-  const configured = parsePositiveInt(process.env.AI_CHAT_PROVIDER_TIMEOUT_MS) || fallback;
-  return Math.max(3_000, Math.min(120_000, configured));
 }
 
 function normalizeString(value: unknown) {
@@ -337,49 +310,18 @@ export async function runContractIntakeChat(
   const model = getChatModel();
   const languageHint = getReplyLanguageHint(messages);
   const intakePrompt = getIntakePrompt(messages);
-  const timeoutMs = resolveChatProviderTimeoutMs();
-  const abortController = new AbortController();
-  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  let response: any;
-
-  try {
-    const completionPromise = (client.chat.completions.create as any)(
-      {
-        model,
-        temperature: 0.2,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: `${intakePrompt}\n\n${languageHint}` },
-          ...messages.map((message) => ({
-            role: message.role,
-            content: message.content,
-          })),
-        ],
-      },
-      { signal: abortController.signal },
-    ) as Promise<Awaited<ReturnType<typeof client.chat.completions.create>>>;
-
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutHandle = setTimeout(() => {
-        abortController.abort("AI_CHAT_TIMEOUT");
-        reject(new Error(`AI_CHAT_TIMEOUT (${timeoutMs}ms)`));
-      }, timeoutMs);
-    });
-
-    response = await Promise.race([completionPromise, timeoutPromise]);
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      /AI_CHAT_TIMEOUT|timeout|timed out|abort|aborted/i.test(error.message)
-    ) {
-      throw new Error(`AI_CHAT_TIMEOUT (${timeoutMs}ms)`);
-    }
-    throw error;
-  } finally {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-    }
-  }
+  const response = await client.chat.completions.create({
+    model,
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: `${intakePrompt}\n\n${languageHint}` },
+      ...messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })),
+    ],
+  });
 
   const rawContent = response.choices[0]?.message?.content;
   if (!rawContent) {

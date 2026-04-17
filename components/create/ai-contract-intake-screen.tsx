@@ -22,10 +22,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { useFocusScrollIntoView } from "@/hooks/use-mobile-keyboard";
 import { createContractForCurrentUser } from "@/lib/contracts/client";
-import {
-  DEFAULT_ANALYSIS_MAX_CHARS,
-  prepareAnalysisInput,
-} from "@/lib/contracts/analysis-input";
 import { prepareDraftAnalysisForCurrentUser } from "@/lib/contracts/draft-context";
 import {
   buildContractParties,
@@ -47,33 +43,6 @@ interface ChatResult {
   suggestedTitle: string;
   collectedData: Record<string, string>;
   draftSourceContent: string;
-}
-
-async function readApiErrorMessage(response: Response, fallback: string) {
-  const contentType = (response.headers.get("content-type") || "").toLowerCase();
-  if (contentType.includes("application/json")) {
-    const payload = (await response.json().catch(() => null)) as
-      | Record<string, unknown>
-      | null;
-    const errorPayload = payload?.error;
-    if (typeof errorPayload === "string" && errorPayload.trim()) {
-      return errorPayload.trim();
-    }
-    if (errorPayload && typeof errorPayload === "object") {
-      const message = (errorPayload as Record<string, unknown>).message;
-      if (typeof message === "string" && message.trim()) {
-        return message.trim();
-      }
-    }
-    return fallback;
-  }
-
-  const rawText = (await response.text().catch(() => "")) || "";
-  const normalized = rawText.trim();
-  if (!normalized || normalized.startsWith("<")) {
-    return fallback;
-  }
-  return normalized.slice(0, 240);
 }
 
 export function AIContractIntakeScreen() {
@@ -161,31 +130,9 @@ export function AIContractIntakeScreen() {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(
-          await readApiErrorMessage(
-            response,
-            isEn ? "AI chat failed. Please retry later." : "AI 对话失败，请稍后重试。",
-          ),
-        );
-      }
-
-      const result = (await response.json().catch(() => null)) as
-        | Record<string, unknown>
-        | null;
-      if (!result?.success) {
-        const errorPayload = result?.error;
-        const message =
-          typeof errorPayload === "string"
-            ? errorPayload
-            : errorPayload &&
-                typeof errorPayload === "object" &&
-                typeof (errorPayload as Record<string, unknown>).message === "string"
-              ? String((errorPayload as Record<string, unknown>).message)
-              : isEn
-                ? "AI chat failed."
-                : "AI 对话失败。";
-        throw new Error(message);
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || (isEn ? "AI chat failed." : "AI 对话失败。"));
       }
 
       const data = result.data as ChatResult;
@@ -225,56 +172,19 @@ export function AIContractIntakeScreen() {
 
     try {
       setDraftLoading(true);
-      const { tokenManager } = await import("@/lib/auth/frontend-token-manager");
-      const headers = await tokenManager.getAuthHeaderAsync();
-      if (!headers) {
-        throw new Error("UNAUTHORIZED");
-      }
-
-      const preparedInput = prepareAnalysisInput(chatResult.draftSourceContent, {
-        maxChars: DEFAULT_ANALYSIS_MAX_CHARS,
-      });
-      if (preparedInput.analyzedChars < 20) {
-        throw new Error(
-          isEn
-            ? "The extracted conversation is too short. Please add more details."
-            : "提取后的对话过短，请补充更多细节后再分析。",
-        );
-      }
-
       const analysisResponse = await fetch("/api/contracts/analyze", {
         method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: preparedInput.content,
+          content: chatResult.draftSourceContent,
           sourceType: "text",
         }),
       });
 
-      if (!analysisResponse.ok) {
+      const analysisResult = await analysisResponse.json();
+      if (!analysisResult.success) {
         throw new Error(
-          await readApiErrorMessage(
-            analysisResponse,
-            isEn ? "Analysis failed. Please retry later." : "分析失败，请稍后重试。",
-          ),
-        );
-      }
-
-      const analysisResult = (await analysisResponse.json().catch(() => null)) as
-        | Record<string, any>
-        | null;
-      if (preparedInput.truncated || analysisResult?.meta?.input?.truncated) {
-        console.info("[AIContractIntakeScreen] Analysis input compacted:", {
-          clientInputChars: preparedInput.analyzedChars,
-          serverInputChars: analysisResult?.meta?.input?.analyzedChars,
-        });
-      }
-      if (!analysisResult?.success) {
-        throw new Error(
-          analysisResult?.error?.message || (isEn ? "Analysis failed." : "分析失败。"),
+          analysisResult.error?.message || (isEn ? "Analysis failed." : "分析失败。"),
         );
       }
 
@@ -323,11 +233,6 @@ export function AIContractIntakeScreen() {
       );
     } catch (error) {
       console.error("[AIContractIntakeScreen] Failed to create draft:", error);
-      if (error instanceof Error && error.message === "UNAUTHORIZED") {
-        router.push(`/auth?redirect=${encodeURIComponent(canonicalPath)}`);
-        return;
-      }
-
       window.alert(
         error instanceof Error
           ? error.message

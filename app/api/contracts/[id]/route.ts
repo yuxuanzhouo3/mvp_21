@@ -9,9 +9,7 @@ import { extractTokenFromRequest, verifyAuthToken } from "@/lib/auth/auth-utils"
 import {
   appendContractUpdateLog,
   applyContractAction,
-  type ContractWorkflowAction,
   normalizeContractEnhancementMeta,
-  validateContractAction,
 } from "@/lib/contracts/enhancements";
 import { isChinaRegion } from "@/lib/config/region";
 
@@ -20,8 +18,7 @@ interface RouteContext {
 }
 
 const CN_REGION = isChinaRegion();
-
-const CONTRACT_ACTIONS: readonly ContractWorkflowAction[] = [
+const CONTRACT_ACTIONS = [
   "archive",
   "unarchive",
   "start_signing",
@@ -87,7 +84,10 @@ async function requireCurrentUser(request: NextRequest) {
     };
   }
 
-  const role = authResult.user?.role || authResult.user?.user_metadata?.role || "user";
+  const role =
+    authResult.user?.role ||
+    authResult.user?.user_metadata?.role ||
+    "user";
   const actor =
     authResult.user?.name ||
     authResult.user?.email ||
@@ -110,47 +110,6 @@ function assertContractAccess(
   currentUser: { id: string; role: string },
 ) {
   return contractUserId === currentUser.id || currentUser.role === "admin";
-}
-
-function getActionValidationMessage(code: string | undefined) {
-  if (code === "CONTRACT_ARCHIVED_RESTORE_REQUIRED") {
-    return localeText(
-      "This contract is archived. Restore it before continuing the signing flow.",
-      "该合同已归档，请先恢复后再继续签署流程。",
-    );
-  }
-  if (code === "CONTRACT_ALREADY_ARCHIVED") {
-    return localeText("Contract is already archived.", "合同已归档。");
-  }
-  if (code === "CONTRACT_NOT_ARCHIVED") {
-    return localeText("Contract is not archived.", "合同当前不是归档状态。");
-  }
-  if (code === "SIGNFLOW_ALREADY_STARTED") {
-    return localeText(
-      "Signing has already started. Continue with the current signing step.",
-      "签署流程已发起，请按当前签署步骤继续。",
-    );
-  }
-  if (code === "SIGNFLOW_INVALID_SENDER_STEP") {
-    return localeText(
-      "Sender confirmation is not available in the current signing status.",
-      "当前签署状态下不能执行发起方确认。",
-    );
-  }
-  if (code === "SIGNFLOW_INVALID_COUNTERPARTY_STEP") {
-    return localeText(
-      "Counterparty confirmation is not available in the current signing status.",
-      "当前签署状态下不能执行对方确认。",
-    );
-  }
-  if (code === "SIGNFLOW_INVALID_REMINDER_STEP") {
-    return localeText(
-      "Reminder can only be sent while waiting for signatures.",
-      "仅在待签署阶段才能发送提醒。",
-    );
-  }
-
-  return localeText("Action is not allowed in current status.", "当前状态不允许执行该动作。");
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
@@ -232,11 +191,9 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     }
 
     const body = bodyRaw as Record<string, any>;
-    const actionCandidate = typeof body.action === "string" ? body.action : null;
-    const action: ContractWorkflowAction | null =
-      actionCandidate && CONTRACT_ACTIONS.includes(actionCandidate as ContractWorkflowAction)
-        ? (actionCandidate as ContractWorkflowAction)
-        : null;
+    const action = CONTRACT_ACTIONS.includes(body.action)
+      ? body.action
+      : null;
 
     const updateInput = {
       title: body.title,
@@ -257,144 +214,42 @@ export async function PUT(request: NextRequest, context: RouteContext) {
           : undefined,
       region: body.region,
     };
-
     const normalizedUpdateInput = omitUndefined(updateInput);
     const actionNote = typeof body.note === "string" ? body.note : undefined;
     const updateDescription =
       typeof body.updateDescription === "string" ? body.updateDescription : undefined;
 
     if (action) {
-      const validation = validateContractAction(existing, action);
-      if (!validation.allowed) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: validation.code || "INVALID_ACTION",
-              message: getActionValidationMessage(validation.code),
-            },
-          },
-          { status: 409 },
-        );
-      }
-
       const signatureInput = ensureRecord(body.signatureInput);
       const enhancement = normalizeContractEnhancementMeta(existing.metadata, existing);
-      const nextSignatures = Array.isArray(updateInput.signatures)
-        ? updateInput.signatures
-        : Array.isArray(existing.signatures)
-          ? existing.signatures
-          : [];
+      const nextSignatures = updateInput.signatures ?? existing.signatures;
       const resolvedParties = Array.isArray(normalizedUpdateInput.parties)
         ? normalizedUpdateInput.parties
         : existing.parties;
-      const hasParties = Array.isArray(resolvedParties) && resolvedParties.length >= 2;
+      const hasParties =
+        Array.isArray(resolvedParties) && resolvedParties.length > 0;
       let nextMetadata = updateInput.metadata ?? existing.metadata;
-      const actionExpectsSignature =
-        action === "confirm_sender" || action === "confirm_counterparty";
 
       console.info("[/api/contracts/[id] PUT action]", {
         action,
         hasParties,
       });
 
-      if (action === "start_signing" && !hasParties) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: "SIGNFLOW_MISSING_PARTIES",
-              message: localeText(
-                "Please provide at least two signing parties before starting signing.",
-                "发起签署前请至少配置双方签署主体。",
-              ),
-            },
-          },
-          { status: 422 },
-        );
-      }
-
-      if (signatureInput && !actionExpectsSignature) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: "SIGNATURE_NOT_ALLOWED_FOR_ACTION",
-              message: localeText(
-                "Signature payload is only allowed for confirmation actions.",
-                "只有签署确认动作才允许提交签名内容。",
-              ),
-            },
-          },
-          { status: 400 },
-        );
-      }
-
-      if (signatureInput && actionExpectsSignature) {
-        if (signatureInput.legalConsent !== true) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: {
-                code: "SIGNATURE_LEGAL_CONSENT_REQUIRED",
-                message: localeText(
-                  "Legal consent is required before recording signature.",
-                  "记录签名前必须确认电子签署法律声明。",
-                ),
-              },
-            },
-            { status: 422 },
-          );
-        }
-
-        const role = signatureInput.role === "counterparty" ? "counterparty" : "sender";
-
-        if (action === "confirm_sender" && role !== "sender") {
-          return NextResponse.json(
-            {
-              success: false,
-              error: {
-                code: "SIGNATURE_ROLE_MISMATCH",
-                message: localeText(
-                  "confirm_sender requires sender signature input.",
-                  "confirm_sender 动作必须提交发起方签名。",
-                ),
-              },
-            },
-            { status: 400 },
-          );
-        }
-
-        if (action === "confirm_counterparty" && role !== "counterparty") {
-          return NextResponse.json(
-            {
-              success: false,
-              error: {
-                code: "SIGNATURE_ROLE_MISMATCH",
-                message: localeText(
-                  "confirm_counterparty requires counterparty signature input.",
-                  "confirm_counterparty 动作必须提交对方签名。",
-                ),
-              },
-            },
-            { status: 400 },
-          );
-        }
-
+      if (signatureInput) {
+        const role =
+          signatureInput.role === "counterparty" ? "counterparty" : "sender";
         const method =
           signatureInput.method === "draw" ||
           signatureInput.method === "type" ||
           signatureInput.method === "upload"
             ? signatureInput.method
             : "type";
-
         const signerName =
           typeof signatureInput.signerName === "string" && signatureInput.signerName.trim()
             ? signatureInput.signerName.trim()
             : role === "sender"
               ? localeText("Sender", "发起方")
               : localeText("Counterparty", "对方");
-
         const createdAt =
           typeof signatureInput.createdAt === "string"
             ? signatureInput.createdAt
@@ -412,7 +267,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
             typeof signatureInput.source === "string" && signatureInput.source.trim()
               ? signatureInput.source.trim()
               : "mobile",
-          legalConsent: true,
+          legalConsent: signatureInput.legalConsent === true,
           typedName:
             typeof signatureInput.typedName === "string"
               ? signatureInput.typedName
@@ -456,21 +311,24 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
         const mergedSignatures = [...nextSignatures, signatureRecord].slice(-20);
 
-        const updated = await updateContractRecord(id, {
-          ...applyContractAction(
-            {
-              ...existing,
-              ...normalizedUpdateInput,
-              signatures: mergedSignatures,
-              metadata: nextMetadata,
-            },
-            action,
-            auth.user.actor,
-            actionNote,
-          ),
-          ...normalizedUpdateInput,
-          signatures: mergedSignatures,
-        });
+        const updated = await updateContractRecord(
+          id,
+          {
+            ...applyContractAction(
+              {
+                ...existing,
+                ...normalizedUpdateInput,
+                signatures: mergedSignatures,
+                metadata: nextMetadata,
+              },
+              action,
+              auth.user.actor,
+              actionNote,
+            ),
+            ...normalizedUpdateInput,
+            signatures: mergedSignatures,
+          },
+        );
 
         return NextResponse.json({
           success: true,
@@ -478,20 +336,23 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         });
       }
 
-      const updated = await updateContractRecord(id, {
-        ...normalizedUpdateInput,
-        ...applyContractAction(
-          {
-            ...existing,
-            ...normalizedUpdateInput,
-            signatures: nextSignatures,
-            metadata: nextMetadata,
-          },
-          action,
-          auth.user.actor,
-          actionNote,
-        ),
-      });
+      const updated = await updateContractRecord(
+        id,
+        {
+          ...normalizedUpdateInput,
+          ...applyContractAction(
+            {
+              ...existing,
+              ...normalizedUpdateInput,
+              signatures: nextSignatures,
+              metadata: nextMetadata,
+            },
+            action,
+            auth.user.actor,
+            actionNote,
+          ),
+        },
+      );
 
       return NextResponse.json({
         success: true,
@@ -503,10 +364,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       existing,
       auth.user.actor,
       updateDescription ||
-        localeText(
-          "Contract content and workflow settings were updated",
-          "合同内容与流程设置已更新",
-        ),
+        localeText("Contract content and workflow settings were updated", "合同内容与流程设置已更新"),
       updateInput.metadata,
     );
 
