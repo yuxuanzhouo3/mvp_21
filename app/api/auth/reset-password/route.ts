@@ -8,6 +8,7 @@ import {
   CLOUDBASE_COLLECTIONS,
   type PasswordResetTokenRecord,
 } from "@/lib/database/cloudbase-schema";
+import { ensurePasswordResetCollections } from "@/lib/email/cloudbase-auth-collections";
 
 const schema = z
   .object({
@@ -72,6 +73,7 @@ export async function POST(request: NextRequest) {
     const resetToken = validationResult.data.resetToken.trim();
     const password = validationResult.data.password;
     const db = getDatabase();
+    await ensurePasswordResetCollections(db);
     const now = new Date().toISOString();
 
     const tokenResult = await db

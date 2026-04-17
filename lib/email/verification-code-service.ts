@@ -6,6 +6,7 @@ import {
   CLOUDBASE_COLLECTIONS,
   type EmailVerificationCodeRecord,
 } from "@/lib/database/cloudbase-schema";
+import { ensureCloudbaseCollection } from "@/lib/email/cloudbase-auth-collections";
 
 type VerificationCodeType = "register" | "reset_password";
 
@@ -36,6 +37,10 @@ export class VerificationCodeService {
       const expiresAt = new Date(now.getTime() + 10 * 60 * 1000);
 
       const db = getDatabase();
+      await ensureCloudbaseCollection(
+        db,
+        CLOUDBASE_COLLECTIONS.EMAIL_VERIFICATION_CODES,
+      );
       await db.collection(CLOUDBASE_COLLECTIONS.EMAIL_VERIFICATION_CODES).add({
         email: normalizedEmail,
         code: hashedCode,
@@ -62,6 +67,10 @@ export class VerificationCodeService {
     try {
       const normalizedEmail = normalizeEmail(email);
       const db = getDatabase();
+      await ensureCloudbaseCollection(
+        db,
+        CLOUDBASE_COLLECTIONS.EMAIL_VERIFICATION_CODES,
+      );
       const now = new Date().toISOString();
 
       const result = await db
@@ -123,6 +132,10 @@ export class VerificationCodeService {
   ): Promise<{ allowed: boolean; error?: string }> {
     try {
       const db = getDatabase();
+      await ensureCloudbaseCollection(
+        db,
+        CLOUDBASE_COLLECTIONS.EMAIL_VERIFICATION_CODES,
+      );
       const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
       const result = await db
         .collection(CLOUDBASE_COLLECTIONS.EMAIL_VERIFICATION_CODES)

@@ -36,6 +36,14 @@ const collections = [
     description: "刷新令牌表",
   },
   {
+    name: "email_verification_codes",
+    description: "邮箱验证码记录表",
+  },
+  {
+    name: "password_reset_tokens",
+    description: "密码重置令牌表",
+  },
+  {
     name: "security_logs",
     description: "安全日志表",
   },

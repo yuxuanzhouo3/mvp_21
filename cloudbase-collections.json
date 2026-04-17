@@ -299,6 +299,69 @@
       }
     },
     {
+      "name": "email_verification_codes",
+      "description": "Email verification and reset OTP records",
+      "indexes": [
+        {
+          "name": "email_type_created_index",
+          "keys": [
+            { "field": "email", "order": "asc" },
+            { "field": "type", "order": "asc" },
+            { "field": "created_at", "order": "desc" }
+          ]
+        },
+        {
+          "name": "expires_at_index",
+          "keys": [{ "field": "expires_at", "order": "asc" }]
+        }
+      ],
+      "schema": {
+        "_id": "string",
+        "email": "string",
+        "code": "string",
+        "type": "string",
+        "attempts": "number",
+        "ip_address": "string",
+        "created_at": "date",
+        "expires_at": "date",
+        "verified": "boolean",
+        "verified_at": "date"
+      }
+    },
+    {
+      "name": "password_reset_tokens",
+      "description": "Password reset temporary tokens",
+      "indexes": [
+        {
+          "name": "email_created_index",
+          "keys": [
+            { "field": "email", "order": "asc" },
+            { "field": "created_at", "order": "desc" }
+          ]
+        },
+        {
+          "name": "expires_at_index",
+          "keys": [{ "field": "expires_at", "order": "asc" }]
+        },
+        {
+          "name": "used_expires_index",
+          "keys": [
+            { "field": "used", "order": "asc" },
+            { "field": "expires_at", "order": "asc" }
+          ]
+        }
+      ],
+      "schema": {
+        "_id": "string",
+        "email": "string",
+        "token": "string",
+        "created_at": "date",
+        "expires_at": "date",
+        "used": "boolean",
+        "used_at": "date"
+      }
+    },
+    {
       "name": "admin_audit_logs",
       "description": "Persistent admin audit events",
       "indexes": [
@@ -338,5 +401,5 @@
       }
     }
   ],
-  "instructions": "Create or verify the collections and indexes above in the CloudBase console. The canonical collections are web_users, company_profiles, contracts, subscriptions, payments, workspace_members, workspace_invites, refresh_tokens, and admin_audit_logs."
+  "instructions": "Create or verify the collections and indexes above in the CloudBase console. The canonical collections are web_users, company_profiles, contracts, subscriptions, payments, workspace_members, workspace_invites, refresh_tokens, email_verification_codes, password_reset_tokens, and admin_audit_logs."
 }

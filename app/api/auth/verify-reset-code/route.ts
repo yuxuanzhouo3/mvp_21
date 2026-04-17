@@ -6,6 +6,7 @@ import { z } from "zod";
 import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
 import { isChinaRegion } from "@/lib/config/region";
 import { CLOUDBASE_COLLECTIONS } from "@/lib/database/cloudbase-schema";
+import { ensurePasswordResetCollections } from "@/lib/email/cloudbase-auth-collections";
 import { verificationCodeService } from "@/lib/email/verification-code-service";
 
 const schema = z.object({
@@ -52,6 +53,7 @@ export async function POST(request: NextRequest) {
     const expiresAt = new Date(now.getTime() + 10 * 60 * 1000);
 
     const db = getDatabase();
+    await ensurePasswordResetCollections(db);
     await db.collection(CLOUDBASE_COLLECTIONS.PASSWORD_RESET_TOKENS).add({
       email,
       token: hashedToken,

@@ -80,9 +80,11 @@ export async function POST(request: NextRequest) {
       clientIP,
     );
     if (!result.success || !result.code) {
+      const shouldThrottle =
+        typeof result.error === "string" && result.error.includes("频繁");
       return NextResponse.json(
         { error: result.error || "发送验证码失败" },
-        { status: 400 },
+        { status: shouldThrottle ? 429 : 500 },
       );
     }
 
