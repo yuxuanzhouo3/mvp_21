@@ -51,7 +51,7 @@ function AuthPageContent() {
   const [region, setRegion] = useState<RegionType>(isChinaDeployment() ? RegionType.CHINA : RegionType.USA);
   const authActionLockRef = useRef(false);
   const redirectingRef = useRef(false);
-  const supportsOtp = true;
+  const supportsOtp = region === RegionType.CHINA;
   const smsAvailability = config.availability?.sms;
   const phoneOtpEnabledInCn =
     configLoading || smsAvailability?.enabled !== false;
@@ -459,6 +459,9 @@ function AuthPageContent() {
       : otpSent
         ? t.auth.verifyOtp
         : t.auth.sendOtp;
+  const showForgotPassword =
+    loginMethod === "password" &&
+    (region !== RegionType.CHINA || cnLoginChannel === "email");
 
   const privacy = (
     <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
@@ -515,7 +518,7 @@ function AuthPageContent() {
     );
 
   const signInFormEnhanced =
-    supportsOtp && forgotStep !== "off" ? forgotForm : (
+    forgotStep !== "off" ? forgotForm : (
       <form onSubmit={loginMethod === "password" ? onSignIn : onOtp} className="space-y-4">
         {region === RegionType.CHINA ? (
           <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
@@ -607,7 +610,7 @@ function AuthPageContent() {
                       {loginMethodOtpLabel}
                     </button>
                   )}
-                  {region !== RegionType.CHINA ? (
+                  {showForgotPassword ? (
                     <button type="button" className="text-blue-600 hover:underline" onClick={() => { clearFeedback(); setForgotStep("request"); }}>{t.auth.forgotPassword}</button>
                   ) : null}
                 </div>
