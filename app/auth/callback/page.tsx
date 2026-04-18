@@ -47,15 +47,39 @@ function AuthCallbackContent() {
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
+        const currentHash =
+          typeof window !== "undefined" ? window.location.hash : "";
+
         const oauthError =
-          typeof window !== "undefined"
-            ? readOAuthCallbackError(window.location.hash)
-            : undefined;
+          typeof window !== "undefined" ? readOAuthCallbackError(currentHash) : undefined;
 
         if (oauthError) {
           setError(oauthError);
           setLoading(false);
           return;
+        }
+
+        // Compatibility path: Supabase may redirect to /#access_token=... when callback
+        // URL allowlist is incomplete. We can still finalize login by setting session here.
+        if (
+          currentHash.includes("access_token=") &&
+          currentHash.includes("refresh_token=")
+        ) {
+          const params = new URLSearchParams(currentHash.replace(/^#/, ""));
+          const accessToken = params.get("access_token");
+          const refreshToken = params.get("refresh_token");
+          if (accessToken && refreshToken) {
+            const { supabase } = await import("@/lib/integrations/supabase");
+            const { error: setSessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            if (setSessionError) {
+              setError(setSessionError.message);
+              setLoading(false);
+              return;
+            }
+          }
         }
 
         const { getAuthClient } = await import("@/lib/auth/client");

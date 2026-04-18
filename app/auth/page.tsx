@@ -339,10 +339,22 @@ function AuthPageContent() {
     setLoading(true);
     try {
       const redirectTo = `${window.location.origin}${buildUrl("/auth/callback", { redirect: postAuthPath })}`;
-      let { error: err } = await authClient.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo },
-      });
+      let err: Error | null = null;
+
+      if (region !== RegionType.CHINA) {
+        const { supabase } = await import("@/lib/integrations/supabase");
+        const direct = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo },
+        });
+        err = direct.error;
+      } else {
+        const result = await authClient.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo },
+        });
+        err = result.error;
+      }
 
       // Fallback: if a stale CN auth client is used in an INTL page, directly use Supabase OAuth.
       if (
