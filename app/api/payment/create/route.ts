@@ -332,11 +332,15 @@ async function handlePaymentCreate(request: NextRequest) {
   } catch (error) {
     console.error("Payment create error:", error);
     captureException(error as Error);
+    const errorMessage =
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to create payment";
 
     return NextResponse.json(
       {
         success: false,
-        error: "Failed to create payment",
+        error: errorMessage,
       },
       { status: 500 },
     );
