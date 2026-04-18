@@ -2,6 +2,7 @@
  * 环境变量验证
  */
 import { resolveDeploymentRegion as getDeploymentRegion } from '@/lib/config/deployment-region'
+import { getCloudBaseEnvId } from '@/lib/config/runtime-env'
 
 interface ValidationResult {
   valid: boolean;
@@ -15,22 +16,23 @@ export function validateEnvironmentConfig(): ValidationResult {
   const errors: string[] = [];
   const deploymentRegion = getDeploymentRegion();
   const isDomestic = deploymentRegion === "CN";
+  const cloudbaseEnvId = getCloudBaseEnvId();
 
   console.log('[ValidateEnv] ========== 开始环境配置验证 ==========');
   console.log('[ValidateEnv] DEPLOYMENT_REGION:', process.env.DEPLOYMENT_REGION || '(未设置)');
   console.log('[ValidateEnv] resolved deployment region:', deploymentRegion);
   console.log('[ValidateEnv] NEXT_PUBLIC_SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL ? '已设置' : '未设置');
   console.log('[ValidateEnv] SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY ? '已设置' : '未设置');
-  console.log('[ValidateEnv] CLOUDBASE_ENV_ID:', process.env.CLOUDBASE_ENV_ID ? '已设置' : '未设置');
+  console.log('[ValidateEnv] CLOUDBASE_ENV_ID:', cloudbaseEnvId ? '已设置' : '未设置');
 
   console.log('[ValidateEnv] 计算结果 - isDomestic:', isDomestic);
 
   if (isDomestic) {
     // 使用 CloudBase 数据库
     console.log('[ValidateEnv] 使用 CloudBase 数据库模式');
-    if (!process.env.CLOUDBASE_ENV_ID) {
+    if (!cloudbaseEnvId) {
       console.error('[ValidateEnv] 错误: 缺少 CLOUDBASE_ENV_ID');
-      errors.push("缺少 CLOUDBASE_ENV_ID");
+      errors.push("缺少 CLOUDBASE_ENV_ID 或 NEXT_PUBLIC_WECHAT_CLOUDBASE_ID");
     }
     if (!process.env.CLOUDBASE_SECRET_ID) {
       console.error('[ValidateEnv] 错误: 缺少 CLOUDBASE_SECRET_ID');

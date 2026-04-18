@@ -3,6 +3,7 @@
  */
 
 import cloudbase from "@cloudbase/node-sdk";
+import { getCloudBaseEnvId } from "@/lib/config/runtime-env";
 
 export class CloudBaseConnector {
   private app: any;
@@ -14,7 +15,7 @@ export class CloudBaseConnector {
       return;
     }
 
-    const envId = process.env.CLOUDBASE_ENV_ID;
+    const envId = getCloudBaseEnvId();
     const secretId = process.env.CLOUDBASE_SECRET_ID;
     const secretKey = process.env.CLOUDBASE_SECRET_KEY;
 

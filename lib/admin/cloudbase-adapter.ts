@@ -63,6 +63,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
   private connector: CloudBaseConnector;
   private initialized: boolean = false;
   private aiCollectionsReady: boolean = false;
+  private collectionNameCache = new Map<string, string>();
 
   constructor() {
     this.connector = new CloudBaseConnector();
@@ -122,6 +123,58 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
     }
 
     this.aiCollectionsReady = true;
+  }
+
+  private isMissingCollectionError(error: any): boolean {
+    const message = String(error?.message || "");
+    const code = String(error?.code || "");
+
+    return (
+      message.includes("Db or Table not exist") ||
+      message.includes("DATABASE_COLLECTION_NOT_EXIST") ||
+      code.includes("DATABASE_COLLECTION_NOT_EXIST")
+    );
+  }
+
+  private async resolveCollectionName(
+    logicalName: "users" | "payments",
+  ): Promise<string> {
+    const cached = this.collectionNameCache.get(logicalName);
+    if (cached) {
+      return cached;
+    }
+
+    await this.ensureInitialized();
+
+    const candidates =
+      logicalName === "users"
+        ? ["web_users", "users"]
+        : ["payments", "orders"];
+
+    for (const candidate of candidates) {
+      try {
+        await this.db.collection(candidate).limit(1).get();
+        this.collectionNameCache.set(logicalName, candidate);
+        return candidate;
+      } catch (error: any) {
+        if (!this.isMissingCollectionError(error)) {
+          throw handleDatabaseError(error);
+        }
+      }
+    }
+
+    if (logicalName === "payments") {
+      try {
+        await this.db.createCollection("payments");
+        this.collectionNameCache.set("payments", "payments");
+        console.log("[CloudBaseAdapter] ensured payments collection");
+        return "payments";
+      } catch (error: any) {
+        throw handleDatabaseError(error);
+      }
+    }
+
+    return candidates[0];
   }
 
   /**
@@ -714,12 +767,21 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 根据用户名获取普通用户
    */
   async getUserByUsername(username: string): Promise<User | null> {
-    const results = await this.executeQuery("users", async (collection) => {
+    const collectionName = await this.resolveCollectionName("users");
+    const results = await this.executeQuery(collectionName, async (collection) => {
       return collection.where({ username }).get();
     });
 
     if (results.length === 0) {
-      return null;
+      const fallbackResults = await this.executeQuery(collectionName, async (collection) => {
+        return collection.where({ email: username }).get();
+      });
+
+      if (fallbackResults.length === 0) {
+        return null;
+      }
+
+      return this.dbToUser(fallbackResults[0]);
     }
 
     return this.dbToUser(results[0]);
@@ -730,13 +792,14 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async getUserById(id: string): Promise<User | null> {
     await this.ensureInitialized();
+    const collectionName = await this.resolveCollectionName("users");
 
     try {
       // 先按文档 _id 查询（管理后台通常返回此 ID）
-      const result = await this.db.collection("users").doc(id).get();
+      const result = await this.db.collection(collectionName).doc(id).get();
       if (!result.data || result.data.length === 0) {
         // 回退按业务 ID 字段查询（users.id）
-        const fallback = await this.db.collection("users").where({ id }).limit(1).get();
+        const fallback = await this.db.collection(collectionName).where({ id }).limit(1).get();
         if (!fallback.data || fallback.data.length === 0) {
           return null;
         }
@@ -747,7 +810,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
       if (error.code === "DOC_NOT_FOUND") {
         // 回退按业务 ID 字段查询（users.id）
         try {
-          const fallback = await this.db.collection("users").where({ id }).limit(1).get();
+          const fallback = await this.db.collection(collectionName).where({ id }).limit(1).get();
           if (!fallback.data || fallback.data.length === 0) {
             return null;
           }
@@ -765,6 +828,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async listUsers(filters?: UserFilters): Promise<User[]> {
     await this.ensureInitialized();
+    const collectionName = await this.resolveCollectionName("users");
 
     const where: any = {};
 
@@ -791,7 +855,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
       }
     }
 
-    let query = this.db.collection("users");
+    let query = this.db.collection(collectionName);
 
     if (Object.keys(where).length > 0) {
       query = query.where(where);

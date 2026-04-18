@@ -46,6 +46,7 @@ export function getWechatPaySerialNo(): string {
 
 export function getCloudBaseEnvId(): string {
   return pickFirstNonEmpty(
+    process.env.CLOUDBASE_ENV_ID,
     process.env.NEXT_PUBLIC_WECHAT_CLOUDBASE_ID,
     process.env.NEXT_PUBLIC_CLOUDBASE_ENV_ID,
   );

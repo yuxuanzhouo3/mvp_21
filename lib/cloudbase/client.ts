@@ -1,4 +1,5 @@
 import cloudbase from '@cloudbase/node-sdk'
+import { getCloudBaseEnvId } from '@/lib/config/runtime-env'
 
 let cloudbaseApp: any = null
 let cloudbaseDb: any = null
@@ -12,7 +13,7 @@ export function initCloudBase() {
     return cloudbaseApp
   }
 
-  const envId = process.env.CLOUDBASE_ENV_ID
+  const envId = getCloudBaseEnvId()
   const secretId = process.env.CLOUDBASE_SECRET_ID
   const secretKey = process.env.CLOUDBASE_SECRET_KEY
 
@@ -69,7 +70,7 @@ export function getCloudBaseDb() {
  */
 export function isCloudBaseConfigured(): boolean {
   return !!(
-    process.env.CLOUDBASE_ENV_ID &&
+    getCloudBaseEnvId() &&
     process.env.CLOUDBASE_SECRET_ID &&
     process.env.CLOUDBASE_SECRET_KEY
   )
