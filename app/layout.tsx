@@ -10,6 +10,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { UserProvider } from "@/components/user-context";
 import { assertProductionJwtConfiguration } from "@/lib/auth/jwt";
 import {
+  currentRegion,
   getAppDisplayName,
   getDefaultLanguage,
 } from "@/lib/config/deployment.config";
@@ -66,7 +67,10 @@ export default function RootLayout({
       >
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <UserProvider>
-            <LanguageProvider>
+            <LanguageProvider
+              initialLanguage={defaultLanguage}
+              deploymentRegion={currentRegion}
+            >
               <AppProvider>{children}</AppProvider>
             </LanguageProvider>
           </UserProvider>

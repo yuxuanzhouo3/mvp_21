@@ -15,7 +15,6 @@ import { useLanguage } from "@/components/language-provider";
 import { getAuthClient } from "@/lib/auth/client";
 import { useTranslations } from "@/lib/i18n";
 import { RegionType } from "@/lib/architecture-modules/core/types";
-import { isChinaDeployment } from "@/lib/config/deployment.config";
 import { useAuthConfig } from "@/lib/hooks/useAuthConfig";
 
 function AuthPageContent() {
@@ -23,7 +22,7 @@ function AuthPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: userLoading } = useUser();
-  const { language } = useLanguage();
+  const { language, deploymentRegion } = useLanguage();
   const t = useTranslations(language);
   const ui = t.authPage;
   const { config, loading: configLoading } = useAuthConfig();
@@ -48,7 +47,9 @@ function AuthPageContent() {
   const [loginMethod, setLoginMethod] = useState<"password" | "otp">("password");
   const [cnLoginChannel, setCnLoginChannel] = useState<"email" | "phone">("email");
   const [forgotStep, setForgotStep] = useState<"off" | "request" | "verify" | "reset">("off");
-  const [region, setRegion] = useState<RegionType>(isChinaDeployment() ? RegionType.CHINA : RegionType.USA);
+  const [region, setRegion] = useState<RegionType>(
+    deploymentRegion === "CN" ? RegionType.CHINA : RegionType.USA,
+  );
   const authActionLockRef = useRef(false);
   const redirectingRef = useRef(false);
   const supportsOtp = region === RegionType.CHINA;
@@ -95,10 +96,6 @@ function AuthPageContent() {
     return "/dashboard";
   }, [requestedRedirect]);
   const postAuthUrl = useMemo(() => buildUrl(postAuthPath), [buildUrl, postAuthPath]);
-
-  useEffect(() => {
-    setRegion(isChinaDeployment() ? RegionType.CHINA : RegionType.USA);
-  }, []);
 
   useEffect(() => {
     if (!configLoading) {

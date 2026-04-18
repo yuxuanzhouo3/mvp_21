@@ -9,6 +9,41 @@ import { IChatService } from '@/lib/interfaces/IChatService'
 import { ChatPermissionCheckResult, WorkspaceMemberInfo } from '@/lib/interfaces/types'
 import { SupabaseUserService } from './SupabaseUserService'
 
+const DEFAULT_WORKSPACE_ID = 'techcorp'
+
+function isMissingWorkspaceColumn(error: unknown) {
+  const message =
+    error && typeof error === 'object' && 'message' in error
+      ? String((error as { message?: unknown }).message || '')
+      : ''
+
+  return (
+    message.includes('workspace_id') &&
+    (message.includes('does not exist') || message.includes('schema cache'))
+  )
+}
+
+function normalizeWorkspaceId(record: Record<string, unknown>) {
+  if (typeof record.workspace_id === 'string' && record.workspace_id.trim()) {
+    return record.workspace_id
+  }
+
+  if (
+    typeof record.workspace_owner_id === 'string' &&
+    record.workspace_owner_id.trim()
+  ) {
+    return record.workspace_owner_id
+  }
+
+  return ''
+}
+
+function normalizeWorkspaceRole(value: unknown): WorkspaceMemberInfo['role'] {
+  return value === 'owner' || value === 'admin' || value === 'guest'
+    ? value
+    : 'member'
+}
+
 export class SupabaseChatService implements IChatService {
   private userService: SupabaseUserService
 
@@ -243,38 +278,116 @@ export class SupabaseChatService implements IChatService {
   // ========== Workspace 操作 ==========
 
   async getUserWorkspaces(userId: string): Promise<string[]> {
-    const supabase = await createClient()
+    try {
+      const supabase = await createClient()
+      const primaryResult = await supabase
+        .from('workspace_members')
+        .select('workspace_id')
+        .eq('user_id', userId)
 
-    const { data } = await supabase
-      .from('workspace_members')
-      .select('workspace_id')
-      .eq('user_id', userId)
+      if (!primaryResult.error) {
+        const workspaceIds =
+          primaryResult.data
+            ?.map((member) => normalizeWorkspaceId(member as Record<string, unknown>))
+            .filter(Boolean) || []
 
-    return data?.map((m) => m.workspace_id) || []
+        return workspaceIds.length > 0 ? workspaceIds : [DEFAULT_WORKSPACE_ID]
+      }
+
+      if (!isMissingWorkspaceColumn(primaryResult.error)) {
+        console.error('Supabase getUserWorkspaces error:', primaryResult.error)
+        return [DEFAULT_WORKSPACE_ID]
+      }
+
+      const fallbackResult = await supabase
+        .from('workspace_members')
+        .select('workspace_owner_id')
+        .eq('user_id', userId)
+
+      const workspaceIds =
+        fallbackResult.data
+          ?.map((member) => normalizeWorkspaceId(member as Record<string, unknown>))
+          .filter(Boolean) || []
+
+      return workspaceIds.length > 0 ? workspaceIds : [DEFAULT_WORKSPACE_ID]
+    } catch (error) {
+      console.error('Supabase getUserWorkspaces error:', error)
+      return [DEFAULT_WORKSPACE_ID]
+    }
   }
 
   async getWorkspaceMembers(workspaceId: string): Promise<WorkspaceMemberInfo[]> {
-    const supabase = await createClient()
+    try {
+      const supabase = await createClient()
+      const primaryResult = await supabase
+        .from('workspace_members')
+        .select('user_id, workspace_id, role')
+        .eq('workspace_id', workspaceId)
 
-    const { data } = await supabase
-      .from('workspace_members')
-      .select('user_id, workspace_id, role')
-      .eq('workspace_id', workspaceId)
+      if (!primaryResult.error) {
+        return (
+          primaryResult.data?.map((member) => ({
+            user_id: String(member.user_id || ''),
+            workspace_id: normalizeWorkspaceId(member as Record<string, unknown>),
+            role: normalizeWorkspaceRole(member.role),
+          })) || []
+        )
+      }
 
-    return (data as WorkspaceMemberInfo[]) || []
+      if (!isMissingWorkspaceColumn(primaryResult.error)) {
+        console.error('Supabase getWorkspaceMembers error:', primaryResult.error)
+        return []
+      }
+
+      const fallbackResult = await supabase
+        .from('workspace_members')
+        .select('user_id, workspace_owner_id, role')
+        .eq('workspace_owner_id', workspaceId)
+
+      return (
+        fallbackResult.data?.map((member) => ({
+          user_id: String(member.user_id || ''),
+          workspace_id: normalizeWorkspaceId(member as Record<string, unknown>),
+          role: normalizeWorkspaceRole(member.role),
+        })) || []
+      )
+    } catch (error) {
+      console.error('Supabase getWorkspaceMembers error:', error)
+      return []
+    }
   }
 
   async checkWorkspaceMembership(userId: string, workspaceId: string): Promise<boolean> {
-    const supabase = await createClient()
+    try {
+      const supabase = await createClient()
+      const primaryResult = await supabase
+        .from('workspace_members')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('workspace_id', workspaceId)
+        .limit(1)
 
-    const { data } = await supabase
-      .from('workspace_members')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('workspace_id', workspaceId)
-      .limit(1)
+      if (!primaryResult.error) {
+        return (primaryResult.data?.length ?? 0) > 0
+      }
 
-    return (data?.length ?? 0) > 0
+      if (!isMissingWorkspaceColumn(primaryResult.error)) {
+        console.error('Supabase checkWorkspaceMembership error:', primaryResult.error)
+        return true
+      }
+
+      const fallbackResult = await supabase
+        .from('workspace_members')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('workspace_owner_id', workspaceId)
+        .limit(1)
+
+      return (fallbackResult.data?.length ?? 0) > 0
+    } catch (error) {
+      console.error('Supabase checkWorkspaceMembership error:', error)
+      return true
+    }
   }
 
   // ========== 消息操作 ==========

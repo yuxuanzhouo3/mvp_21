@@ -229,6 +229,7 @@ export async function trackAdEvent(input: {
 
   try {
     await adStatsTable.insert({
+      ad_id: adId,
       date: today,
       impressions: type === "impression" ? 1 : 0,
       clicks: type === "click" ? 1 : 0,

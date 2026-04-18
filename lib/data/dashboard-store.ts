@@ -428,10 +428,12 @@ function calculateSetDelta(
 }
 
 function normalizeTemplateRecord(record: Record<string, any>): DashboardTemplate {
+  const hasExplicitStatus =
+    record.status === "draft" || record.status === "archived" || record.status === "active";
   const status =
-    record.status === "draft" || record.status === "archived" || record.status === "active"
+    hasExplicitStatus
       ? record.status
-      : record.is_public === false
+      : record.is_public === false && !record.user_id && !record.userId
         ? "archived"
         : "active";
   const version =
@@ -449,7 +451,7 @@ function normalizeTemplateRecord(record: Record<string, any>): DashboardTemplate
     id: String(record.id || record._id || ""),
     name: String(record.name || "Untitled Template"),
     description: String(record.description || ""),
-    category: String(record.category || "General"),
+    category: String(record.category || record.type || "General"),
     content: typeof record.content === "string" ? record.content : undefined,
     isPublic:
       typeof record.is_public === "boolean"
@@ -479,7 +481,7 @@ function normalizeTemplateRecord(record: Record<string, any>): DashboardTemplate
           ? record.lastUsedAt
           : undefined,
     createdAt: record.created_at || record.createdAt,
-    updatedAt: record.updated_at || record.updatedAt,
+    updatedAt: record.updated_at || record.updatedAt || record.created_at || record.createdAt,
   };
 }
 
@@ -783,16 +785,12 @@ async function seedDefaultTemplatesIfNeeded(userId: string) {
   const { error: insertError } = await admin.from("contract_templates").insert(
     DEFAULT_TEMPLATE_SEED.map((template) => ({
       name: template.name,
-      description: template.description,
-      category: template.category,
+      type: template.category,
       content: template.content,
+      is_default: false,
       is_public: true,
       user_id: null,
-      status: "active",
-      version: 1,
-      usage_count: 0,
-      source_template_id: null,
-      last_used_at: null,
+      created_at: new Date().toISOString(),
     })),
   );
 
@@ -821,7 +819,7 @@ export async function listDashboardTemplates(userId: string): Promise<DashboardT
     .from("contract_templates")
     .select("*")
     .or(`is_public.eq.true,user_id.eq.${userId}`)
-    .order("updated_at", { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (error) {
     throw error;
@@ -855,18 +853,12 @@ export async function createDashboardTemplate(
   const now = new Date().toISOString();
   const payload = {
     name: input.name.trim(),
-    description: input.description?.trim() || "",
-    category: input.category?.trim() || "General",
+    type: input.category?.trim() || "General",
     content: input.content,
+    is_default: false,
     is_public: false,
     user_id: userId,
-    status: input.status || "active",
-    version: 1,
-    usage_count: 0,
-    source_template_id: null,
-    last_used_at: null,
     created_at: now,
-    updated_at: now,
   };
 
   if (isChinaRegion()) {
@@ -911,16 +903,11 @@ export async function updateDashboardTemplate(
   }
 
   const payload: Record<string, unknown> = {
-    updated_at: new Date().toISOString(),
   };
 
   if (typeof input.name === "string") payload.name = input.name.trim();
-  if (typeof input.description === "string") payload.description = input.description.trim();
-  if (typeof input.category === "string") payload.category = input.category.trim() || "General";
+  if (typeof input.category === "string") payload.type = input.category.trim() || "General";
   if (typeof input.content === "string") payload.content = input.content;
-  if (input.status) payload.status = input.status;
-  if (typeof input.usageCount === "number") payload.usage_count = input.usageCount;
-  if (input.lastUsedAt !== undefined) payload.last_used_at = input.lastUsedAt;
 
   if (isChinaRegion()) {
     const db = getDatabase();
@@ -930,6 +917,10 @@ export async function updateDashboardTemplate(
       throw new Error("Template not found after update");
     }
     return updated;
+  }
+
+  if (Object.keys(payload).length === 0) {
+    return template;
   }
 
   const admin = getSupabaseAdmin() as any;
@@ -992,18 +983,12 @@ export async function createDashboardTemplateVersion(
   const now = new Date().toISOString();
   const payload = {
     name: source.name,
-    description: source.description,
-    category: source.category,
+    type: source.category,
     content: source.content || "",
+    is_default: false,
     is_public: false,
     user_id: userId,
-    status: "draft" as const,
-    version: nextVersion,
-    usage_count: source.usageCount,
-    source_template_id: lineageRootId,
-    last_used_at: null,
     created_at: now,
-    updated_at: now,
   };
 
   if (isChinaRegion()) {

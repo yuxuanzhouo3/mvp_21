@@ -24,12 +24,16 @@ async function inspectDatabase() {
     "user_sessions",
     "contracts",
     "contract_templates",
+    "admin_settings",
     "subscriptions",
     "payments",
     "ads",
     "ad_stats",
     "company_profiles",
     "workspace_members",
+    "workspace_invites",
+    "workspace_documents",
+    "document_share_links",
     "admin_audit_logs",
   ];
 

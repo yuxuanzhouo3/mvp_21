@@ -8,6 +8,7 @@
     "build:cn": "node scripts/use-env.mjs cn && next build",
     "build:intl": "node scripts/use-env.mjs intl && next build",
     "db:workspace:cn": "node scripts/sync-cn-workspace-collections.mjs",
+    "db:schema:intl": "node scripts/apply-intl-schema-alignment.mjs",
     "db:workspace:intl": "node scripts/apply-intl-workspace-migration.mjs",
     "db:workspace:rollout": "npm run db:workspace:intl && npm run db:workspace:cn",
     "dev": "node scripts/use-env.mjs cn && next dev -p 3000",

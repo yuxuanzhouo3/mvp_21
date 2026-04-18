@@ -180,9 +180,7 @@ const intlContractsRepository: ContractsRepository = {
     const supabaseAdmin = getSupabaseAdmin() as any;
     let listQuery = supabaseAdmin
       .from("contracts")
-      .select("id,user_id,title,content,status,region,created_at,updated_at", {
-        count: "exact",
-      })
+      .select("*", { count: "exact" })
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -210,7 +208,7 @@ const intlContractsRepository: ContractsRepository = {
     const supabaseAdmin = getSupabaseAdmin() as any;
     const { data, error } = await supabaseAdmin
       .from("contracts")
-      .select("id,user_id,title,content,status,region,created_at,updated_at")
+      .select("*")
       .eq("id", id)
       .single();
 
@@ -231,7 +229,6 @@ const intlContractsRepository: ContractsRepository = {
       user_id: input.userId,
       title: input.title,
       status: normalizedStatus,
-      region: input.region || null,
       content: buildSupabaseContractPayload(input),
       created_at: now,
       updated_at: now,
@@ -241,7 +238,7 @@ const intlContractsRepository: ContractsRepository = {
     const { data, error } = await supabaseAdmin
       .from("contracts")
       .insert(insertPayload)
-      .select("id,user_id,title,content,status,region,created_at,updated_at")
+      .select("*")
       .single();
 
     if (error || !data) {
@@ -293,7 +290,6 @@ const intlContractsRepository: ContractsRepository = {
     const updatePayload = {
       title: merged.title,
       status: merged.status,
-      region: merged.region || null,
       content: buildSupabaseContractPayload(merged),
       updated_at: new Date().toISOString(),
     };
@@ -303,7 +299,7 @@ const intlContractsRepository: ContractsRepository = {
       .from("contracts")
       .update(updatePayload)
       .eq("id", id)
-      .select("id,user_id,title,content,status,region,created_at,updated_at")
+      .select("*")
       .single();
 
     if (error || !data) {

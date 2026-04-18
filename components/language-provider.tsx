@@ -8,10 +8,13 @@ import {
   type ReactNode,
 } from "react";
 import type { Language } from "@/lib/i18n";
-import { getDefaultLanguage } from "@/lib/config/deployment.config";
+import type { DeploymentRegion } from "@/lib/config/deployment.config";
+import { currentRegion, getDefaultLanguage } from "@/lib/config/deployment.config";
 
 interface LanguageContextType {
   language: Language;
+  deploymentLanguage: Language;
+  deploymentRegion: DeploymentRegion;
   setLanguage: (lang: Language) => void;
   toggleLanguage: () => void;
 }
@@ -21,7 +24,6 @@ const LanguageContext = createContext<LanguageContextType | undefined>(
 );
 
 const STORAGE_KEY = "preferred-language";
-const DEPLOYMENT_LANGUAGE: Language = getDefaultLanguage();
 const DEFAULT_CN_HOSTS = ["morncontract.mornscience.top"];
 const DEFAULT_INTL_HOSTS = ["www.mornhub.quest"];
 
@@ -101,20 +103,30 @@ function resolveLanguageFromHost(defaultLanguage: Language): Language {
   return defaultLanguage;
 }
 
-export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(DEPLOYMENT_LANGUAGE);
+interface LanguageProviderProps {
+  children: ReactNode;
+  initialLanguage?: Language;
+  deploymentRegion?: DeploymentRegion;
+}
+
+export function LanguageProvider({
+  children,
+  initialLanguage = getDefaultLanguage(),
+  deploymentRegion = currentRegion,
+}: LanguageProviderProps) {
+  const [language, setLanguageState] = useState<Language>(initialLanguage);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const runtimeLanguage = resolveLanguageFromHost(DEPLOYMENT_LANGUAGE);
+    const runtimeLanguage = resolveLanguageFromHost(initialLanguage);
     setMounted(true);
     localStorage.setItem(STORAGE_KEY, runtimeLanguage);
     document.documentElement.lang = runtimeLanguage;
     setLanguageState(runtimeLanguage);
-  }, []);
+  }, [initialLanguage]);
 
   const setLanguage = (lang: Language) => {
-    const runtimeLanguage = resolveLanguageFromHost(DEPLOYMENT_LANGUAGE);
+    const runtimeLanguage = resolveLanguageFromHost(initialLanguage);
 
     if (lang !== runtimeLanguage) {
       console.info(
@@ -128,7 +140,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   };
 
   const toggleLanguage = () => {
-    const runtimeLanguage = resolveLanguageFromHost(DEPLOYMENT_LANGUAGE);
+    const runtimeLanguage = resolveLanguageFromHost(initialLanguage);
     setLanguage(runtimeLanguage);
   };
 
@@ -136,7 +148,9 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     return (
       <LanguageContext.Provider
         value={{
-          language: DEPLOYMENT_LANGUAGE,
+          language: initialLanguage,
+          deploymentLanguage: initialLanguage,
+          deploymentRegion,
           setLanguage: () => {},
           toggleLanguage: () => {},
         }}
@@ -147,7 +161,15 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, toggleLanguage }}>
+    <LanguageContext.Provider
+      value={{
+        language,
+        deploymentLanguage: initialLanguage,
+        deploymentRegion,
+        setLanguage,
+        toggleLanguage,
+      }}
+    >
       {children}
     </LanguageContext.Provider>
   );

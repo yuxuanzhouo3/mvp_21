@@ -300,41 +300,82 @@ export function normalizeContractRecord(
       : looksLikeEnvelope
         ? {}
         : payload;
+  const payloadType =
+    typeof payload.type === "string" && payload.type.trim()
+      ? payload.type
+      : undefined;
+  const payloadSourceType =
+    typeof payload.sourceType === "string" && payload.sourceType.trim()
+      ? payload.sourceType
+      : typeof payload.source_type === "string" && payload.source_type.trim()
+        ? payload.source_type
+        : undefined;
+  const payloadSourceContent =
+    typeof payload.sourceContent === "string"
+      ? payload.sourceContent
+      : typeof payload.source_content === "string"
+        ? payload.source_content
+        : undefined;
+  const payloadAnalysisResult = pickFirstObject(
+    payload.analysisResult,
+    payload.analysis_result,
+  );
+  const payloadParties = ensureArray(payload.parties);
+  const payloadSignatures = ensureArray(payload.signatures);
+  const recordParties = ensureArray(record.parties);
+  const recordSignatures = ensureArray(record.signatures);
 
   return {
     id: record.id || record._id || "",
     userId: record.user_id || record.userId || "",
     title: record.title || "",
     type:
+      (looksLikeEnvelope ? payloadType : undefined) ||
       record.type ||
-      (typeof payload.type === "string" ? payload.type : "custom"),
+      payloadType ||
+      "custom",
     status: normalizeContractStatus(record.status),
     content: document,
     sourceType:
+      (looksLikeEnvelope ? payloadSourceType : undefined) ||
       record.sourceType ||
       record.source_type ||
-      (typeof payload.sourceType === "string" ? payload.sourceType : undefined),
+      payloadSourceType,
     sourceContent:
+      (looksLikeEnvelope ? payloadSourceContent : undefined) ||
       record.sourceContent ||
       record.source_content ||
       record.source_text ||
-      (typeof payload.sourceContent === "string"
-        ? payload.sourceContent
-        : undefined),
+      payloadSourceContent,
     analysisResult: pickFirstObject(
+      looksLikeEnvelope ? payloadAnalysisResult : null,
       record.analysisResult,
       record.analysis_result,
-      payload.analysisResult,
-      payload.analysis_result,
+      record.ai_analysis,
+      payloadAnalysisResult,
     ),
-    parties: ensureArray(record.parties).length
-      ? ensureArray(record.parties)
-      : ensureArray(payload.parties),
-    signatures: ensureArray(record.signatures).length
-      ? ensureArray(record.signatures)
-      : ensureArray(payload.signatures),
-    metadata: pickFirstObject(record.metadata, payload.metadata) || {},
+    parties: looksLikeEnvelope
+      ? payloadParties.length
+        ? payloadParties
+        : recordParties
+      : recordParties.length
+        ? recordParties
+        : payloadParties,
+    signatures: looksLikeEnvelope
+      ? payloadSignatures.length
+        ? payloadSignatures
+        : recordSignatures
+      : recordSignatures.length
+        ? recordSignatures
+        : payloadSignatures,
+    metadata:
+      (looksLikeEnvelope ? pickFirstObject(payload.metadata, record.metadata) : null) ||
+      pickFirstObject(record.metadata, payload.metadata) ||
+      {},
     region:
+      (looksLikeEnvelope && typeof payload.region === "string"
+        ? payload.region
+        : undefined) ||
       record.region ||
       (typeof payload.region === "string" ? payload.region : undefined),
     createdAt: record.created_at || record.createdAt,

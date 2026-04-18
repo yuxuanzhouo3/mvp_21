@@ -85,10 +85,7 @@ const intlBillingRepository: BillingRepository = {
   async listPaymentsByUser({ userId, limit = 20, offset = 0 }: ListPaymentOptions) {
     const { data, count, error } = await getSupabaseAdmin()
       .from("payments")
-      .select(
-        "id,user_id,amount,currency,status,payment_method,transaction_id,external_payment_id,subscription_id,metadata,created_at,updated_at",
-        { count: "exact" },
-      )
+      .select("*", { count: "exact" })
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -108,11 +105,9 @@ const intlBillingRepository: BillingRepository = {
   async getLatestSubscriptionByUser(userId: string) {
     const { data, error } = await getSupabaseAdmin()
       .from("subscriptions")
-      .select(
-        "id,user_id,plan,plan_id,status,price,currency,billing_cycle,payment_method,current_period_end,metadata,created_at,updated_at",
-      )
+      .select("*")
       .eq("user_id", userId)
-      .order("updated_at", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
@@ -126,9 +121,7 @@ const intlBillingRepository: BillingRepository = {
   async getPaymentByIdForUser({ userId, paymentId }: GetPaymentOptions) {
     const { data, error } = await getSupabaseAdmin()
       .from("payments")
-      .select(
-        "id,user_id,amount,currency,status,payment_method,transaction_id,external_payment_id,subscription_id,metadata,created_at,updated_at",
-      )
+      .select("*")
       .eq("id", paymentId)
       .eq("user_id", userId)
       .maybeSingle();

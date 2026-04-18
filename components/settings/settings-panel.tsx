@@ -9,18 +9,13 @@ import { Button } from "@/components/ui/button"
 import { Globe, Bell, Shield, Moon } from "lucide-react"
 import { useLanguage } from "@/components/language-provider"
 import { useTranslations, type Language } from "@/lib/i18n"
-import {
-  getDefaultLanguage,
-  isChinaDeployment,
-} from "@/lib/config/deployment.config"
 
 export function SettingsPanel() {
-  const { language } = useLanguage()
+  const { language, deploymentLanguage, deploymentRegion } = useLanguage()
   const t = useTranslations(language)
   const content = t.settingsPanel
-  const deploymentLanguage = getDefaultLanguage()
-  const deploymentRegion = isChinaDeployment() ? "cn" : "us"
   const [locale, setLocale] = useState<Language>(deploymentLanguage)
+  const regionValue = deploymentRegion === "CN" ? "cn" : "us"
   const [darkMode, setDarkMode] = useState(false)
 
   useEffect(() => {
@@ -66,7 +61,7 @@ export function SettingsPanel() {
 
           <div className="space-y-2">
             <Label htmlFor="region">{content.primaryRegion}</Label>
-            <Select value={deploymentRegion} disabled>
+            <Select value={regionValue} disabled>
               <SelectTrigger id="region">
                 <SelectValue />
               </SelectTrigger>
