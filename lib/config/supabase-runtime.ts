@@ -54,7 +54,10 @@ export function assertSupabaseRuntimeEnv(options: SupabaseRuntimeOptions): Supab
     throw new Error(baseMessage);
   }
 
-  console.warn(baseMessage);
+  const shouldWarn = isInternationalDeployment() || options.requireServiceRole === true;
+  if (shouldWarn) {
+    console.warn(baseMessage);
+  }
   return env;
 }
 

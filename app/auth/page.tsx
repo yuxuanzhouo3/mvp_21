@@ -138,10 +138,10 @@ function AuthPageContent() {
     if (!m) return ui.operationFailed;
     if (lower.includes("already")) return ui.emailAlreadyRegistered;
     if (lower.includes("invalid email")) return ui.invalidEmailFormat;
-    if (lower.includes("weak password") || lower.includes("security requirements")) return ui.weakPassword;
+    if (lower.includes("weak password") || lower.includes("security requirements")) return t.auth.passwordTooShort;
     if (lower.includes("google")) return t.auth.googleLoginFailed;
     return m;
-  }, [t.auth.googleLoginFailed, ui.emailAlreadyRegistered, ui.invalidEmailFormat, ui.operationFailed, ui.weakPassword]);
+  }, [t.auth.googleLoginFailed, t.auth.passwordTooShort, ui.emailAlreadyRegistered, ui.invalidEmailFormat, ui.operationFailed]);
 
   const requirePrivacy = () => {
     if (region === RegionType.CHINA && !agreeToPrivacy) {
@@ -171,8 +171,15 @@ function AuthPageContent() {
       return;
     }
 
-    router.replace(postAuthUrl);
+    router.replace(postAuthUrl, { scroll: false });
   }, [postAuthUrl, region, router]);
+
+  const navigate = useCallback(
+    (path: string) => {
+      router.push(path, { scroll: false });
+    },
+    [router],
+  );
 
   const runLockedAuthAction = useCallback(async (action: () => Promise<void>) => {
     if (authActionLockRef.current) {
@@ -314,7 +321,7 @@ function AuthPageContent() {
       setPassword("");
       setConfirmPassword("");
       setAgreeToPrivacy(false);
-      window.setTimeout(() => router.push(buildUrl("/auth", { mode: "signin" })), region === RegionType.CHINA ? 1200 : 3000);
+      window.setTimeout(() => navigate(buildUrl("/auth", { mode: "signin" })), region === RegionType.CHINA ? 1200 : 3000);
     } catch (err) {
       setError(msg(err));
     } finally {
@@ -331,12 +338,32 @@ function AuthPageContent() {
     }
     setLoading(true);
     try {
-      const { error: err } = await authClient.signInWithOAuth({
+      const redirectTo = `${window.location.origin}${buildUrl("/auth/callback", { redirect: postAuthPath })}`;
+      let { error: err } = await authClient.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: `${window.location.origin}${buildUrl("/auth/callback", { redirect: postAuthPath })}` },
+        options: { redirectTo },
       });
+
+      // Fallback: if a stale CN auth client is used in an INTL page, directly use Supabase OAuth.
+      if (
+        err &&
+        (
+          /not supported in china region/i.test(err.message) ||
+          /supabase client not initialized/i.test(err.message)
+        )
+      ) {
+        console.warn("[AuthPage] Google OAuth fallback to Supabase client:", err.message);
+        const { supabase } = await import("@/lib/integrations/supabase");
+        const fallback = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo },
+        });
+        err = fallback.error;
+      }
+
       if (err) throw err;
     } catch (err) {
+      console.error("[AuthPage] Google OAuth failed:", err);
       setError(msg(err));
       setLoading(false);
     }
@@ -480,9 +507,9 @@ function AuthPageContent() {
       <Checkbox id={`privacy-${mode}`} checked={agreeToPrivacy} onCheckedChange={(checked) => setAgreeToPrivacy(Boolean(checked))} className="mt-1" />
       <label htmlFor={`privacy-${mode}`} className="flex-1 cursor-pointer text-sm text-gray-700">
         {ui.consentPrefix}{" "}
-        <button type="button" className="text-blue-600 hover:underline" onClick={() => router.push(buildUrl("/privacy"))}>{ui.privacyPolicy}</button>{" "}
+        <button type="button" className="text-blue-600 hover:underline" onClick={() => navigate(buildUrl("/privacy"))}>{ui.privacyPolicy}</button>{" "}
         {ui.consentConnector}{" "}
-        <button type="button" className="text-blue-600 hover:underline" onClick={() => router.push(buildUrl("/terms"))}>{ui.termsOfService}</button>
+        <button type="button" className="text-blue-600 hover:underline" onClick={() => navigate(buildUrl("/terms"))}>{ui.termsOfService}</button>
         {region === RegionType.CHINA ? <span className="ml-1 text-red-600">*</span> : null}
       </label>
     </div>
@@ -722,9 +749,9 @@ function AuthPageContent() {
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-6 sm:px-6 sm:py-12 lg:px-8">
       <div className="w-full max-w-md">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => router.push(buildUrl("/"))}><Home className="mr-1.5 h-4 w-4" /><span className="truncate">{t.auth.backToHome}</span></Button>
+          <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => navigate(buildUrl("/"))}><Home className="mr-1.5 h-4 w-4" /><span className="truncate">{t.auth.backToHome}</span></Button>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => router.push(buildUrl("/privacy"))}>{ui.privacyPolicy}</Button>
+            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => navigate(buildUrl("/privacy"))}>{ui.privacyPolicy}</Button>
             {debugRegion ? <div className="rounded-lg border border-yellow-300 bg-yellow-100 px-2.5 py-1.5 text-xs sm:text-sm"><div className="font-medium text-yellow-800">{t.auth.debugMode}</div><div className="text-yellow-700">{t.auth.region}: {region === RegionType.CHINA ? t.auth.china : region === RegionType.USA ? t.auth.usa : t.auth.unknown}</div></div> : null}
           </div>
         </div>
@@ -736,8 +763,8 @@ function AuthPageContent() {
           <CardContent>
             <Tabs value={mode} className="w-full">
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="signin" onClick={() => { clearFeedback(); resetForgot(); setLoginMethod("password"); setCnLoginChannel("email"); router.push(buildUrl("/auth", { mode: "signin" })); }}>{t.auth.login}</TabsTrigger>
-                <TabsTrigger value="signup" onClick={() => { clearFeedback(); resetForgot(); router.push(buildUrl("/auth", { mode: "signup" })); }}>{t.auth.register}</TabsTrigger>
+                <TabsTrigger value="signin" onClick={() => { clearFeedback(); resetForgot(); setLoginMethod("password"); setCnLoginChannel("email"); navigate(buildUrl("/auth", { mode: "signin" })); }}>{t.auth.login}</TabsTrigger>
+                <TabsTrigger value="signup" onClick={() => { clearFeedback(); resetForgot(); navigate(buildUrl("/auth", { mode: "signup" })); }}>{t.auth.register}</TabsTrigger>
               </TabsList>
               <TabsContent value="signin" className="space-y-6">
                 {signInFormEnhanced}

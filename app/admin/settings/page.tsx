@@ -95,8 +95,8 @@ export default function SettingsPage() {
                 id="newPassword"
                 name="newPassword"
                 type="password"
-                placeholder="请输入新密码（至少6位）"
-                minLength={6}
+                placeholder="请输入新密码（至少8位，需包含字母和数字）"
+                minLength={8}
                 required
                 disabled={loading}
               />
@@ -109,7 +109,7 @@ export default function SettingsPage() {
                 name="confirmPassword"
                 type="password"
                 placeholder="请再次输入新密码"
-                minLength={6}
+                minLength={8}
                 required
                 disabled={loading}
               />

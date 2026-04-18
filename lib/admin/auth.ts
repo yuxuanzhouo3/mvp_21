@@ -294,21 +294,10 @@ export async function changePassword(
   }
 
   try {
-    // 只使用 Supabase（单数据库架构，与模板项目一致）
-    const { getSupabaseAdmin } = await import("@/lib/integrations/supabase-admin");
-    const supabase = getSupabaseAdmin();
+    const db = await getDatabaseAdapter();
+    const admin = await db.getAdminById(adminId);
 
-    // 获取当前管理员
-    const adminsTable = supabase.from("admins") as any;
-
-    const { data: adminRow, error: fetchError } = await adminsTable
-      .select("id, username, password_hash")
-      .eq("id", adminId)
-      .single();
-    const admin = adminRow as { id: string; username: string; password_hash?: string } | null;
-
-    if (fetchError || !admin) {
-      console.error("[changePassword] Fetch admin failed:", fetchError);
+    if (!admin) {
       return {
         success: false,
         error: "管理员不存在",
@@ -319,7 +308,7 @@ export async function changePassword(
     if (!admin.password_hash) {
       return {
         success: false,
-        error: "鏃у瘑鐮侀敊璇?",
+        error: "旧密码错误",
       };
     }
 
@@ -332,28 +321,14 @@ export async function changePassword(
       };
     }
 
-    // 生成新密码哈希
-    const newHash = await hashPassword(newPassword);
-
-    // 更新密码
-    const { error: updateError } = await adminsTable
-      .update({ password_hash: newHash })
-      .eq("id", adminId);
-
-    if (updateError) {
-      console.error("[changePassword] Supabase update failed:", updateError);
-      return {
-        success: false,
-        error: "修改密码失败",
-      };
-    }
-
-    console.log("[changePassword] 密码更新成功");
+    // 使用统一适配器更新密码（双数据库兼容）
+    await db.updateAdmin(adminId, {
+      password: newPassword,
+    });
 
     // 记录日志
-    const adminLogsTable = supabase.from("admin_logs") as any;
-    const { error: logError } = await adminLogsTable
-      .insert({
+    try {
+      await db.createLog({
         admin_id: adminId,
         admin_username: admin.username,
         action: "admin.update",
@@ -362,8 +337,7 @@ export async function changePassword(
         details: { action: "change_password" },
         status: "success",
       });
-
-    if (logError) {
+    } catch (logError) {
       console.error("[changePassword] Log creation failed:", logError);
     }
 

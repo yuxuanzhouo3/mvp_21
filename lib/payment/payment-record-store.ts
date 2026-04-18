@@ -12,6 +12,40 @@ export interface PaymentRecordLike {
   transaction_id?: string;
 }
 
+function isMissingCollectionError(error: unknown) {
+  const code = String((error as { code?: unknown })?.code || "");
+  const message = String((error as { message?: unknown })?.message || "");
+  return (
+    code.includes("DATABASE_COLLECTION_NOT_EXIST")
+    || message.includes("DATABASE_COLLECTION_NOT_EXIST")
+    || message.includes("Db or Table not exist")
+  );
+}
+
+async function ensureCnPaymentsCollection(db: any): Promise<void> {
+  try {
+    await db.collection("payments").limit(1).get();
+    return;
+  } catch (error) {
+    if (!isMissingCollectionError(error)) {
+      throw error;
+    }
+  }
+
+  try {
+    await db.createCollection("payments");
+  } catch (error) {
+    const code = String((error as { code?: unknown })?.code || "");
+    const message = String((error as { message?: unknown })?.message || "");
+    const alreadyExists =
+      code.includes("DATABASE_COLLECTION_ALREADY_EXIST")
+      || message.includes("already exists");
+    if (!alreadyExists) {
+      throw error;
+    }
+  }
+}
+
 function isSupabaseMissingTableError(error: unknown) {
   return typeof (error as { code?: unknown })?.code === "string"
     && (error as { code: string }).code === "PGRST116";
@@ -26,6 +60,7 @@ export async function findRecentPaymentByFingerprint(input: {
 }): Promise<PaymentRecordLike | null> {
   if (isChinaRegion()) {
     const db = getDatabase();
+    await ensureCnPaymentsCollection(db);
     const _ = db.command;
     const result = await db
       .collection("payments")
@@ -99,6 +134,7 @@ export async function createPendingPaymentRecord(input: {
 
   if (isChinaRegion()) {
     const db = getDatabase();
+    await ensureCnPaymentsCollection(db);
     await db.collection("payments").add({
       ...basePayload,
       client_type: input.clientType,

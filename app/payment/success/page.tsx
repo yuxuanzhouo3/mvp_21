@@ -42,8 +42,8 @@ function PaymentSuccessContent() {
       try {
         const sessionId = searchParams.get("session_id");
         const token = searchParams.get("token");
-        const outTradeNo = searchParams.get("out_trade_no");
-        const tradeNo = searchParams.get("trade_no");
+        const outTradeNo = searchParams.get("out_trade_no") || searchParams.get("outTradeNo");
+        const tradeNo = searchParams.get("trade_no") || searchParams.get("tradeNo");
         const wechatOutTradeNo = searchParams.get("wechat_out_trade_no");
 
         if (!sessionId && !token && !outTradeNo && !tradeNo && !wechatOutTradeNo) {
@@ -76,18 +76,52 @@ function PaymentSuccessContent() {
           headers["Authorization"] = `Bearer ${session.access_token}`;
         }
 
-        const response = await fetch("/api/payment/confirm", {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || errorTitle);
+        if (outTradeNo) {
+          body.outTradeNo = outTradeNo;
+        }
+        if (tradeNo) {
+          body.tradeNo = tradeNo;
+        }
+        if (sessionId) {
+          body.sessionId = sessionId;
+        }
+        if (wechatOutTradeNo) {
+          body.wechatOutTradeNo = wechatOutTradeNo;
         }
 
-        const result = await response.json();
+        let result: any = null;
+        let lastErrorMessage = "";
+        const maxAttempts = 4;
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          const response = await fetch("/api/payment/confirm", {
+            method: "POST",
+            headers,
+            body: JSON.stringify(body),
+          });
+
+          if (response.ok) {
+            result = await response.json();
+            break;
+          }
+
+          const errorData = await response.json().catch(() => ({}));
+          lastErrorMessage = String(errorData?.error || errorTitle);
+          const retriable =
+            response.status === 404 ||
+            response.status === 400 ||
+            lastErrorMessage.includes("not found") ||
+            lastErrorMessage.includes("confirmation failed");
+
+          if (!retriable || attempt === maxAttempts) {
+            throw new Error(lastErrorMessage || errorTitle);
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, attempt * 1200));
+        }
+
+        if (!result) {
+          throw new Error(lastErrorMessage || errorTitle);
+        }
 
         if (result.success) {
           setHasProcessed(true);

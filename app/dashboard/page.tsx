@@ -9,6 +9,7 @@ import { ContractList } from "@/components/dashboard/contract-list";
 import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { ConsoleShell } from "@/components/layout/console-shell";
+import { useUser } from "@/components/user-context";
 import { Button } from "@/components/ui/button";
 import { getDashboardOverview } from "@/lib/dashboard/client";
 import type { DashboardOverviewData } from "@/lib/dashboard/types";
@@ -16,6 +17,7 @@ import { useTranslations } from "@/lib/i18n";
 
 export default function DashboardPage() {
   const { language } = useLanguage();
+  const { user, loading: userLoading } = useUser();
   const t = useTranslations(language);
   const isEn = language === "en";
   const [overview, setOverview] = useState<DashboardOverviewData | null>(null);
@@ -36,6 +38,21 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let cancelled = false;
+
+    if (userLoading) {
+      setLoading(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!user) {
+      setOverview(null);
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     async function loadOverview() {
       try {
@@ -61,7 +78,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user, userLoading]);
 
   const lastUpdated = new Intl.DateTimeFormat(language === "en" ? "en-US" : "zh-CN", {
     month: "short",

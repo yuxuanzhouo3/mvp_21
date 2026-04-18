@@ -1,11 +1,13 @@
 "use client";
 
 import { tokenManager } from "@/lib/auth/frontend-token-manager";
+import { isInternationalRegion } from "@/lib/config/region";
 import { normalizeContractEnhancementMeta } from "@/lib/contracts/enhancements";
 import {
   normalizeContractRecord,
   type UnifiedContractRecord,
 } from "@/lib/data/unified-models";
+import { supabase } from "@/lib/integrations/supabase";
 
 export type ContractListStatus =
   | "draft"
@@ -39,6 +41,68 @@ export type ContractAction =
   | "confirm_sender"
   | "confirm_counterparty"
   | "send_reminder";
+
+export type ContractLoadErrorCode =
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
+  | "NOT_FOUND"
+  | "RATE_LIMITED"
+  | "SERVER_ERROR"
+  | "NETWORK_ERROR"
+  | "UNKNOWN";
+
+export class ContractClientError extends Error {
+  readonly code: ContractLoadErrorCode;
+  readonly status?: number;
+  readonly retriable: boolean;
+
+  constructor(
+    code: ContractLoadErrorCode,
+    message: string,
+    options?: {
+      status?: number;
+      retriable?: boolean;
+      cause?: unknown;
+    },
+  ) {
+    super(message);
+    this.name = "ContractClientError";
+    this.code = code;
+    this.status = options?.status;
+    this.retriable =
+      options?.retriable ?? (code !== "UNAUTHORIZED" && code !== "FORBIDDEN");
+    if (options?.cause !== undefined) {
+      (this as { cause?: unknown }).cause = options.cause;
+    }
+  }
+}
+
+function mapLoadStatusToCode(status: number): ContractLoadErrorCode {
+  if (status === 401) {
+    return "UNAUTHORIZED";
+  }
+  if (status === 403) {
+    return "FORBIDDEN";
+  }
+  if (status === 404) {
+    return "NOT_FOUND";
+  }
+  if (status === 429) {
+    return "RATE_LIMITED";
+  }
+  if (status >= 500) {
+    return "SERVER_ERROR";
+  }
+  return "UNKNOWN";
+}
+
+function createLoadStatusError(status: number) {
+  const code = mapLoadStatusToCode(status);
+  return new ContractClientError(code, `LOAD_FAILED_${status}`, {
+    status,
+    retriable: code === "RATE_LIMITED" || code === "SERVER_ERROR" || code === "UNKNOWN",
+  });
+}
 
 function normalizePartyName(party: Record<string, unknown>): string | null {
   const candidates = [
@@ -102,32 +166,111 @@ async function getAuthHeaders() {
   return headers;
 }
 
-export async function listContractsForCurrentUser(): Promise<ContractListItem[]> {
-  const headers = await getAuthHeaders();
-  const response = await fetch("/api/contracts?limit=100", {
-    headers,
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`LOAD_FAILED_${response.status}`);
+async function refreshIntlAuthHeaders() {
+  if (!isInternationalRegion()) {
+    return null;
   }
 
-  const payload = await response.json();
-  const contracts = Array.isArray(payload?.data?.contracts)
-    ? payload.data.contracts
-    : [];
+  try {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error) {
+      console.warn("[contracts/client] Failed to refresh Supabase session:", error);
+      return null;
+    }
 
-  return contracts.map((contract: Record<string, any>) =>
-    normalizeContract(contract),
-  );
+    const token = data?.session?.access_token;
+    if (!token) {
+      return null;
+    }
+
+    return {
+      Authorization: `Bearer ${token}`,
+    };
+  } catch (error) {
+    console.warn("[contracts/client] Supabase session refresh threw:", error);
+    return null;
+  }
+}
+
+async function fetchWithAuthRetry(
+  input: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const headers = await getAuthHeaders();
+  const requestInit: RequestInit = {
+    ...init,
+    headers: {
+      ...(init.headers || {}),
+      ...headers,
+    },
+  };
+
+  const response = await fetch(input, requestInit);
+  if (response.status !== 401 || !isInternationalRegion()) {
+    return response;
+  }
+
+  const refreshedHeaders = await refreshIntlAuthHeaders();
+  if (!refreshedHeaders) {
+    return response;
+  }
+
+  return fetch(input, {
+    ...requestInit,
+    headers: {
+      ...(init.headers || {}),
+      ...refreshedHeaders,
+    },
+  });
+}
+
+export async function listContractsForCurrentUser(): Promise<ContractListItem[]> {
+  try {
+    const response = await fetchWithAuthRetry("/api/contracts?limit=100", {
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw createLoadStatusError(response.status);
+    }
+
+    const payload = await response.json();
+    const contracts = Array.isArray(payload?.data?.contracts)
+      ? payload.data.contracts
+      : [];
+
+    return contracts.map((contract: Record<string, any>) =>
+      normalizeContract(contract),
+    );
+  } catch (error) {
+    if (error instanceof ContractClientError) {
+      throw error;
+    }
+
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      throw new ContractClientError("UNAUTHORIZED", "UNAUTHORIZED", {
+        retriable: false,
+        cause: error,
+      });
+    }
+
+    if (error instanceof Error) {
+      throw new ContractClientError("NETWORK_ERROR", "LOAD_FAILED_NETWORK", {
+        retriable: true,
+        cause: error,
+      });
+    }
+
+    throw new ContractClientError("UNKNOWN", "LOAD_FAILED_UNKNOWN", {
+      retriable: true,
+      cause: error,
+    });
+  }
 }
 
 export async function deleteContractForCurrentUser(id: string): Promise<void> {
-  const headers = await getAuthHeaders();
-  const response = await fetch(`/api/contracts/${id}`, {
+  const response = await fetchWithAuthRetry(`/api/contracts/${id}`, {
     method: "DELETE",
-    headers,
   });
 
   if (!response.ok) {
@@ -138,11 +281,9 @@ export async function deleteContractForCurrentUser(id: string): Promise<void> {
 export async function createContractForCurrentUser(
   payload: Record<string, unknown>,
 ): Promise<ContractDetail> {
-  const headers = await getAuthHeaders();
-  const response = await fetch("/api/contracts", {
+  const response = await fetchWithAuthRetry("/api/contracts", {
     method: "POST",
     headers: {
-      ...headers,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
@@ -157,9 +298,7 @@ export async function createContractForCurrentUser(
 }
 
 export async function getContractForCurrentUser(id: string): Promise<ContractDetail> {
-  const headers = await getAuthHeaders();
-  const response = await fetch(`/api/contracts/${id}`, {
-    headers,
+  const response = await fetchWithAuthRetry(`/api/contracts/${id}`, {
     cache: "no-store",
   });
 
@@ -175,11 +314,9 @@ export async function updateContractForCurrentUser(
   id: string,
   payload: Record<string, unknown>,
 ): Promise<ContractDetail> {
-  const headers = await getAuthHeaders();
-  const response = await fetch(`/api/contracts/${id}`, {
+  const response = await fetchWithAuthRetry(`/api/contracts/${id}`, {
     method: "PUT",
     headers: {
-      ...headers,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
@@ -225,17 +362,14 @@ async function fetchContractExportResponse(
     format?: ContractExportFormat | "pdf";
   },
 ) {
-  const headers = await getAuthHeaders();
   const query = new URLSearchParams();
   if (options?.format) {
     query.set("format", options.format);
   }
 
-  const response = await fetch(
+  const response = await fetchWithAuthRetry(
     `/api/contracts/${id}/export${query.size ? `?${query.toString()}` : ""}`,
-    {
-      headers,
-    },
+    {},
   );
 
   if (!response.ok) {

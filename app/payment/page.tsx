@@ -27,6 +27,15 @@ type SelectedPlan = {
   description: string;
 };
 
+function encodeBase64Utf8(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+  return btoa(binary);
+}
+
 function PaymentPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -197,7 +206,7 @@ function PaymentPageContent() {
       }
 
       if (typeof result.paymentUrl === "string" && result.paymentUrl.includes("<form")) {
-        const encodedForm = btoa(result.paymentUrl);
+        const encodedForm = encodeBase64Utf8(result.paymentUrl);
         window.location.href = `/payment/redirect?form=${encodeURIComponent(encodedForm)}`;
         return;
       }

@@ -490,11 +490,14 @@ export class AlipayProvider extends AbstractAlipayProvider {
     return this.verifyCallbackSignature(params);
   }
 
-  public async queryPayment(outTradeNo: string): Promise<any> {
+  public async queryPayment(
+    reference: string,
+    referenceType: "out_trade_no" | "trade_no" = "out_trade_no",
+  ): Promise<any> {
     try {
       const result = await this.alipaySdk.exec("alipay.trade.query", {
         bizContent: {
-          out_trade_no: outTradeNo,
+          [referenceType]: reference,
         },
       });
 

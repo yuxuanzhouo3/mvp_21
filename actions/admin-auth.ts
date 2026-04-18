@@ -87,33 +87,45 @@ export async function adminLogoutAction(): Promise<void> {
  * @returns 修改结果
  */
 export async function changePasswordAction(formData: FormData): Promise<ChangePasswordResult> {
-  const currentPassword = formData.get("currentPassword") as string;
-  const newPassword = formData.get("newPassword") as string;
-  const confirmPassword = formData.get("confirmPassword") as string;
+  try {
+    const currentPassword = formData.get("currentPassword") as string;
+    const newPassword = formData.get("newPassword") as string;
+    const confirmPassword = formData.get("confirmPassword") as string;
 
-  // 验证输入
-  if (!currentPassword || !newPassword || !confirmPassword) {
+    // 验证输入
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return {
+        success: false,
+        error: "请填写所有字段",
+      };
+    }
+
+    if (newPassword !== confirmPassword) {
+      return {
+        success: false,
+        error: "两次输入的新密码不一致",
+      };
+    }
+
+    // 获取当前管理员会话
+    const session = await requireAdminSession();
+
+    // 调用密码修改函数
+    const { changePassword } = await import("@/lib/admin/auth");
+    const result = await changePassword(session.adminId, currentPassword, newPassword);
+
+    return result;
+  } catch (error: any) {
+    console.error("[changePasswordAction] failed:", {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack,
+    });
     return {
       success: false,
-      error: "请填写所有字段",
+      error: error?.message || "修改密码失败，请稍后重试",
     };
   }
-
-  if (newPassword !== confirmPassword) {
-    return {
-      success: false,
-      error: "两次输入的新密码不一致",
-    };
-  }
-
-  // 获取当前管理员会话
-  const session = await requireAdminSession();
-
-  // 调用密码修改函数
-  const { changePassword } = await import("@/lib/admin/auth");
-  const result = await changePassword(session.adminId, currentPassword, newPassword);
-
-  return result;
 }
 
 /**

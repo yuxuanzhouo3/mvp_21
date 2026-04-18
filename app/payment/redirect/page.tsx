@@ -7,6 +7,15 @@ import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { useTranslations } from "@/lib/i18n";
 
+function decodeBase64Utf8(input: string): string {
+  const binary = atob(input);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 function PaymentRedirectContent() {
   const searchParams = useSearchParams();
   const formSubmitted = useRef(false);
@@ -26,7 +35,7 @@ function PaymentRedirectContent() {
     formSubmitted.current = true;
 
     try {
-      const decodedHtml = atob(formHtml);
+      const decodedHtml = decodeBase64Utf8(formHtml);
 
       const container = document.createElement("div");
       container.style.display = "none";

@@ -8,7 +8,6 @@
 
 import { getAdminSession } from "@/lib/admin/session";
 import AdminSidebar from "./components/AdminSidebar";
-import { Toaster } from "@/components/ui/sonner";
 
 export const dynamic = "force-dynamic";
 
@@ -42,8 +41,6 @@ export default async function AdminLayout({
           {children}
         </main>
       </div>
-      {/* 管理后台使用独立的 Toaster，不依赖用户端认证 */}
-      <Toaster />
     </div>
   );
 }

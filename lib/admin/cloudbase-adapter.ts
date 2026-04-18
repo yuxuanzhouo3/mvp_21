@@ -62,6 +62,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
   private db: any;
   private connector: CloudBaseConnector;
   private initialized: boolean = false;
+  private baseCollectionsReady: boolean = false;
   private aiCollectionsReady: boolean = false;
   private collectionNameCache = new Map<string, string>();
 
@@ -77,7 +78,65 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
       await this.connector.initialize();
       this.db = this.connector.getClient();
       this.initialized = true;
+      await this.ensureBaseCollections();
     }
+  }
+
+  private async ensureCollection(name: string): Promise<boolean> {
+    try {
+      await this.db.collection(name).limit(1).get();
+      return true;
+    } catch (error: any) {
+      if (!this.isMissingCollectionError(error)) {
+        throw handleDatabaseError(error);
+      }
+    }
+
+    try {
+      await this.db.createCollection(name);
+      console.log(`[CloudBaseAdapter] ensured base collection: ${name}`);
+      return true;
+    } catch (createError: any) {
+      const code = String(createError?.code || "");
+      const message = String(createError?.message || "");
+      const alreadyExists =
+        code.includes("DATABASE_COLLECTION_ALREADY_EXIST") ||
+        message.includes("already exists");
+
+      if (alreadyExists) {
+        return true;
+      }
+
+      console.warn(`[CloudBaseAdapter] create collection skipped: ${name}`, {
+        code: createError?.code,
+        message: createError?.message,
+      });
+      return false;
+    }
+  }
+
+  private async ensureBaseCollections(): Promise<void> {
+    if (this.baseCollectionsReady) {
+      return;
+    }
+
+    const collections = [
+      "admin_users",
+      "system_logs",
+      "system_config",
+      "web_users",
+      "payments",
+      "assessments",
+      "advertisements",
+      "social_links",
+      "releases",
+    ];
+
+    for (const name of collections) {
+      await this.ensureCollection(name);
+    }
+
+    this.baseCollectionsReady = true;
   }
 
   private async ensureAiCollections(): Promise<void> {
@@ -149,13 +208,20 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
     const candidates =
       logicalName === "users"
         ? ["web_users", "users"]
-        : ["payments", "orders"];
+        : ["orders", "payments"];
+    let firstExistingCollection: string | null = null;
 
     for (const candidate of candidates) {
       try {
-        await this.db.collection(candidate).limit(1).get();
-        this.collectionNameCache.set(logicalName, candidate);
-        return candidate;
+        const result = await this.db.collection(candidate).limit(1).get();
+        if (!firstExistingCollection) {
+          firstExistingCollection = candidate;
+        }
+
+        if ((result?.data || []).length > 0) {
+          this.collectionNameCache.set(logicalName, candidate);
+          return candidate;
+        }
       } catch (error: any) {
         if (!this.isMissingCollectionError(error)) {
           throw handleDatabaseError(error);
@@ -163,18 +229,15 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
       }
     }
 
-    if (logicalName === "payments") {
-      try {
-        await this.db.createCollection("payments");
-        this.collectionNameCache.set("payments", "payments");
-        console.log("[CloudBaseAdapter] ensured payments collection");
-        return "payments";
-      } catch (error: any) {
-        throw handleDatabaseError(error);
-      }
+    if (firstExistingCollection) {
+      this.collectionNameCache.set(logicalName, firstExistingCollection);
+      return firstExistingCollection;
     }
 
-    return candidates[0];
+    const defaultCollection = logicalName === "users" ? "web_users" : "payments";
+    await this.ensureCollection(defaultCollection);
+    this.collectionNameCache.set(logicalName, defaultCollection);
+    return defaultCollection;
   }
 
   /**
@@ -326,6 +389,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 根据 ID 获取管理员
    */
   async getAdminById(id: string): Promise<AdminUser | null> {
+    await this.ensureInitialized();
     try {
       const result = await this.db.collection("admin_users").doc(id).get();
       if (!result.data || result.data.length === 0) {
@@ -345,6 +409,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 创建管理员
    */
   async createAdmin(data: CreateAdminData): Promise<AdminUser> {
+    await this.ensureInitialized();
     const now = toISOString(new Date());
 
     // 哈希密码
@@ -389,6 +454,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 更新管理员
    */
   async updateAdmin(id: string, data: UpdateAdminData): Promise<AdminUser> {
+    await this.ensureInitialized();
     const updates: any = this.adminUserToDb(data);
 
     // 如果需要更新密码，先哈希
@@ -414,6 +480,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 删除管理员
    */
   async deleteAdmin(id: string): Promise<void> {
+    await this.ensureInitialized();
     try {
       await this.db.collection("admin_users").doc(id).remove();
     } catch (error: any) {
@@ -425,6 +492,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 列出所有管理员
    */
   async listAdmins(filters?: AdminFilters): Promise<AdminUser[]> {
+    await this.ensureInitialized();
     const where: any = {};
 
     if (filters?.status) {
@@ -470,6 +538,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 统计管理员数量
    */
   async countAdmins(filters?: AdminFilters): Promise<number> {
+    await this.ensureInitialized();
     const where: any = {};
 
     if (filters?.status) {
@@ -533,6 +602,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 创建操作日志
    */
   async createLog(log: CreateLogData): Promise<SystemLog> {
+    await this.ensureInitialized();
     const now = toISOString(new Date());
 
     const doc = {
@@ -565,6 +635,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 获取日志列表
    */
   async getLogs(filters?: LogFilters): Promise<SystemLog[]> {
+    await this.ensureInitialized();
     const where: any = {};
 
     if (filters?.admin_id) {
@@ -623,6 +694,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 统计日志数量
    */
   async countLogs(filters?: LogFilters): Promise<number> {
+    await this.ensureInitialized();
     const where: any = {};
 
     if (filters?.admin_id) {
@@ -665,6 +737,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 获取配置值
    */
   async getConfig(key: string): Promise<any> {
+    await this.ensureInitialized();
     try {
       const result = await this.db
         .collection("system_config")
@@ -690,6 +763,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
     category: ConfigCategory,
     description?: string
   ): Promise<void> {
+    await this.ensureInitialized();
     const now = toISOString(new Date());
 
     try {
@@ -726,6 +800,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 列出所有配置
    */
   async listConfigs(category?: ConfigCategory): Promise<SystemConfig[]> {
+    await this.ensureInitialized();
     const where: any = {};
     if (category) {
       where.category = category;
@@ -747,6 +822,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 删除配置
    */
   async deleteConfig(key: string): Promise<void> {
+    await this.ensureInitialized();
     try {
       const existing = await this.db.collection("system_config").where({ key }).get();
 
@@ -882,6 +958,8 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 统计普通用户数量
    */
   async countUsers(filters?: UserFilters): Promise<number> {
+    await this.ensureInitialized();
+    const collectionName = await this.resolveCollectionName("users");
     const where: any = {};
 
     if (filters?.status) {
@@ -907,7 +985,9 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
     }
 
     try {
-      const result = await this.db.collection("users").where(where).count();
+      const query = this.db.collection(collectionName);
+      const result =
+        Object.keys(where).length > 0 ? await query.where(where).count() : await query.count();
       return result.total;
     } catch (error: any) {
       throw handleDatabaseError(error);
@@ -918,6 +998,8 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 更新普通用户
    */
   async updateUser(id: string, updates: Partial<User>): Promise<User> {
+    await this.ensureInitialized();
+    const collectionName = await this.resolveCollectionName("users");
     const data: any = {
       updated_at: toISOString(new Date()),
     };
@@ -928,7 +1010,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
     if (updates.status !== undefined) data.status = updates.status;
 
     try {
-      await this.db.collection("users").doc(id).update(data);
+      await this.db.collection(collectionName).doc(id).update(data);
       const updated = await this.getUserById(id);
       if (!updated) {
         throw new Error("更新后找不到用户");
@@ -943,8 +1025,10 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 删除普通用户
    */
   async deleteUser(id: string): Promise<void> {
+    await this.ensureInitialized();
+    const collectionName = await this.resolveCollectionName("users");
     try {
-      await this.db.collection("users").doc(id).remove();
+      await this.db.collection(collectionName).doc(id).remove();
     } catch (error: any) {
       throw handleDatabaseError(error);
     }
@@ -973,6 +1057,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 根据 ID 获取评估记录
    */
   async getAssessmentById(id: string): Promise<Assessment | null> {
+    await this.ensureInitialized();
     try {
       const result = await this.db.collection("assessments").doc(id).get();
       if (!result.data || result.data.length === 0) {
@@ -991,6 +1076,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 列出评估记录
    */
   async listAssessments(filters?: AssessmentFilters): Promise<Assessment[]> {
+    await this.ensureInitialized();
     const where: any = {};
 
     if (filters?.user_id) {
@@ -1038,6 +1124,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 统计评估记录数量
    */
   async countAssessments(filters?: AssessmentFilters): Promise<number> {
+    await this.ensureInitialized();
     const where: any = {};
 
     if (filters?.user_id) {
@@ -1070,6 +1157,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 删除评估记录
    */
   async deleteAssessment(id: string): Promise<void> {
+    await this.ensureInitialized();
     try {
       await this.db.collection("assessments").doc(id).remove();
     } catch (error: any) {
@@ -1102,15 +1190,40 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async getPaymentById(id: string): Promise<Payment | null> {
     await this.ensureInitialized();
+    const collectionName = await this.resolveCollectionName("payments");
     try {
-      const result = await this.db.collection("orders").doc(id).get();
+      const result = await this.db.collection(collectionName).doc(id).get();
       if (!result.data || result.data.length === 0) {
-        return null;
+        const fallback = await this.db
+          .collection(collectionName)
+          .where({
+            order_id: id,
+          })
+          .limit(1)
+          .get();
+
+        if (!fallback.data || fallback.data.length === 0) {
+          return null;
+        }
+
+        return this.dbToPayment(fallback.data[0]);
       }
       return this.dbToPayment(result.data[0]);
     } catch (error: any) {
       if (error.code === "DOC_NOT_FOUND") {
-        return null;
+        const fallback = await this.db
+          .collection(collectionName)
+          .where({
+            order_id: id,
+          })
+          .limit(1)
+          .get();
+
+        if (!fallback.data || fallback.data.length === 0) {
+          return null;
+        }
+
+        return this.dbToPayment(fallback.data[0]);
       }
       throw handleDatabaseError(error);
     }
@@ -1121,6 +1234,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async listPayments(filters?: PaymentFilters): Promise<Payment[]> {
     await this.ensureInitialized();
+    const collectionName = await this.resolveCollectionName("payments");
     const where: any = {};
 
     // 国内版只查询 wechat 和 alipay
@@ -1152,7 +1266,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
       }
     }
 
-    let query = this.db.collection("orders");
+    let query = this.db.collection(collectionName);
 
     if (Object.keys(where).length > 0) {
       query = query.where(where);
@@ -1180,6 +1294,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async countPayments(filters?: PaymentFilters): Promise<number> {
     await this.ensureInitialized();
+    const collectionName = await this.resolveCollectionName("payments");
     const where: any = {};
 
     // 国内版只查询 wechat 和 alipay
@@ -1212,7 +1327,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
     }
 
     try {
-      const result = await this.db.collection("orders").where(where).count();
+      const result = await this.db.collection(collectionName).where(where).count();
       return result.total;
     } catch (error: any) {
       throw handleDatabaseError(error);
@@ -1534,6 +1649,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 根据 ID 获取社交链接
    */
   async getSocialLinkById(id: string): Promise<SocialLink | null> {
+    await this.ensureInitialized();
     try {
       const result = await this.db.collection("social_links").doc(id).get();
       if (!result.data || result.data.length === 0) {
@@ -1572,6 +1688,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 创建社交链接
    */
   async createSocialLink(data: CreateSocialLinkData): Promise<SocialLink> {
+    await this.ensureInitialized();
     const now = new Date().toISOString();
 
     // 获取当前最大 order 值
@@ -1603,6 +1720,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 更新社交链接
    */
   async updateSocialLink(id: string, data: UpdateSocialLinkData): Promise<SocialLink> {
+    await this.ensureInitialized();
     const update: any = {
       updated_at: new Date().toISOString(),
     };
@@ -2134,6 +2252,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async healthCheck(): Promise<boolean> {
     try {
+      await this.ensureInitialized();
       // 尝试执行一个简单的查询
       await this.db.collection("admin_users").limit(1).get();
       return true;

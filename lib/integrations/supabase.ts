@@ -6,7 +6,7 @@ let supabaseInstance: ReturnType<typeof createClient> | null = null;
 let missingEnvWarningShown = false;
 
 function shouldWarnMissingSupabaseEnv() {
-  return isInternationalDeployment() || process.env.NODE_ENV === "production";
+  return isInternationalDeployment();
 }
 
 function warnMissingSupabaseEnv(supabaseUrl: string, supabaseAnonKey: string) {

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { supabase } from "@/lib/integrations/supabase";
 import { signupUser } from "@/lib/cloudbase/cloudbase-service";
-import { passwordSecurity } from "@/lib/security/password-security";
 import { logSecurityEvent } from "@/lib/utils/logger";
 import { isChinaRegion } from "@/lib/config/region";
 
@@ -68,41 +67,36 @@ export async function POST(request: NextRequest) {
 
     const { email, password, fullName } = validationResult.data;
 
-    let passwordValidation: {
-      isValid: boolean;
-      score: number;
-      feedback: string[];
-      suggestions: string[];
-    } = {
-      isValid: true,
-      score: 0,
-      feedback: [],
-      suggestions: [],
+    const passwordValidation = {
+      isValid: password.length >= 6,
+      score: password.length >= 10 ? 3 : password.length >= 6 ? 2 : 0,
+      feedback: password.length >= 6 ? [] : ["Password must be at least 6 characters"],
+      suggestions:
+        password.length >= 6
+          ? []
+          : ["Use at least 6 characters for your password"],
     };
 
-    if (!isChinaRegion()) {
-      passwordValidation = passwordSecurity.validatePassword(password);
-      if (!passwordValidation.isValid) {
-        logSecurityEvent("register_weak_password", undefined, clientIP, {
-          email,
-          score: passwordValidation.score,
-          feedback: passwordValidation.feedback,
-        });
+    if (!passwordValidation.isValid) {
+      logSecurityEvent("register_weak_password", undefined, clientIP, {
+        email,
+        score: passwordValidation.score,
+        feedback: passwordValidation.feedback,
+      });
 
-        return NextResponse.json(
-          {
-            error: "Password does not meet security requirements",
-            code: "WEAK_PASSWORD",
-            passwordStrength: {
-              score: passwordValidation.score,
-              isValid: passwordValidation.isValid,
-              feedback: passwordValidation.feedback,
-              suggestions: passwordValidation.suggestions,
-            },
+      return NextResponse.json(
+        {
+          error: "Password must be at least 6 characters",
+          code: "WEAK_PASSWORD",
+          passwordStrength: {
+            score: passwordValidation.score,
+            isValid: passwordValidation.isValid,
+            feedback: passwordValidation.feedback,
+            suggestions: passwordValidation.suggestions,
           },
-          { status: 400 },
-        );
-      }
+        },
+        { status: 400 },
+      );
     }
 
     let authResponse:
@@ -262,7 +256,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const validation = passwordSecurity.validatePassword(password);
+    const validation = {
+      score: password.length >= 10 ? 3 : password.length >= 6 ? 2 : 0,
+      isValid: password.length >= 6,
+      feedback: password.length >= 6 ? [] : ["Password must be at least 6 characters"],
+      suggestions:
+        password.length >= 6
+          ? []
+          : ["Use at least 6 characters for your password"],
+    };
 
     return NextResponse.json({
       password,

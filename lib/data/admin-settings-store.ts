@@ -4,13 +4,50 @@ import { isChinaRegion } from "@/lib/config/region";
 import { getSupabaseAdmin } from "@/lib/integrations/supabase-admin";
 
 const SETTINGS_KEY = "global";
+const SETTINGS_COLLECTION = "admin_settings";
+
+function isMissingCollectionError(error: unknown): boolean {
+  const code = String((error as any)?.code || "");
+  const message = String((error as any)?.message || "");
+  return (
+    code.includes("DATABASE_COLLECTION_NOT_EXIST") ||
+    message.includes("DATABASE_COLLECTION_NOT_EXIST") ||
+    message.includes("Db or Table not exist")
+  );
+}
+
+async function ensureCnSettingsCollection(db: any): Promise<void> {
+  try {
+    await db.collection(SETTINGS_COLLECTION).limit(1).get();
+    return;
+  } catch (error) {
+    if (!isMissingCollectionError(error)) {
+      throw error;
+    }
+  }
+
+  try {
+    await db.createCollection(SETTINGS_COLLECTION);
+  } catch (error) {
+    const code = String((error as any)?.code || "");
+    const message = String((error as any)?.message || "");
+    const alreadyExists =
+      code.includes("DATABASE_COLLECTION_ALREADY_EXIST") ||
+      message.includes("already exists");
+
+    if (!alreadyExists) {
+      throw error;
+    }
+  }
+}
 
 export async function loadAdminSettings(): Promise<AdminSettings> {
   try {
     if (isChinaRegion()) {
       const db = getDatabase();
+      await ensureCnSettingsCollection(db);
       const result = await db
-        .collection("admin_settings")
+        .collection(SETTINGS_COLLECTION)
         .where({ key: SETTINGS_KEY })
         .limit(1)
         .get();
@@ -49,20 +86,21 @@ export async function saveAdminSettings(settings: AdminSettings): Promise<AdminS
 
   if (isChinaRegion()) {
     const db = getDatabase();
+    await ensureCnSettingsCollection(db);
     const existing = await db
-      .collection("admin_settings")
+      .collection(SETTINGS_COLLECTION)
       .where({ key: SETTINGS_KEY })
       .limit(1)
       .get();
 
     const row = existing.data?.[0] as Record<string, unknown> | undefined;
     if (row?._id && typeof row._id === "string") {
-      await db.collection("admin_settings").doc(row._id).update({
+      await db.collection(SETTINGS_COLLECTION).doc(row._id).update({
         payload,
         updated_at: updatedAt,
       });
     } else {
-      await db.collection("admin_settings").add({
+      await db.collection(SETTINGS_COLLECTION).add({
         key: SETTINGS_KEY,
         payload,
         updated_at: updatedAt,

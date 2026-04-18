@@ -697,6 +697,8 @@ class CloudBaseAuthClient implements AuthClient {
   }
 
   async signOut(): Promise<{ error: Error | null }> {
+    let requestError: Error | null = null;
+
     try {
       let headers: HeadersInit | undefined;
 
@@ -717,10 +719,19 @@ class CloudBaseAuthClient implements AuthClient {
         headers,
       });
 
+      // Keep logout idempotent on the client: local sign-out should still succeed
+      // even if the server token is already invalid or revocation fails.
       if (!response.ok) {
-        throw new Error("Logout failed");
+        requestError = new Error(`Logout request failed (${response.status})`);
+        console.warn("[CloudBase Auth] Logout request failed:", {
+          status: response.status,
+        });
       }
-
+    } catch (error) {
+      requestError =
+        error instanceof Error ? error : new Error("Logout request failed");
+      console.warn("[CloudBase Auth] Logout request threw:", requestError);
+    } finally {
       if (typeof window !== "undefined") {
         const { clearAuthState } = await import("@/lib/auth/auth-state-manager");
         await clearAuthState();
@@ -735,11 +746,11 @@ class CloudBaseAuthClient implements AuthClient {
 
         keysToDelete.forEach((key) => localStorage.removeItem(key));
       }
-
-      return { error: null };
-    } catch (error) {
-      return { error: error as Error };
     }
+
+    // Do not surface request failure to UI after local sign-out is complete.
+    void requestError;
+    return { error: null };
   }
 
   async getUser(): Promise<{

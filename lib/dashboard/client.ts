@@ -1,6 +1,7 @@
 "use client";
 
 import { tokenManager } from "@/lib/auth/frontend-token-manager";
+import { isInternationalRegion } from "@/lib/config/region";
 import type {
   DashboardBillingSummary,
   DashboardDocumentVerificationData,
@@ -14,6 +15,7 @@ import type {
   DashboardTemplatesData,
   DashboardTemplate,
 } from "@/lib/dashboard/types";
+import { supabase } from "@/lib/integrations/supabase";
 
 async function getAuthHeaders() {
   const headers = await tokenManager.getAuthHeaderAsync();
@@ -21,6 +23,65 @@ async function getAuthHeaders() {
     throw new Error("UNAUTHORIZED");
   }
   return headers;
+}
+
+async function refreshIntlAuthHeaders() {
+  if (!isInternationalRegion()) {
+    return null;
+  }
+
+  try {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error) {
+      console.warn("[dashboard/client] Failed to refresh Supabase session:", error);
+      return null;
+    }
+
+    const token = data?.session?.access_token;
+    if (!token) {
+      return null;
+    }
+
+    return {
+      Authorization: `Bearer ${token}`,
+    };
+  } catch (error) {
+    console.warn("[dashboard/client] Supabase session refresh threw:", error);
+    return null;
+  }
+}
+
+async function fetchWithAuthRetry(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const headers = await getAuthHeaders();
+  const requestInit: RequestInit = {
+    ...init,
+    headers: {
+      ...(init?.headers || {}),
+      ...headers,
+    },
+    cache: "no-store",
+  };
+
+  const response = await fetch(path, requestInit);
+  if (response.status !== 401 || !isInternationalRegion()) {
+    return response;
+  }
+
+  const refreshedHeaders = await refreshIntlAuthHeaders();
+  if (!refreshedHeaders) {
+    return response;
+  }
+
+  return fetch(path, {
+    ...requestInit,
+    headers: {
+      ...(init?.headers || {}),
+      ...refreshedHeaders,
+    },
+  });
 }
 
 async function fetchDashboardJson<T>(path: string): Promise<T> {
@@ -53,15 +114,7 @@ async function dashboardRequest<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const headers = await getAuthHeaders();
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      ...headers,
-      ...(init?.headers || {}),
-    },
-    cache: "no-store",
-  });
+  const response = await fetchWithAuthRetry(path, init);
 
   if (!response.ok) {
     throw new Error(await readResponseError(response, `DASHBOARD_FETCH_FAILED_${response.status}`));
@@ -72,11 +125,7 @@ async function dashboardRequest<T>(
 }
 
 async function downloadAuthenticatedFile(path: string, fallback: string) {
-  const headers = await getAuthHeaders();
-  const response = await fetch(path, {
-    headers,
-    cache: "no-store",
-  });
+  const response = await fetchWithAuthRetry(path);
 
   if (!response.ok) {
     throw new Error(await readResponseError(response, `DASHBOARD_FETCH_FAILED_${response.status}`));
@@ -173,7 +222,6 @@ export async function uploadDashboardDocument(payload: {
   groupName?: string;
   tags?: string;
 }) {
-  const headers = await getAuthHeaders();
   const formData = new FormData();
   formData.set("file", payload.file);
 
@@ -193,9 +241,8 @@ export async function uploadDashboardDocument(payload: {
     formData.set("tags", payload.tags);
   }
 
-  const response = await fetch("/api/dashboard/documents", {
+  const response = await fetchWithAuthRetry("/api/dashboard/documents", {
     method: "POST",
-    headers,
     body: formData,
   });
 

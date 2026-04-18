@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Download,
@@ -44,8 +44,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLanguage } from "@/components/language-provider";
+import { useUser } from "@/components/user-context";
 import { cn } from "@/lib/utils";
 import {
+  ContractClientError,
   type ContractExportFormat,
   deleteContractForCurrentUser,
   downloadContractForCurrentUser,
@@ -75,10 +77,12 @@ function formatDate(value?: string, locale = "zh-CN") {
 
 export function ContractList() {
   const router = useRouter();
-  const { language } = useLanguage();
+  const { language, deploymentRegion } = useLanguage();
+  const { user, loading: userLoading } = useUser();
   const isEn = language === "en";
+  const isIntlDeployment = deploymentRegion === "INTL";
 
-  const content = {
+  const content = useMemo(() => ({
     title: isEn ? "Contracts" : "合同管理",
     primaryAction: isEn ? "New Contract" : "新建合同",
     searchPlaceholder: isEn ? "Search contract title, parties, or region..." : "搜索合同标题、签约方或地区...",
@@ -87,6 +91,27 @@ export function ContractList() {
     noResultsTitle: isEn ? "No matching contracts" : "没有匹配的合同",
     noResultsDescription: isEn ? "Try a different keyword or status filter." : "试试更换关键字或筛选状态。",
     loadFailed: isEn ? "Failed to load contracts." : "加载合同失败，请稍后重试。",
+    loadSessionExpiredIntl: isEn
+      ? "Your session expired. Please sign in again."
+      : "登录状态已过期，请重新登录。",
+    loadSessionExpiredCn: isEn
+      ? "Your session expired. Please sign in again."
+      : "登录状态已过期，请重新登录。",
+    loadNoPermission: isEn
+      ? "You don't have permission to view these contracts."
+      : "你没有查看该合同的权限。",
+    loadTooFrequent: isEn
+      ? "Too many requests. Please try again in a moment."
+      : "请求过于频繁，请稍后再试。",
+    loadServerError: isEn
+      ? "Contract service is temporarily unavailable. Please try again later."
+      : "合同服务暂时不可用，请稍后再试。",
+    loadNetworkError: isEn
+      ? "Network error. Check your connection and retry."
+      : "网络异常，请检查网络后重试。",
+    loadNotFound: isEn
+      ? "Contract resource was not found."
+      : "合同资源不存在或已被删除。",
     deleteConfirm: isEn ? "Delete this contract? This action cannot be undone." : "确定要删除这份合同吗？此操作无法撤销。",
     deleteSuccess: isEn ? "Contract deleted." : "合同已删除。",
     deleteFailed: isEn ? "Failed to delete contract." : "删除合同失败，请稍后重试。",
@@ -103,7 +128,7 @@ export function ContractList() {
     untitled: isEn ? "Untitled Contract" : "未命名合同",
     loadingDescription: isEn ? "Loading contracts..." : "正在加载合同列表...",
     allLabel: isEn ? "All" : "全部",
-  };
+  }), [isEn]);
 
   const [contracts, setContracts] = useState<ContractListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,8 +139,73 @@ export function ContractList() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ContractListItem | null>(null);
 
+  const getLoadErrorMessage = useCallback((loadError: unknown) => {
+    if (loadError instanceof ContractClientError) {
+      switch (loadError.code) {
+        case "UNAUTHORIZED":
+          return isIntlDeployment
+            ? content.loadSessionExpiredIntl
+            : content.loadSessionExpiredCn;
+        case "FORBIDDEN":
+          return content.loadNoPermission;
+        case "NOT_FOUND":
+          return content.loadNotFound;
+        case "RATE_LIMITED":
+          return content.loadTooFrequent;
+        case "SERVER_ERROR":
+          return content.loadServerError;
+        case "NETWORK_ERROR":
+          return content.loadNetworkError;
+        default:
+          return content.loadFailed;
+      }
+    }
+
+    if (loadError instanceof Error) {
+      const message = loadError.message.toUpperCase();
+      if (message.includes("LOAD_FAILED_401") || message.includes("UNAUTHORIZED")) {
+        return isIntlDeployment
+          ? content.loadSessionExpiredIntl
+          : content.loadSessionExpiredCn;
+      }
+      if (message.includes("LOAD_FAILED_403")) {
+        return content.loadNoPermission;
+      }
+      if (message.includes("LOAD_FAILED_404")) {
+        return content.loadNotFound;
+      }
+      if (message.includes("LOAD_FAILED_429")) {
+        return content.loadTooFrequent;
+      }
+      if (message.includes("LOAD_FAILED_5")) {
+        return content.loadServerError;
+      }
+      if (message.includes("NETWORK") || message.includes("FETCH")) {
+        return content.loadNetworkError;
+      }
+    }
+
+    return content.loadFailed;
+  }, [content, isIntlDeployment]);
+
   useEffect(() => {
     let cancelled = false;
+
+    if (userLoading) {
+      setLoading(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!user) {
+      setContracts([]);
+      setError("");
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     async function loadContracts() {
       try {
@@ -129,7 +219,7 @@ export function ContractList() {
       } catch (loadError) {
         console.error("[ContractList] Failed to load contracts:", loadError);
         if (!cancelled) {
-          setError(content.loadFailed);
+          setError(getLoadErrorMessage(loadError));
         }
       } finally {
         if (!cancelled) {
@@ -143,7 +233,7 @@ export function ContractList() {
     return () => {
       cancelled = true;
     };
-  }, [content.loadFailed]);
+  }, [content, getLoadErrorMessage, user, userLoading]);
 
   const statusMeta: Record<
     ContractListItem["status"],

@@ -137,7 +137,9 @@ async function handlePaymentCreate(request: NextRequest) {
     }
 
     // Block repeated create requests that arrive within a short window.
-    const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
+    const duplicateGuardWindowMs = 60 * 1000;
+    const shouldEnforceDuplicateGuard = process.env.NODE_ENV !== "development";
+    const sinceIso = new Date(Date.now() - duplicateGuardWindowMs).toISOString();
     let recentPayment: {
       id?: string;
       _id?: string;
@@ -146,23 +148,25 @@ async function handlePaymentCreate(request: NextRequest) {
       createdAt?: string;
     } | null = null;
 
-    try {
-      recentPayment = await findRecentPaymentByFingerprint({
-        userId,
-        amount: roundedExpectedAmount,
-        currency: expectedCurrency,
-        paymentMethod,
-        sinceIso: oneMinuteAgo,
-      });
-    } catch (checkError) {
-      console.error("Error checking existing payment:", checkError);
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Unable to verify payment uniqueness, please try again",
-        },
-        { status: 500 },
-      );
+    if (shouldEnforceDuplicateGuard) {
+      try {
+        recentPayment = await findRecentPaymentByFingerprint({
+          userId,
+          amount: roundedExpectedAmount,
+          currency: expectedCurrency,
+          paymentMethod,
+          sinceIso,
+        });
+      } catch (checkError) {
+        console.error("Error checking existing payment:", checkError);
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Unable to verify payment uniqueness, please try again",
+          },
+          { status: 500 },
+        );
+      }
     }
 
     if (recentPayment) {
@@ -185,7 +189,7 @@ async function handlePaymentCreate(request: NextRequest) {
             "You have a recent payment request. Please wait a moment before trying again.",
           code: "DUPLICATE_PAYMENT_REQUEST",
           existingPaymentId: recentPayment.id || recentPayment._id,
-          waitTime: Math.ceil((60000 - paymentAge) / 1000),
+          waitTime: Math.ceil((duplicateGuardWindowMs - paymentAge) / 1000),
         },
         { status: 429 },
       );

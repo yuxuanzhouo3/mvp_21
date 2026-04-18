@@ -1,20 +1,19 @@
 ﻿"use client";
 
 /**
- * 绠＄悊鍚庡彴 - 鏀粯璁板綍绠＄悊椤甸潰
+ * 管理后台 - 支付记录管理页面
  *
- * 瀹屾暣鍔熻兘锛?
- * - 鏀粯璁板綍鍒楄〃灞曠ず锛堟敮鎸佸垎椤碉級
- * - 鎼滅储鍜岀瓫閫?
- * - 鏌ョ湅鏀粯璇︽儏
- * - 鏀粯缁熻灞曠ず
- * - 鏀跺叆鍒嗘瀽
+ * 功能：
+ * - 支付记录列表（支持分页）
+ * - 搜索和筛选
+ * - 查看支付详情
+ * - 支付统计展示
+ * - 收入分析
  */
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   listPayments,
-  getPaymentById,
   getPaymentStats,
 } from "@/actions/admin-payments";
 import type { Payment } from "@/lib/admin/types";
@@ -40,7 +39,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -48,7 +46,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Loader2,
@@ -57,8 +54,6 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
-  CreditCard,
-  DollarSign,
   TrendingUp,
   Calendar,
   Wallet,
@@ -69,7 +64,7 @@ import {
 } from "lucide-react";
 
 export default function PaymentsManagementPage() {
-  // ==================== 鐘舵€佺鐞?====================
+  // ==================== 状态管理 ====================
   const [payments, setPayments] = useState<Payment[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -77,48 +72,35 @@ export default function PaymentsManagementPage() {
   const [error, setError] = useState<string | null>(null);
   const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
 
-  // 鍒嗛〉鐘舵€?
+  // 分页状态
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [total, setTotal] = useState(0);
 
-  // 绛涢€夌姸鎬?
+  // 筛选状态
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterMethod, setFilterMethod] = useState<string>("all");
   const [filterType, setFilterType] = useState<string>("all");
 
-  // ==================== 绛涢€夊悗鐨勬敮浠樺垪琛?====================
+  // ==================== 筛选后的支付列表 ====================
   const filteredPayments = useMemo(() => {
-    return payments.filter((payment) => {
-      if (filterStatus !== "all") {
-        if (filterStatus === "paid" || filterStatus === "completed") {
-          if (payment.status !== "paid" && payment.status !== "completed") {
-            return false;
-          }
-        } else if (payment.status !== filterStatus) {
-          return false;
-        }
-      }
-      if (filterMethod !== "all" && payment.method !== filterMethod) {
-        return false;
-      }
-      if (filterType !== "all" && payment.type !== filterType) {
-        return false;
-      }
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        return (
-          payment.user_email?.toLowerCase().includes(query) ||
-          payment.order_id?.toLowerCase().includes(query) ||
-          payment.id.toLowerCase().includes(query)
-        );
-      }
-      return true;
-    });
-  }, [payments, filterStatus, filterMethod, filterType, searchQuery]);
+    if (!searchQuery) {
+      return payments;
+    }
 
-  // ==================== 鏁版嵁鍔犺浇 ====================
+    const query = searchQuery.toLowerCase();
+
+    return payments.filter((payment) => {
+      return (
+        payment.user_email?.toLowerCase().includes(query) ||
+        payment.order_id?.toLowerCase().includes(query) ||
+        payment.id.toLowerCase().includes(query)
+      );
+    });
+  }, [payments, searchQuery]);
+
+  // ==================== 数据加载 ====================
   const loadPayments = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -126,6 +108,9 @@ export default function PaymentsManagementPage() {
     try {
       const offset = (page - 1) * pageSize;
       const result = await listPayments({
+        status: filterStatus === "all" ? undefined : (filterStatus as any),
+        method: filterMethod === "all" ? undefined : (filterMethod as any),
+        type: filterType === "all" ? undefined : (filterType as any),
         limit: pageSize,
         offset,
       });
@@ -134,14 +119,14 @@ export default function PaymentsManagementPage() {
         setPayments(result.data.items);
         setTotal(result.data.total);
       } else {
-        setError("error" in result ? result.error : "鍔犺浇澶辫触");
+        setError("error" in result ? result.error : "加载失败");
       }
     } catch (err) {
-      setError("鍔犺浇鏀粯璁板綍澶辫触");
+      setError("加载支付记录失败");
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize]);
+  }, [page, pageSize, filterStatus, filterMethod, filterType]);
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true);
@@ -151,7 +136,7 @@ export default function PaymentsManagementPage() {
         setStats(result.data);
       }
     } catch (err) {
-      console.error("鍔犺浇缁熻澶辫触:", err);
+      console.error("加载统计失败:", err);
     } finally {
       setStatsLoading(false);
     }
@@ -160,6 +145,10 @@ export default function PaymentsManagementPage() {
   useEffect(() => {
     void loadPayments();
   }, [loadPayments]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filterStatus, filterMethod, filterType]);
 
   useEffect(() => {
     void loadStats();
@@ -173,28 +162,28 @@ export default function PaymentsManagementPage() {
         return (
           <Badge variant="default" className="bg-green-600 gap-1">
             <CheckCircle className="h-3 w-3" />
-            宸插畬鎴?
+            已完成
           </Badge>
         );
       case "pending":
         return (
           <Badge variant="secondary" className="bg-yellow-600 gap-1">
             <Clock className="h-3 w-3" />
-            寰呭鐞?
+            待处理
           </Badge>
         );
       case "failed":
         return (
           <Badge variant="destructive" className="gap-1">
             <XCircle className="h-3 w-3" />
-            澶辫触
+            失败
           </Badge>
         );
       case "refunded":
         return (
           <Badge variant="outline" className="gap-1">
             <ArrowDownCircle className="h-3 w-3" />
-            宸查€€娆?
+            已退款
           </Badge>
         );
       default:
@@ -250,39 +239,39 @@ export default function PaymentsManagementPage() {
     });
   }
 
-  // ==================== 鍒嗛〉 ====================
+  // ==================== 分页 ====================
   const totalPages = Math.ceil(total / pageSize);
 
-  // ==================== 娓叉煋 ====================
+  // ==================== 渲染 ====================
   return (
     <div className="space-y-6">
-      {/* 椤靛ご */}
+      {/* 页头 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">鏀粯璁板綍绠＄悊</h1>
+          <h1 className="text-2xl font-bold">支付记录管理</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            鏌ョ湅鍜岀鐞嗘墍鏈夋敮浠樿褰曪紝鍏?{total} 鏉¤褰?
+            查看和管理所有支付记录，共 {total} 条记录
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={loadPayments} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            鍒锋柊
+            刷新
           </Button>
         </div>
       </div>
 
-      {/* 閿欒鎻愮ず */}
+      {/* 错误提示 */}
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-      {/* 缁熻鍗＄墖 */}
+      {/* 统计卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {statsLoading ? (
-          // 楠ㄦ灦灞忥細鍔犺浇鏃舵樉绀?
+          // 骨架屏：加载中显示
           <>
             {[1, 2, 3, 4].map((i) => (
               <Card key={i}>
@@ -297,25 +286,25 @@ export default function PaymentsManagementPage() {
             ))}
           </>
         ) : stats ? (
-          // 鏁版嵁鍔犺浇瀹屾垚锛氭樉绀哄疄闄呮暟鎹?
+          // 数据加载完成：显示真实数据
           <>
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  鎬绘敮浠樻暟
+                  总支付数
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.total}</div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  鎬昏鍗曟暟
+                  总订单数
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  鏈湀鏀粯
+                  本月支付
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -325,7 +314,7 @@ export default function PaymentsManagementPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  浠婃棩鏀粯
+                  今日支付
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -335,7 +324,7 @@ export default function PaymentsManagementPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  鎬绘敹鍏?
+                  总收入
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -348,17 +337,17 @@ export default function PaymentsManagementPage() {
         ) : null}
       </div>
 
-      {/* 鏀跺叆鍒嗘瀽鍗＄墖 */}
+      {/* 收入分析卡片 */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-medium flex items-center gap-2">
             <TrendingUp className="h-4 w-4" />
-            鎸夋敮浠樻柟寮忕粺璁℃敹鍏?
+            按支付方式统计收入
           </CardTitle>
         </CardHeader>
         <CardContent>
           {statsLoading ? (
-            // 楠ㄦ灦灞忥細鍔犺浇鏃舵樉绀?
+            // 骨架屏：加载中显示
             <div className="grid grid-cols-2 gap-4">
               {getAvailablePaymentMethods().map((method, i) => (
                 <div key={i} className="flex items-center gap-3 p-3 bg-muted rounded-lg">
@@ -371,16 +360,23 @@ export default function PaymentsManagementPage() {
               ))}
             </div>
           ) : stats ? (
-            // 鏁版嵁鍔犺浇瀹屾垚锛氭樉绀哄疄闄呮暟鎹?
+            // 数据加载完成：显示真实数据
             <div className="grid grid-cols-2 gap-4">
               {getAvailablePaymentMethods().map((method) => {
                 const config = getPaymentMethodConfig(method);
                 const amount = stats.byMethod[method] || 0;
                 const currency = RegionConfig.payment.currency;
-                const colorClass = config.color.replace('bg-', '');
+                const methodCardClass =
+                  method === "stripe"
+                    ? "bg-blue-50 dark:bg-blue-950"
+                    : method === "wechat"
+                      ? "bg-green-50 dark:bg-green-950"
+                      : method === "alipay"
+                        ? "bg-sky-50 dark:bg-sky-950"
+                        : "bg-muted";
 
                 return (
-                  <div key={method} className={`flex items-center gap-3 p-3 bg-${colorClass.split('-')[0]}-50 dark:bg-${colorClass.split('-')[0]}-950 rounded-lg`}>
+                  <div key={method} className={`flex items-center gap-3 p-3 rounded-lg ${methodCardClass}`}>
                     <div className={`h-10 w-10 rounded-full ${config.color} flex items-center justify-center text-white`}>
                       {config.icon}
                     </div>
@@ -396,14 +392,14 @@ export default function PaymentsManagementPage() {
         </CardContent>
       </Card>
 
-      {/* 鎼滅储鍜岀瓫閫夋爮 */}
+      {/* 搜索和筛选栏 */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-wrap items-center gap-4">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="鎼滅储鐢ㄦ埛閭鎴栬鍗旾D..."
+                placeholder="搜索用户邮箱或订单 ID..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -426,10 +422,10 @@ export default function PaymentsManagementPage() {
 
             <Select value={filterMethod} onValueChange={setFilterMethod}>
               <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="鏀粯鏂瑰紡" />
+                <SelectValue placeholder="支付方式" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">鍏ㄩ儴鏂瑰紡</SelectItem>
+                <SelectItem value="all">全部方式</SelectItem>
                 {getAvailablePaymentMethods().map((method) => {
                   const config = getPaymentMethodConfig(method);
                   return (
@@ -443,17 +439,17 @@ export default function PaymentsManagementPage() {
 
             <Select value={filterType} onValueChange={setFilterType}>
               <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="鏀粯绫诲瀷" />
+                <SelectValue placeholder="支付类型" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">鍏ㄩ儴绫诲瀷</SelectItem>
-                <SelectItem value="subscription">璁㈤槄</SelectItem>
-                <SelectItem value="tokens">浠ｅ竵</SelectItem>
+                <SelectItem value="all">全部类型</SelectItem>
+                <SelectItem value="subscription">订阅</SelectItem>
+                <SelectItem value="tokens">代币</SelectItem>
                 <SelectItem value="pro">Pro</SelectItem>
               </SelectContent>
             </Select>
 
-            {/* 娓呴櫎绛涢€?*/}
+            {/* 清除筛选 */}
             {(searchQuery || filterStatus !== "all" || filterMethod !== "all" || filterType !== "all") && (
               <Button
                 variant="ghost"
@@ -465,17 +461,17 @@ export default function PaymentsManagementPage() {
                   setFilterType("all");
                 }}
               >
-                娓呴櫎绛涢€?
+                清除筛选
               </Button>
             )}
           </div>
         </CardContent>
       </Card>
 
-      {/* 鏀粯璁板綍鍒楄〃 */}
+      {/* 支付记录列表 */}
       <Card>
         <CardHeader>
-          <CardTitle>鏀粯璁板綍鍒楄〃</CardTitle>
+          <CardTitle>支付记录列表</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -485,8 +481,8 @@ export default function PaymentsManagementPage() {
           ) : filteredPayments.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               {searchQuery || filterStatus !== "all" || filterMethod !== "all" || filterType !== "all"
-                ? "娌℃湁绗﹀悎绛涢€夋潯浠剁殑鏀粯璁板綍"
-                : "鏆傛棤鏀粯璁板綍"}
+                ? "没有符合筛选条件的支付记录"
+                : "暂无支付记录"}
             </div>
           ) : (
             <>
@@ -494,15 +490,15 @@ export default function PaymentsManagementPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[200px]">璁㈠崟ID</TableHead>
-                      <TableHead>鐢ㄦ埛</TableHead>
-                      <TableHead>閲戦</TableHead>
-                      <TableHead>鏀粯鏂瑰紡</TableHead>
-                      <TableHead>绫诲瀷</TableHead>
+                      <TableHead className="w-[200px]">订单 ID</TableHead>
+                      <TableHead>用户</TableHead>
+                      <TableHead>金额</TableHead>
+                      <TableHead>支付方式</TableHead>
+                      <TableHead>类型</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>鍒涘缓鏃堕棿</TableHead>
-                      <TableHead>瀹屾垚鏃堕棿</TableHead>
-                      <TableHead className="text-right">鎿嶄綔</TableHead>
+                      <TableHead>创建时间</TableHead>
+                      <TableHead>完成时间</TableHead>
+                      <TableHead className="text-right">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -520,7 +516,7 @@ export default function PaymentsManagementPage() {
                             </div>
                             <div>
                               <div className="font-medium text-sm">
-                                {payment.user_email || "鏈煡鐢ㄦ埛"}
+                                {payment.user_email || "未知用户"}
                               </div>
                               <div className="text-xs text-muted-foreground">
                                 ID: {payment.user_id.slice(0, 8)}...
@@ -554,7 +550,7 @@ export default function PaymentsManagementPage() {
                             size="icon"
                             className="h-8 w-8"
                             onClick={() => setViewingPayment(payment)}
-                            title="鏌ョ湅璇︽儏"
+                            title="查看详情"
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -565,12 +561,12 @@ export default function PaymentsManagementPage() {
                 </Table>
               </div>
 
-              {/* 鍒嗛〉 */}
+	              {/* 分页 */}
               {total > pageSize && (
                 <div className="flex items-center justify-between mt-4">
                   <div className="text-sm text-muted-foreground">
-                    鏄剧ず绗?{(page - 1) * pageSize + 1} -{" "}
-                    {Math.min(page * pageSize, total)} 鏉★紝鍏?{total} 鏉?
+                    显示第 {(page - 1) * pageSize + 1} -{" "}
+                    {Math.min(page * pageSize, total)} 条，共 {total} 条
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -580,11 +576,11 @@ export default function PaymentsManagementPage() {
                       disabled={page === 1}
                     >
                       <ChevronLeft className="h-4 w-4 mr-1" />
-                      涓婁竴椤?
+                      上一页
                     </Button>
                     <div className="text-sm">
-                      绗?<span className="font-medium">{page}</span> /{" "}
-                      <span>{totalPages}</span> 椤?
+                      第 <span className="font-medium">{page}</span> /{" "}
+                      <span>{totalPages}</span> 页
                     </div>
                     <Button
                       variant="outline"
@@ -592,7 +588,7 @@ export default function PaymentsManagementPage() {
                       onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                       disabled={page >= totalPages}
                     >
-                      涓嬩竴椤?
+                      下一页
                       <ChevronRight className="h-4 w-4 ml-1" />
                     </Button>
                   </div>
@@ -603,15 +599,15 @@ export default function PaymentsManagementPage() {
         </CardContent>
       </Card>
 
-      {/* 鏌ョ湅鏀粯璇︽儏瀵硅瘽妗?*/}
+      {/* 查看支付详情对话框 */}
       <Dialog open={!!viewingPayment} onOpenChange={() => setViewingPayment(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh]">
           <DialogHeader>
-            <DialogTitle>鏀粯璇︽儏</DialogTitle>
+            <DialogTitle>支付详情</DialogTitle>
           </DialogHeader>
           {viewingPayment && (
             <div className="space-y-6">
-              {/* 鍩烘湰淇℃伅 */}
+	              {/* 基本信息 */}
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground">Order ID:</span>
@@ -657,7 +653,7 @@ export default function PaymentsManagementPage() {
                 </div>
               </div>
 
-              {/* 鏃堕棿绾?*/}
+	              {/* 时间线 */}
               <div>
                 <h3 className="text-sm font-medium mb-3">Payment Timeline</h3>
                 <div className="space-y-3">
@@ -694,7 +690,7 @@ export default function PaymentsManagementPage() {
               variant="outline"
               onClick={() => setViewingPayment(null)}
             >
-              鍏抽棴
+	              关闭
             </Button>
           </DialogFooter>
         </DialogContent>

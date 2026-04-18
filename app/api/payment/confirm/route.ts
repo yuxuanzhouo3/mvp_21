@@ -128,6 +128,10 @@ async function handlePaymentConfirm(request: NextRequest) {
     const rawReferences = [
       typeof body?.paymentId === "string" ? body.paymentId : "",
       typeof body?.subscriptionId === "string" ? body.subscriptionId : "",
+      typeof body?.outTradeNo === "string" ? body.outTradeNo : "",
+      typeof body?.tradeNo === "string" ? body.tradeNo : "",
+      typeof body?.sessionId === "string" ? body.sessionId : "",
+      typeof body?.wechatOutTradeNo === "string" ? body.wechatOutTradeNo : "",
     ].filter(Boolean);
 
     if (!rawReferences.length) {
@@ -150,6 +154,31 @@ async function handlePaymentConfirm(request: NextRequest) {
         if (payment) {
           break;
         }
+      }
+    }
+
+    if (!payment && typeof body?.tradeNo === "string" && body.tradeNo) {
+      try {
+        const provider = new AlipayProvider(process.env);
+        const queried = await provider.queryPayment(body.tradeNo, "trade_no");
+        const derivedOutTradeNo =
+          typeof queried?.out_trade_no === "string"
+            ? queried.out_trade_no
+            : "";
+
+        if (derivedOutTradeNo) {
+          payment = await getPaymentRecordForUserByReference(user.id, derivedOutTradeNo);
+        }
+      } catch (lookupError) {
+        logError(
+          "payment_confirm_trade_no_lookup_failed",
+          lookupError instanceof Error ? lookupError : new Error(String(lookupError)),
+          {
+            operationId,
+            userId: user.id,
+            tradeNo: body.tradeNo,
+          },
+        );
       }
     }
 
