@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { useTranslations } from "@/lib/i18n";
+import { readOAuthCallbackError } from "@/lib/auth/oauth-callback";
 
 function AuthCallbackContent() {
   const [error, setError] = useState("");
@@ -46,6 +47,17 @@ function AuthCallbackContent() {
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
+        const oauthError =
+          typeof window !== "undefined"
+            ? readOAuthCallbackError(window.location.hash)
+            : undefined;
+
+        if (oauthError) {
+          setError(oauthError);
+          setLoading(false);
+          return;
+        }
+
         const { getAuthClient } = await import("@/lib/auth/client");
         const sessionResult = await getAuthClient().getSession();
 

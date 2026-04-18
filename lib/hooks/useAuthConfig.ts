@@ -15,6 +15,22 @@ export interface AuthConfig {
     sms?: { enabled: boolean; reason?: string };
     google?: { enabled: boolean; reason?: string };
   };
+  oauthReadiness?: {
+    region: "CN" | "INTL";
+    providers: {
+      google: {
+        enabled: boolean;
+        status: "ready" | "not_ready" | "dashboard_check_required";
+        reason?: string;
+        checks: {
+          envConfigured: boolean;
+          expectedCallbackUrlConfigured: boolean;
+          dashboardProviderVerified: boolean;
+        };
+        expectedCallbackUrl?: string;
+      };
+    };
+  };
   appUrl: string | undefined;
   supabaseUrl: string | undefined;
   supabaseAnonKey: string | undefined;

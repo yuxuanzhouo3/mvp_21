@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "admin:create": "node scripts/create-initial-admin.js",
     "build": "next build",
     "build:cn": "node scripts/use-env.mjs cn && next build",
     "build:intl": "node scripts/use-env.mjs intl && next build",

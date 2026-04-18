@@ -12,10 +12,24 @@ export class AlipayProvider extends AbstractAlipayProvider {
 
   constructor(config: any) {
     // 确保 APP_URL 不以斜杠结尾
-    const appUrl = (process.env.APP_URL || "http://localhost:3000").replace(
-      /\/$/,
-      ""
-    );
+    const appUrl = (
+      process.env.APP_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      "http://localhost:3000"
+    ).replace(/\/$/, "");
+
+    const sandboxEnabled =
+      (config.ALIPAY_SANDBOX || process.env.ALIPAY_SANDBOX || "")
+        .toLowerCase()
+        .trim() === "true";
+    const notifyUrl =
+      config.ALIPAY_NOTIFY_URL ||
+      process.env.ALIPAY_NOTIFY_URL ||
+      `${appUrl}/api/payment/webhook/alipay`;
+    const returnUrl =
+      config.ALIPAY_RETURN_URL ||
+      process.env.ALIPAY_RETURN_URL ||
+      `${appUrl}/payment/success`;
 
     const certMode =
       (config.ALIPAY_CERT_MODE || process.env.ALIPAY_CERT_MODE) === "true";
@@ -58,12 +72,14 @@ export class AlipayProvider extends AbstractAlipayProvider {
         config.ALIPAY_ALIPAY_PUBLIC_KEY ||
         process.env.ALIPAY_ALIPAY_PUBLIC_KEY ||
         "",
-      notifyUrl: `${appUrl}/api/payment/webhook/alipay`,
-      returnUrl: `${appUrl}/payment/success`,
+      notifyUrl,
+      returnUrl,
       gatewayUrl:
         config.ALIPAY_GATEWAY_URL ||
         process.env.ALIPAY_GATEWAY_URL ||
-        "https://openapi-sandbox.dl.alipaydev.com/gateway.do",
+        (sandboxEnabled
+          ? "https://openapi-sandbox.dl.alipaydev.com/gateway.do"
+          : "https://openapi.alipay.com/gateway.do"),
       certMode,
       appCertContent,
       alipayPublicCertContent,

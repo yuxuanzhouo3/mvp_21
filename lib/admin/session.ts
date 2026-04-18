@@ -18,7 +18,7 @@ import type { AdminSession, SessionValidationResult } from "./types";
 /**
  * Cookie 名称
  */
-const COOKIE_NAME = "admin_session";
+export const ADMIN_SESSION_COOKIE_NAME = "admin_session";
 
 /**
  * 会话过期时间（秒）
@@ -120,7 +120,7 @@ export async function setAdminSessionCookie(
   const cookieStore = await cookies();
   const serialized = serializeSession(session);
 
-  cookieStore.set(COOKIE_NAME, serialized, {
+  cookieStore.set(ADMIN_SESSION_COOKIE_NAME, serialized, {
     httpOnly: true, // 防止 JavaScript 访问
     secure: process.env.NODE_ENV === "production", // 生产环境强制 HTTPS
     sameSite: "lax", // 防止 CSRF 攻击
@@ -200,7 +200,7 @@ export function validateSession(session: AdminSession): SessionValidationResult 
 export async function getAdminSession(): Promise<SessionValidationResult> {
   try {
     const cookieStore = await cookies();
-    const serialized = cookieStore.get(COOKIE_NAME);
+    const serialized = cookieStore.get(ADMIN_SESSION_COOKIE_NAME);
 
     if (!serialized) {
       return {
@@ -245,6 +245,40 @@ export async function requireAdminSession(): Promise<AdminSession> {
   return result.session;
 }
 
+export function readAdminSessionFromRequest(request: {
+  cookies?: {
+    get(name: string): { value: string } | undefined;
+  };
+}): SessionValidationResult {
+  try {
+    const serialized = request.cookies?.get(ADMIN_SESSION_COOKIE_NAME)?.value;
+
+    if (!serialized) {
+      return {
+        valid: false,
+        error: "Admin session not found",
+      };
+    }
+
+    const session = deserializeSession(serialized);
+
+    if (!session) {
+      return {
+        valid: false,
+        error: "Admin session is invalid",
+      };
+    }
+
+    return validateSession(session);
+  } catch (error) {
+    console.error("Failed to read admin session from request:", error);
+    return {
+      valid: false,
+      error: "Failed to read admin session",
+    };
+  }
+}
+
 // ==================== 会话销毁 ====================
 
 /**
@@ -253,7 +287,7 @@ export async function requireAdminSession(): Promise<AdminSession> {
 export async function clearAdminSessionCookie(): Promise<void> {
   const cookieStore = await cookies();
 
-  cookieStore.delete(COOKIE_NAME);
+  cookieStore.delete(ADMIN_SESSION_COOKIE_NAME);
 }
 
 /**

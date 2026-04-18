@@ -57,6 +57,8 @@ function AuthPageContent() {
     configLoading || smsAvailability?.enabled !== false;
   const otpMethodAvailable =
     region === RegionType.CHINA ? phoneOtpEnabledInCn : supportsOtp;
+  const googleAvailability = config.availability?.google;
+  const googleReadiness = config.oauthReadiness?.providers.google;
   const loginMethodOtpLabel =
     region === RegionType.CHINA ? "验证码登录" : t.auth.sendOtp;
   const loginIdentifierLabel =
@@ -68,7 +70,16 @@ function AuthPageContent() {
   const loginIdentifierType =
     region === RegionType.CHINA && cnLoginChannel === "phone" ? "tel" : "email";
   const thirdPartyUnavailable =
-    region !== RegionType.CHINA && !config.features.googleAuth;
+    region !== RegionType.CHINA &&
+    (
+      !config.features.googleAuth ||
+      googleAvailability?.enabled === false ||
+      googleReadiness?.status === "not_ready"
+    );
+  const thirdPartyUnavailableReason =
+    googleReadiness?.status === "not_ready"
+      ? googleReadiness.reason
+      : googleAvailability?.reason;
 
   const buildUrl = useCallback((path: string, extra?: Record<string, string>) => {
     const params = new URLSearchParams();
@@ -317,6 +328,10 @@ function AuthPageContent() {
   const onGoogle = async () => {
     if (loading) return;
     clearFeedback();
+    if (thirdPartyUnavailable) {
+      setError(thirdPartyUnavailableReason || ui.oauthUnavailable);
+      return;
+    }
     setLoading(true);
     try {
       const { error: err } = await authClient.signInWithOAuth({
@@ -754,7 +769,11 @@ function AuthPageContent() {
             </Tabs>
             {notice ? <Alert className="mt-4"><AlertDescription>{notice}</AlertDescription></Alert> : null}
             {error ? <Alert variant="destructive" className="mt-4"><AlertDescription>{error}</AlertDescription></Alert> : null}
-            {region !== RegionType.CHINA && thirdPartyUnavailable && !configLoading ? <Alert className="mt-4"><AlertDescription>{ui.oauthUnavailable}</AlertDescription></Alert> : null}
+            {region !== RegionType.CHINA && thirdPartyUnavailable && !configLoading ? (
+              <Alert className="mt-4">
+                <AlertDescription>{thirdPartyUnavailableReason || ui.oauthUnavailable}</AlertDescription>
+              </Alert>
+            ) : null}
           </CardContent>
         </Card>
       </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { extractTokenFromRequest, verifyAuthToken } from "@/lib/auth/auth-utils";
 import { isAdminRole, normalizeUserRole, resolveUserRole } from "@/lib/auth/user-role";
+import { readAdminSessionFromRequest } from "@/lib/admin/session";
 import { queueAdminAuditLog } from "@/lib/data/admin-audit-store";
 import { logError, logInfo, logSecurityEvent, logWarn } from "@/lib/utils/logger";
 
@@ -128,6 +129,31 @@ export async function requireAdmin(
   request: NextRequest,
 ): Promise<AdminRequestContext | { error: NextResponse }> {
   const initialAuditContext = buildAuditContext(request);
+  const adminSessionResult = readAdminSessionFromRequest(request);
+
+  if (adminSessionResult.valid && adminSessionResult.session) {
+    const session = adminSessionResult.session;
+    const auditContext = buildAuditContext(request, session.adminId);
+
+    logAdminAudit("Admin API access granted", auditContext, {
+      role: session.role,
+      authSource: "admin_session",
+      username: session.username,
+    });
+
+    return {
+      user: {
+        id: session.adminId,
+        username: session.username,
+        role: session.role,
+        authSource: "admin_session",
+      },
+      userId: session.adminId,
+      role: session.role,
+      auditContext,
+    };
+  }
+
   const { token, error: tokenError } = extractTokenFromRequest(request);
 
   if (tokenError || !token) {
@@ -210,7 +236,10 @@ export async function requireAdmin(
     };
   }
 
-  logAdminAudit("Admin API access granted", auditContext, { role });
+  logAdminAudit("Admin API access granted", auditContext, {
+    role,
+    authSource: "app_token",
+  });
 
   return {
     user: authResult.user,
