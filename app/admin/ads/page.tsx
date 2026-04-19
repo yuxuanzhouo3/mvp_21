@@ -83,6 +83,19 @@ import {
   ExternalLink,
 } from "lucide-react";
 
+function getRegion(): "CN" | "INTL" {
+  const region =
+    (process.env.NEXT_PUBLIC_DEPLOYMENT_REGION ||
+      process.env.NEXT_PUBLIC_APP_REGION ||
+      "CN")
+      .trim()
+      .toUpperCase();
+  return region === "INTL" ? "INTL" : "CN";
+}
+
+const isIntlRegion = getRegion() === "INTL";
+const tx = (zh: string, en: string) => (isIntlRegion ? en : zh);
+
 export default function AdsManagementPage() {
   // ==================== 状态管理 ====================
   const [ads, setAds] = useState<Advertisement[]>([]);
@@ -158,10 +171,10 @@ export default function AdsManagementPage() {
         setAds(result.data.items || []);
         setTotal(result.data.total || 0);
       } else {
-        setError(result.error || "加载失败");
+        setError(result.error || tx("加载失败", "Failed to load"));
       }
     } catch (err) {
-      setError("加载广告失败");
+      setError(tx("加载广告失败", "Failed to load ads"));
     } finally {
       setLoading(false);
     }
@@ -175,7 +188,7 @@ export default function AdsManagementPage() {
         setStats(result.data);
       }
     } catch (err) {
-      console.error("加载统计失败:", err);
+      console.error(tx("加载统计失败:", "Failed to load stats:"), err);
     } finally {
       setStatsLoading(false);
     }
@@ -208,7 +221,7 @@ export default function AdsManagementPage() {
       if (formData.file) {
         formDataToSend.append("file", formData.file);
       } else {
-        setError("请上传广告文件");
+        setError(tx("请上传广告文件", "Please upload an ad file"));
         setSubmitting(false);
         return;
       }
@@ -221,10 +234,10 @@ export default function AdsManagementPage() {
         loadAds();
         loadStats();
       } else {
-        setError(result.error || "创建失败");
+        setError(result.error || tx("创建失败", "Failed to create"));
       }
     } catch (err) {
-      setError("创建失败");
+      setError(tx("创建失败", "Failed to create"));
     } finally {
       setSubmitting(false);
     }
@@ -245,10 +258,10 @@ export default function AdsManagementPage() {
         loadAds();
         loadStats();
       } else {
-        setError(result.error || "更新失败");
+        setError(result.error || tx("更新失败", "Failed to update"));
       }
     } catch (err) {
-      setError("更新失败");
+      setError(tx("更新失败", "Failed to update"));
     } finally {
       setSubmitting(false);
     }
@@ -265,10 +278,10 @@ export default function AdsManagementPage() {
         loadAds();
         loadStats();
       } else {
-        setError(result.error || "删除失败");
+        setError(result.error || tx("删除失败", "Failed to delete"));
       }
     } catch (err) {
-      setError("删除失败");
+      setError(tx("删除失败", "Failed to delete"));
     } finally {
       setSubmitting(false);
     }
@@ -282,10 +295,10 @@ export default function AdsManagementPage() {
         loadAds();
         loadStats();
       } else {
-        setError(result.error || "切换状态失败");
+        setError(result.error || tx("切换状态失败", "Failed to toggle status"));
       }
     } catch (err) {
-      setError("切换状态失败");
+      setError(tx("切换状态失败", "Failed to toggle status"));
     }
   }
 
@@ -337,12 +350,12 @@ export default function AdsManagementPage() {
     return status === "active" ? (
       <Badge variant="default" className="bg-green-600 gap-1">
         <Power className="h-3 w-3" />
-        上架
+        {tx("上架", "Active")}
       </Badge>
     ) : (
       <Badge variant="outline" className="gap-1">
         <Power className="h-3 w-3" />
-        下架
+        {tx("下架", "Inactive")}
       </Badge>
     );
   }
@@ -369,32 +382,32 @@ export default function AdsManagementPage() {
     return type === "image" ? (
       <Badge variant="secondary" className="gap-1">
         <ImageIcon className="h-3 w-3" />
-        图片
+        {tx("图片", "Image")}
       </Badge>
     ) : (
       <Badge variant="secondary" className="gap-1">
         <Video className="h-3 w-3" />
-        视频
+        {tx("视频", "Video")}
       </Badge>
     );
   }
 
   function getPositionLabel(position: string) {
     const labels: Record<string, string> = {
-      top: "顶部",
-      bottom: "底部",
-      left: "左侧",
-      right: "右侧",
-      "bottom-left": "左下角",
-      "bottom-right": "右下角",
-      sidebar: "侧边栏",
+      top: tx("顶部", "Top"),
+      bottom: tx("底部", "Bottom"),
+      left: tx("左侧", "Left"),
+      right: tx("右侧", "Right"),
+      "bottom-left": tx("左下角", "Bottom Left"),
+      "bottom-right": tx("右下角", "Bottom Right"),
+      sidebar: tx("侧边栏", "Sidebar"),
     };
     return labels[position] || position;
   }
 
   function formatDate(dateStr: string | undefined) {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString("zh-CN", {
+    return new Date(dateStr).toLocaleDateString(isIntlRegion ? "en-US" : "zh-CN", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -417,19 +430,19 @@ export default function AdsManagementPage() {
       {/* 页头 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">广告管理</h1>
+          <h1 className="text-2xl font-bold">{tx("广告管理", "Ads Management")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            管理网站广告内容，共 {total} 条广告
+            {tx("管理网站广告内容，共", "Manage website ads, total")} {total} {tx("条广告", "ads")}
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={loadAds} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            刷新
+            {tx("刷新", "Refresh")}
           </Button>
           <Button onClick={openCreateDialog}>
             <Plus className="h-4 w-4 mr-2" />
-            新建广告
+            {tx("新建广告", "New Ad")}
           </Button>
         </div>
       </div>
@@ -463,7 +476,7 @@ export default function AdsManagementPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  总广告数
+                  {tx("总广告数", "Total Ads")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -473,7 +486,7 @@ export default function AdsManagementPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  激活中
+                  {tx("激活中", "Active")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -483,7 +496,7 @@ export default function AdsManagementPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  已禁用
+                  {tx("已禁用", "Inactive")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -493,7 +506,7 @@ export default function AdsManagementPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  图片/视频
+                  {tx("图片/视频", "Image/Video")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -513,7 +526,7 @@ export default function AdsManagementPage() {
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="搜索广告标题..."
+                placeholder={tx("搜索广告标题...", "Search ad title...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -522,28 +535,28 @@ export default function AdsManagementPage() {
 
             <Select value={filterStatus} onValueChange={setFilterStatus}>
               <SelectTrigger className="w-[120px]">
-                <SelectValue placeholder="状态" />
+                <SelectValue placeholder={tx("状态", "Status")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">全部状态</SelectItem>
-                <SelectItem value="active">上架</SelectItem>
-                <SelectItem value="inactive">下架</SelectItem>
+                <SelectItem value="all">{tx("全部状态", "All statuses")}</SelectItem>
+                <SelectItem value="active">{tx("上架", "Active")}</SelectItem>
+                <SelectItem value="inactive">{tx("下架", "Inactive")}</SelectItem>
               </SelectContent>
             </Select>
 
             <Select value={filterPosition} onValueChange={setFilterPosition}>
               <SelectTrigger className="w-[120px]">
-                <SelectValue placeholder="位置" />
+                <SelectValue placeholder={tx("位置", "Position")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">全部位置</SelectItem>
-                <SelectItem value="top">顶部</SelectItem>
-                <SelectItem value="bottom">底部</SelectItem>
-                <SelectItem value="left">左侧</SelectItem>
-                <SelectItem value="right">右侧</SelectItem>
-                <SelectItem value="bottom-left">左下角</SelectItem>
-                <SelectItem value="bottom-right">右下角</SelectItem>
-                <SelectItem value="sidebar">侧边栏</SelectItem>
+                <SelectItem value="all">{tx("全部位置", "All positions")}</SelectItem>
+                <SelectItem value="top">{tx("顶部", "Top")}</SelectItem>
+                <SelectItem value="bottom">{tx("底部", "Bottom")}</SelectItem>
+                <SelectItem value="left">{tx("左侧", "Left")}</SelectItem>
+                <SelectItem value="right">{tx("右侧", "Right")}</SelectItem>
+                <SelectItem value="bottom-left">{tx("左下角", "Bottom Left")}</SelectItem>
+                <SelectItem value="bottom-right">{tx("右下角", "Bottom Right")}</SelectItem>
+                <SelectItem value="sidebar">{tx("侧边栏", "Sidebar")}</SelectItem>
               </SelectContent>
             </Select>
 
@@ -558,7 +571,7 @@ export default function AdsManagementPage() {
                   setFilterPosition("all");
                 }}
               >
-                清除筛选
+                {tx("清除筛选", "Clear filters")}
               </Button>
             )}
           </div>
@@ -568,7 +581,7 @@ export default function AdsManagementPage() {
       {/* 广告列表 */}
       <Card>
         <CardHeader>
-          <CardTitle>广告列表</CardTitle>
+          <CardTitle>{tx("广告列表", "Ads List")}</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -578,8 +591,8 @@ export default function AdsManagementPage() {
           ) : filteredAds.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               {searchQuery || filterStatus !== "all" || filterPosition !== "all"
-                ? "没有符合筛选条件的广告"
-                : "暂无广告"}
+                ? tx("没有符合筛选条件的广告", "No ads match the current filters")
+                : tx("暂无广告", "No ads")}
             </div>
           ) : (
             <>
@@ -587,18 +600,18 @@ export default function AdsManagementPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[100px]">预览</TableHead>
-                      <TableHead>标题</TableHead>
-                      <TableHead className="w-[100px]">位置</TableHead>
-                      <TableHead className="w-[80px]">类型</TableHead>
-                      <TableHead className="w-[100px]">大小</TableHead>
-                      <TableHead className="w-[140px]">上传时间</TableHead>
-                      <TableHead className="w-[80px]">优先级</TableHead>
-                      <TableHead className="w-[90px]">曝光</TableHead>
-                      <TableHead className="w-[90px]">点击</TableHead>
+                      <TableHead className="w-[100px]">{tx("预览", "Preview")}</TableHead>
+                      <TableHead>{tx("标题", "Title")}</TableHead>
+                      <TableHead className="w-[100px]">{tx("位置", "Position")}</TableHead>
+                      <TableHead className="w-[80px]">{tx("类型", "Type")}</TableHead>
+                      <TableHead className="w-[100px]">{tx("大小", "Size")}</TableHead>
+                      <TableHead className="w-[140px]">{tx("上传时间", "Uploaded At")}</TableHead>
+                      <TableHead className="w-[80px]">{tx("优先级", "Priority")}</TableHead>
+                      <TableHead className="w-[90px]">{tx("曝光", "Impressions")}</TableHead>
+                      <TableHead className="w-[90px]">{tx("点击", "Clicks")}</TableHead>
                       <TableHead className="w-[90px]">CTR</TableHead>
-                      <TableHead className="w-[80px]">状态</TableHead>
-                      <TableHead className="text-right">操作</TableHead>
+                      <TableHead className="w-[80px]">{tx("状态", "Status")}</TableHead>
+                      <TableHead className="text-right">{tx("操作", "Actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -610,7 +623,7 @@ export default function AdsManagementPage() {
                             size="icon"
                             className="h-10 w-10"
                             onClick={() => setViewingAd(ad)}
-                            title="预览"
+                            title={tx("预览", "Preview")}
                           >
                             {ad.type === "image" ? (
                               /* eslint-disable-next-line @next/next/no-img-element */
@@ -656,7 +669,7 @@ export default function AdsManagementPage() {
                               size="icon"
                               className="h-8 w-8"
                               onClick={() => handleToggleStatus(ad)}
-                              title={ad.status === "active" ? "下架" : "上架"}
+                              title={ad.status === "active" ? tx("下架", "Deactivate") : tx("上架", "Activate")}
                             >
                               <Power className="h-4 w-4" />
                             </Button>
@@ -665,7 +678,7 @@ export default function AdsManagementPage() {
                               size="icon"
                               className="h-8 w-8"
                               onClick={() => openEditDialog(ad)}
-                              title="编辑"
+                              title={tx("编辑", "Edit")}
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
@@ -675,20 +688,20 @@ export default function AdsManagementPage() {
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  title="删除"
+                                  title={tx("删除", "Delete")}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>确认删除</AlertDialogTitle>
+                                  <AlertDialogTitle>{tx("确认删除", "Confirm deletion")}</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    确定要删除广告 &quot;{ad.title}&quot; 吗？此操作不可恢复。
+                                    {tx("确定要删除广告", "Delete ad")} &quot;{ad.title}&quot; {tx("吗？此操作不可恢复。", "? This action cannot be undone.")}
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel>取消</AlertDialogCancel>
+                                  <AlertDialogCancel>{tx("取消", "Cancel")}</AlertDialogCancel>
                                   <AlertDialogAction
                                     onClick={() => {
                                       setDeletingAd(ad);
@@ -700,10 +713,10 @@ export default function AdsManagementPage() {
                                     {submitting ? (
                                       <>
                                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                        删除中...
+                                        {tx("删除中...", "Deleting...")}
                                       </>
                                     ) : (
-                                      "删除"
+                                      tx("删除", "Delete")
                                     )}
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
@@ -721,8 +734,8 @@ export default function AdsManagementPage() {
               {total > pageSize && (
                 <div className="flex items-center justify-between mt-4">
                   <div className="text-sm text-muted-foreground">
-                    显示第 {(page - 1) * pageSize + 1} -{" "}
-                    {Math.min(page * pageSize, total)} 条，共 {total} 条
+                    {tx("显示第", "Showing")} {(page - 1) * pageSize + 1} -{" "}
+                    {Math.min(page * pageSize, total)} {tx("条，共", "of")} {total} {tx("条", "items")}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -732,11 +745,11 @@ export default function AdsManagementPage() {
                       disabled={page === 1}
                     >
                       <ChevronLeft className="h-4 w-4 mr-1" />
-                      上一页
+                      {tx("上一页", "Previous")}
                     </Button>
                     <div className="text-sm">
-                      第 <span className="font-medium">{page}</span> /{" "}
-                      <span>{totalPages}</span> 页
+                      {tx("第", "Page")} <span className="font-medium">{page}</span> /{" "}
+                      <span>{totalPages}</span>
                     </div>
                     <Button
                       variant="outline"
@@ -744,7 +757,7 @@ export default function AdsManagementPage() {
                       onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                       disabled={page >= totalPages}
                     >
-                      下一页
+                      {tx("下一页", "Next")}
                       <ChevronRight className="h-4 w-4 ml-1" />
                     </Button>
                   </div>
@@ -765,24 +778,24 @@ export default function AdsManagementPage() {
       }}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingAd ? "编辑广告" : "新建广告"}</DialogTitle>
+            <DialogTitle>{editingAd ? tx("编辑广告", "Edit Ad") : tx("新建广告", "New Ad")}</DialogTitle>
             <DialogDescription>
-              {editingAd ? "修改广告信息和设置" : "创建新的广告内容"}
+              {editingAd ? tx("修改广告信息和设置", "Update ad settings") : tx("创建新的广告内容", "Create new ad content")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="title">广告标题 *</Label>
+                <Label htmlFor="title">{tx("广告标题", "Ad Title")} *</Label>
                 <Input
                   id="title"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="输入广告标题"
+                  placeholder={tx("输入广告标题", "Enter ad title")}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="type">广告类型 *</Label>
+                <Label htmlFor="type">{tx("广告类型", "Ad Type")} *</Label>
                 <Select
                   value={formData.type}
                   onValueChange={(value: any) => setFormData({ ...formData, type: value })}
@@ -791,8 +804,8 @@ export default function AdsManagementPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="image">图片广告</SelectItem>
-                    <SelectItem value="video">视频广告</SelectItem>
+                    <SelectItem value="image">{tx("图片广告", "Image Ad")}</SelectItem>
+                    <SelectItem value="video">{tx("视频广告", "Video Ad")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -800,7 +813,7 @@ export default function AdsManagementPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="position">显示位置 *</Label>
+                <Label htmlFor="position">{tx("显示位置", "Display Position")} *</Label>
                 <Select
                   value={formData.position}
                   onValueChange={(value: any) => setFormData({ ...formData, position: value })}
@@ -809,30 +822,30 @@ export default function AdsManagementPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="top">顶部</SelectItem>
-                    <SelectItem value="bottom">底部</SelectItem>
-                    <SelectItem value="left">左侧</SelectItem>
-                    <SelectItem value="right">右侧</SelectItem>
-                    <SelectItem value="bottom-left">左下角</SelectItem>
-                    <SelectItem value="bottom-right">右下角</SelectItem>
-                    <SelectItem value="sidebar">侧边栏</SelectItem>
+                    <SelectItem value="top">{tx("顶部", "Top")}</SelectItem>
+                    <SelectItem value="bottom">{tx("底部", "Bottom")}</SelectItem>
+                    <SelectItem value="left">{tx("左侧", "Left")}</SelectItem>
+                    <SelectItem value="right">{tx("右侧", "Right")}</SelectItem>
+                    <SelectItem value="bottom-left">{tx("左下角", "Bottom Left")}</SelectItem>
+                    <SelectItem value="bottom-right">{tx("右下角", "Bottom Right")}</SelectItem>
+                    <SelectItem value="sidebar">{tx("侧边栏", "Sidebar")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="priority">优先级</Label>
+                <Label htmlFor="priority">{tx("优先级", "Priority")}</Label>
                 <Input
                   id="priority"
                   type="number"
                   value={formData.priority}
                   onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) || 0 })}
-                  placeholder="数字越大优先级越高"
+                  placeholder={tx("数字越大优先级越高", "Higher number means higher priority")}
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="file">上传文件 *</Label>
+              <Label htmlFor="file">{tx("上传文件", "Upload File")} *</Label>
               <Input
                 id="file"
                 type="file"
@@ -852,18 +865,18 @@ export default function AdsManagementPage() {
               {formData.type === "image" && formData.file && (
                 <div className="mt-2 h-32 rounded border overflow-hidden">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={formData.fileUrl} alt="预览" className="h-full w-full object-cover" />
+                  <img src={formData.fileUrl} alt={tx("预览", "Preview")} className="h-full w-full object-cover" />
                 </div>
               )}
               {formData.fileSize > 0 && (
                 <p className="text-sm text-muted-foreground">
-                  文件大小: {formatFileSize(formData.fileSize)}
+                  {tx("文件大小", "File Size")}: {formatFileSize(formData.fileSize)}
                 </p>
               )}
             </div>
 
             <div className="space-y-2">
-                <Label htmlFor="status">状态</Label>
+                <Label htmlFor="status">{tx("状态", "Status")}</Label>
                 <Select
                   value={formData.status}
                   onValueChange={(value: any) => setFormData({ ...formData, status: value })}
@@ -872,14 +885,14 @@ export default function AdsManagementPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">上架</SelectItem>
-                    <SelectItem value="inactive">下架</SelectItem>
+                    <SelectItem value="active">{tx("上架", "Active")}</SelectItem>
+                    <SelectItem value="inactive">{tx("下架", "Inactive")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
             <div className="space-y-2">
-              <Label htmlFor="linkUrl">跳转链接</Label>
+              <Label htmlFor="linkUrl">{tx("跳转链接", "Target URL")}</Label>
               <Input
                 id="linkUrl"
                 value={formData.linkUrl}
@@ -898,7 +911,7 @@ export default function AdsManagementPage() {
               }}
               disabled={submitting}
             >
-              取消
+              {tx("取消", "Cancel")}
             </Button>
             <Button
               onClick={editingAd ? handleUpdateAd : handleCreateAd}
@@ -907,10 +920,10 @@ export default function AdsManagementPage() {
               {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  {editingAd ? "更新中..." : "创建中..."}
+                  {editingAd ? tx("更新中...", "Updating...") : tx("创建中...", "Creating...")}
                 </>
               ) : (
-                editingAd ? "更新" : "创建"
+                editingAd ? tx("更新", "Update") : tx("创建", "Create")
               )}
             </Button>
           </DialogFooter>
@@ -921,12 +934,12 @@ export default function AdsManagementPage() {
       <Dialog open={!!viewingAd} onOpenChange={() => setViewingAd(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>广告预览</DialogTitle>
+            <DialogTitle>{tx("广告预览", "Ad Preview")}</DialogTitle>
           </DialogHeader>
           {viewingAd && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <h3 className="text-sm font-medium">广告内容</h3>
+                <h3 className="text-sm font-medium">{tx("广告内容", "Ad Content")}</h3>
                 {viewingAd.type === "image" ? (
                   <div className="rounded-lg overflow-hidden border">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -945,29 +958,29 @@ export default function AdsManagementPage() {
 
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-muted-foreground">标题：</span>
+                  <span className="text-muted-foreground">{tx("标题：", "Title:")}</span>
                   <div className="mt-1">{viewingAd.title}</div>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">类型：</span>
+                  <span className="text-muted-foreground">{tx("类型：", "Type:")}</span>
                   <div className="mt-1">{getTypeBadge(viewingAd.type)}</div>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">位置：</span>
+                  <span className="text-muted-foreground">{tx("位置：", "Position:")}</span>
                   <div className="mt-1">
                     <Badge variant="outline">{getPositionLabel(viewingAd.position)}</Badge>
                   </div>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">状态：</span>
+                  <span className="text-muted-foreground">{tx("状态：", "Status:")}</span>
                   <div className="mt-1">{getStatusBadge(viewingAd.status)}</div>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">优先级：</span>
+                  <span className="text-muted-foreground">{tx("优先级：", "Priority:")}</span>
                   <div className="mt-1">{viewingAd.priority}</div>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">跳转链接：</span>
+                  <span className="text-muted-foreground">{tx("跳转链接：", "Target URL:")}</span>
                   <div className="mt-1">
                     {viewingAd.linkUrl ? (
                       <a
@@ -985,25 +998,25 @@ export default function AdsManagementPage() {
                   </div>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">有效期：</span>
+                  <span className="text-muted-foreground">{tx("有效期：", "Validity:")}</span>
                   <div className="mt-1">
                     {formatDate(viewingAd.startDate)} - {formatDate(viewingAd.endDate)}
                   </div>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">创建时间：</span>
+                  <span className="text-muted-foreground">{tx("创建时间：", "Created At:")}</span>
                   <div className="mt-1">{formatDate(viewingAd.created_at)}</div>
                 </div>
               </div>
 
               {(viewingAd.fileUrlCn || viewingAd.fileUrlIntl) && (
                 <div className="space-y-2">
-                  <h3 className="text-sm font-medium">区域化文件</h3>
+                  <h3 className="text-sm font-medium">{tx("区域化文件", "Regional Files")}</h3>
                   <ScrollArea className="h-24 w-full rounded-md border p-4">
                     <div className="space-y-2 text-sm">
                       {viewingAd.fileUrlCn && (
                         <div>
-                          <span className="text-muted-foreground">国内版：</span>
+                          <span className="text-muted-foreground">{tx("国内版：", "CN:")}</span>
                           <a href={viewingAd.fileUrlCn} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline ml-2">
                             {viewingAd.fileUrlCn}
                           </a>
@@ -1011,7 +1024,7 @@ export default function AdsManagementPage() {
                       )}
                       {viewingAd.fileUrlIntl && (
                         <div>
-                          <span className="text-muted-foreground">国际版：</span>
+                          <span className="text-muted-foreground">{tx("国际版：", "INTL:")}</span>
                           <a href={viewingAd.fileUrlIntl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline ml-2">
                             {viewingAd.fileUrlIntl}
                           </a>
@@ -1028,7 +1041,7 @@ export default function AdsManagementPage() {
               variant="outline"
               onClick={() => setViewingAd(null)}
             >
-              关闭
+              {tx("关闭", "Close")}
             </Button>
           </DialogFooter>
         </DialogContent>

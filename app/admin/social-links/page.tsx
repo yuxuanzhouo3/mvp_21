@@ -76,6 +76,19 @@ import {
   Globe,
 } from "lucide-react";
 
+function getRegion(): "CN" | "INTL" {
+  const region =
+    (process.env.NEXT_PUBLIC_DEPLOYMENT_REGION ||
+      process.env.NEXT_PUBLIC_APP_REGION ||
+      "CN")
+      .trim()
+      .toUpperCase();
+  return region === "INTL" ? "INTL" : "CN";
+}
+
+const isIntlRegion = getRegion() === "INTL";
+const tx = (zh: string, en: string) => (isIntlRegion ? en : zh);
+
 // 常用社交平台图标配置
 const SOCIAL_ICONS = [
   { value: "github", label: "GitHub", icon: Github },
@@ -121,10 +134,10 @@ export default function SocialLinksManagementPage() {
       if (result.success && result.data) {
         setLinks(result.data);
       } else {
-        setError(result.error || "加载失败");
+        setError(result.error || tx("加载失败", "Failed to load"));
       }
     } catch (err) {
-      setError("加载社交链接失败");
+      setError(tx("加载社交链接失败", "Failed to load social links"));
     } finally {
       setLoading(false);
     }
@@ -147,10 +160,10 @@ export default function SocialLinksManagementPage() {
         resetForm();
         loadLinks();
       } else {
-        setError(result.error || "创建失败");
+        setError(result.error || tx("创建失败", "Failed to create"));
       }
     } catch (err) {
-      setError("创建失败");
+      setError(tx("创建失败", "Failed to create"));
     } finally {
       setSubmitting(false);
     }
@@ -170,10 +183,10 @@ export default function SocialLinksManagementPage() {
         resetForm();
         loadLinks();
       } else {
-        setError(result.error || "更新失败");
+        setError(result.error || tx("更新失败", "Failed to update"));
       }
     } catch (err) {
-      setError("更新失败");
+      setError(tx("更新失败", "Failed to update"));
     } finally {
       setSubmitting(false);
     }
@@ -189,10 +202,10 @@ export default function SocialLinksManagementPage() {
         setDeletingLink(null);
         loadLinks();
       } else {
-        setError(result.error || "删除失败");
+        setError(result.error || tx("删除失败", "Failed to delete"));
       }
     } catch (err) {
-      setError("删除失败");
+      setError(tx("删除失败", "Failed to delete"));
     } finally {
       setSubmitting(false);
     }
@@ -216,7 +229,7 @@ export default function SocialLinksManagementPage() {
       await updateSocialLinksOrder(updates);
       setLinks(newLinks);
     } catch (err) {
-      setError("更新排序失败");
+      setError(tx("更新排序失败", "Failed to update order"));
     }
   }
 
@@ -238,7 +251,7 @@ export default function SocialLinksManagementPage() {
       await updateSocialLinksOrder(updates);
       setLinks(newLinks);
     } catch (err) {
-      setError("更新排序失败");
+      setError(tx("更新排序失败", "Failed to update order"));
     }
   }
 
@@ -287,19 +300,19 @@ export default function SocialLinksManagementPage() {
       {/* 页头 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">社交链接管理</h1>
+          <h1 className="text-2xl font-bold">{tx("社交链接管理", "Social Links Management")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            管理网站社交媒体链接，共 {links.length} 个链接
+            {tx("管理网站社交媒体链接，共", "Manage social links, total")} {links.length} {tx("个链接", "links")}
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={loadLinks} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            刷新
+            {tx("刷新", "Refresh")}
           </Button>
           <Button onClick={openCreateDialog}>
             <Plus className="h-4 w-4 mr-2" />
-            新建链接
+            {tx("新建链接", "New Link")}
           </Button>
         </div>
       </div>
@@ -314,7 +327,7 @@ export default function SocialLinksManagementPage() {
       {/* 社交链接列表 */}
       <Card>
         <CardHeader>
-          <CardTitle>链接列表</CardTitle>
+          <CardTitle>{tx("链接列表", "Links List")}</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -323,7 +336,7 @@ export default function SocialLinksManagementPage() {
             </div>
           ) : links.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-              暂无社交链接
+              {tx("暂无社交链接", "No social links")}
             </div>
           ) : (
             <div className="space-y-3">
@@ -385,7 +398,7 @@ export default function SocialLinksManagementPage() {
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => setViewingLink(link)}
-                      title="预览"
+                      title={tx("预览", "Preview")}
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
@@ -394,7 +407,7 @@ export default function SocialLinksManagementPage() {
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => openEditDialog(link)}
-                      title="编辑"
+                      title={tx("编辑", "Edit")}
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -404,20 +417,20 @@ export default function SocialLinksManagementPage() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                          title="删除"
+                          title={tx("删除", "Delete")}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>确认删除</AlertDialogTitle>
+                          <AlertDialogTitle>{tx("确认删除", "Confirm deletion")}</AlertDialogTitle>
                           <AlertDialogDescription>
-                            确定要删除社交链接 &quot;{link.title}&quot; 吗？此操作不可恢复。
+                            {tx("确定要删除社交链接", "Delete social link")} &quot;{link.title}&quot; {tx("吗？此操作不可恢复。", "? This action cannot be undone.")}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>取消</AlertDialogCancel>
+                          <AlertDialogCancel>{tx("取消", "Cancel")}</AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() => {
                               setDeletingLink(link);
@@ -429,11 +442,11 @@ export default function SocialLinksManagementPage() {
                             {submitting ? (
                               <>
                                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                删除中...
-                              </>
-                            ) : (
-                              "删除"
-                            )}
+                                        {tx("删除中...", "Deleting...")}
+                                      </>
+                                    ) : (
+                                      tx("删除", "Delete")
+                                    )}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -456,14 +469,14 @@ export default function SocialLinksManagementPage() {
       }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingLink ? "编辑链接" : "新建链接"}</DialogTitle>
+            <DialogTitle>{editingLink ? tx("编辑链接", "Edit Link") : tx("新建链接", "New Link")}</DialogTitle>
             <DialogDescription>
-              {editingLink ? "修改社交链接信息" : "添加新的社交媒体链接"}
+              {editingLink ? tx("修改社交链接信息", "Update social link details") : tx("添加新的社交媒体链接", "Add a new social media link")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="icon">图标 *</Label>
+              <Label htmlFor="icon">{tx("图标", "Icon")} *</Label>
               <Select
                 value={formData.icon}
                 onValueChange={(value) => setFormData({ ...formData, icon: value })}
@@ -488,17 +501,17 @@ export default function SocialLinksManagementPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="title">标题 *</Label>
+              <Label htmlFor="title">{tx("标题", "Title")} *</Label>
               <Input
                 id="title"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="例如：关注我们的 GitHub"
+                placeholder={tx("例如：关注我们的 GitHub", "e.g. Follow our GitHub")}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="url">链接 URL *</Label>
+              <Label htmlFor="url">{tx("链接 URL", "Link URL")} *</Label>
               <Input
                 id="url"
                 value={formData.url}
@@ -508,24 +521,24 @@ export default function SocialLinksManagementPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">描述</Label>
+              <Label htmlFor="description">{tx("描述", "Description")}</Label>
               <Textarea
                 id="description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="简短描述（可选）"
+                placeholder={tx("简短描述（可选）", "Short description (optional)")}
                 rows={2}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="order">排序</Label>
+              <Label htmlFor="order">{tx("排序", "Order")}</Label>
               <Input
                 id="order"
                 type="number"
                 value={formData.order}
                 onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value) || 0 })}
-                placeholder="数字越小越靠前"
+                placeholder={tx("数字越小越靠前", "Smaller numbers appear first")}
               />
             </div>
           </div>
@@ -539,7 +552,7 @@ export default function SocialLinksManagementPage() {
               }}
               disabled={submitting}
             >
-              取消
+              {tx("取消", "Cancel")}
             </Button>
             <Button
               onClick={editingLink ? handleUpdateLink : handleCreateLink}
@@ -548,10 +561,10 @@ export default function SocialLinksManagementPage() {
               {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  {editingLink ? "更新中..." : "创建中..."}
+                  {editingLink ? tx("更新中...", "Updating...") : tx("创建中...", "Creating...")}
                 </>
               ) : (
-                editingLink ? "更新" : "创建"
+                editingLink ? tx("更新", "Update") : tx("创建", "Create")
               )}
             </Button>
           </DialogFooter>
@@ -562,7 +575,7 @@ export default function SocialLinksManagementPage() {
       <Dialog open={!!viewingLink} onOpenChange={() => setViewingLink(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>链接预览</DialogTitle>
+            <DialogTitle>{tx("链接预览", "Link Preview")}</DialogTitle>
           </DialogHeader>
           {viewingLink && (
             <div className="space-y-4">
@@ -582,18 +595,18 @@ export default function SocialLinksManagementPage() {
 
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">图标：</span>
+                  <span className="text-muted-foreground">{tx("图标：", "Icon:")}</span>
                   <span className="flex items-center gap-1">
                     {getIconComponent(viewingLink.icon, "h-4 w-4")}
                     {getIconLabel(viewingLink.icon)}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">排序：</span>
+                  <span className="text-muted-foreground">{tx("排序：", "Order:")}</span>
                   <span>#{viewingLink.order}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">链接：</span>
+                  <span className="text-muted-foreground">{tx("链接：", "Link:")}</span>
                   <a
                     href={viewingLink.url}
                     target="_blank"
@@ -612,7 +625,7 @@ export default function SocialLinksManagementPage() {
               variant="outline"
               onClick={() => setViewingLink(null)}
             >
-              关闭
+              {tx("关闭", "Close")}
             </Button>
           </DialogFooter>
         </DialogContent>

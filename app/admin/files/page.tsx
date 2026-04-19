@@ -89,6 +89,19 @@ import {
   Link as LinkIcon,
 } from "lucide-react";
 
+function getRegion(): "CN" | "INTL" {
+  const region =
+    (process.env.NEXT_PUBLIC_DEPLOYMENT_REGION ||
+      process.env.NEXT_PUBLIC_APP_REGION ||
+      "CN")
+      .trim()
+      .toUpperCase();
+  return region === "INTL" ? "INTL" : "CN";
+}
+
+const isIntlRegion = getRegion() === "INTL";
+const tx = (zh: string, en: string) => (isIntlRegion ? en : zh);
+
 export default function FilesManagementPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -136,10 +149,10 @@ export default function FilesManagementPage() {
       }
 
       if (!adsResult.success && !releasesResult.success && !socialResult.success) {
-        setError(adsResult.error || releasesResult.error || socialResult.error || "加载失败");
+        setError(adsResult.error || releasesResult.error || socialResult.error || tx("加载失败", "Failed to load"));
       }
     } catch (err) {
-      setError("加载文件列表失败");
+      setError(tx("加载文件列表失败", "Failed to load file list"));
     } finally {
       setLoading(false);
     }
@@ -204,10 +217,10 @@ export default function FilesManagementPage() {
         setNewFileName("");
         loadFiles();
       } else {
-        setError(result.error || "重命名失败");
+        setError(result.error || tx("重命名失败", "Rename failed"));
       }
     } catch (err) {
-      setError("重命名失败");
+      setError(tx("重命名失败", "Rename failed"));
     } finally {
       setRenaming(false);
     }
@@ -232,10 +245,10 @@ export default function FilesManagementPage() {
         setDeleteFile(null);
         loadFiles();
       } else {
-        setError(result.error || "删除失败");
+        setError(result.error || tx("删除失败", "Delete failed"));
       }
     } catch (err) {
-      setError("删除失败");
+      setError(tx("删除失败", "Delete failed"));
     } finally {
       setDeleting(false);
     }
@@ -273,10 +286,10 @@ export default function FilesManagementPage() {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
       } else {
-        setError(result.error || "下载失败");
+        setError(result.error || tx("下载失败", "Download failed"));
       }
     } catch (err) {
-      setError("下载失败");
+      setError(tx("下载失败", "Download failed"));
     } finally {
       setDownloading(null);
     }
@@ -332,8 +345,8 @@ export default function FilesManagementPage() {
       return (
         <div className="text-center py-12 text-muted-foreground">
           {source === "cloudbase"
-            ? "暂无文件（CloudBase 文件来自广告记录）"
-            : "暂无文件"}
+            ? tx("暂无文件（CloudBase 文件来自广告记录）", "No files (CloudBase files come from ad records)")
+            : tx("暂无文件", "No files")}
         </div>
       );
     }
@@ -342,11 +355,11 @@ export default function FilesManagementPage() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-16">预览</TableHead>
-            <TableHead>文件名</TableHead>
-            <TableHead className="w-24">大小</TableHead>
-            <TableHead className="w-40">修改时间</TableHead>
-            <TableHead className="w-32">操作</TableHead>
+            <TableHead className="w-16">{tx("预览", "Preview")}</TableHead>
+            <TableHead>{tx("文件名", "File Name")}</TableHead>
+            <TableHead className="w-24">{tx("大小", "Size")}</TableHead>
+            <TableHead className="w-40">{tx("修改时间", "Modified At")}</TableHead>
+            <TableHead className="w-32">{tx("操作", "Actions")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -359,7 +372,7 @@ export default function FilesManagementPage() {
                     type="button"
                     onClick={() => setPreviewFile(file)}
                     className="cursor-pointer hover:opacity-80 transition-opacity"
-                    title="点击预览"
+                    title={tx("点击预览", "Click to preview")}
                   >
                     {fileType === "image" ? (
                       file.source === "cloudbase" ? (
@@ -395,7 +408,7 @@ export default function FilesManagementPage() {
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {file.lastModified
-                    ? new Date(file.lastModified).toLocaleString("zh-CN")
+                    ? new Date(file.lastModified).toLocaleString(isIntlRegion ? "en-US" : "zh-CN")
                     : "-"}
                 </TableCell>
                 <TableCell>
@@ -405,7 +418,7 @@ export default function FilesManagementPage() {
                       variant="ghost"
                       size="icon"
                       onClick={() => setPreviewFile(file)}
-                      title="预览"
+                      title={tx("预览", "Preview")}
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
@@ -416,7 +429,7 @@ export default function FilesManagementPage() {
                       size="icon"
                       onClick={() => handleDownload(file)}
                       disabled={downloading === file.name || (source === "cloudbase" && !file.fileId)}
-                      title="下载"
+                      title={tx("下载", "Download")}
                     >
                       {downloading === file.name ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -431,7 +444,7 @@ export default function FilesManagementPage() {
                         variant="ghost"
                         size="icon"
                         onClick={() => openRenameDialog(file)}
-                        title="重命名"
+                        title={tx("重命名", "Rename")}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -442,7 +455,7 @@ export default function FilesManagementPage() {
                       variant="ghost"
                       size="icon"
                       onClick={() => window.open(file.url, "_blank")}
-                      title="在新窗口打开"
+                      title={tx("在新窗口打开", "Open in new window")}
                     >
                       <ExternalLink className="h-4 w-4" />
                     </Button>
@@ -453,7 +466,7 @@ export default function FilesManagementPage() {
                       size="icon"
                       className="text-red-600 hover:text-red-700 hover:bg-red-50"
                       onClick={() => setDeleteFile(file)}
-                      title="删除"
+                      title={tx("删除", "Delete")}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -500,7 +513,7 @@ export default function FilesManagementPage() {
     if (files.length === 0) {
       return (
         <div className="text-center py-12 text-muted-foreground">
-          暂无应用文件
+          {tx("暂无应用文件", "No app files")}
         </div>
       );
     }
@@ -535,10 +548,10 @@ export default function FilesManagementPage() {
           document.body.removeChild(link);
           URL.revokeObjectURL(url);
         } else {
-          setError(result.error || "下载失败");
+          setError(result.error || tx("下载失败", "Download failed"));
         }
       } catch (err) {
-        setError("下载失败");
+        setError(tx("下载失败", "Download failed"));
       } finally {
         setDownloading(null);
       }
@@ -546,7 +559,7 @@ export default function FilesManagementPage() {
 
     // 处理发布文件删除
     async function handleReleaseDelete(file: ReleaseFile) {
-      if (!confirm(`确定要删除文件 "${file.name}" 吗？此操作将同时删除关联的版本记录。`)) {
+      if (!confirm(isIntlRegion ? `Delete file "${file.name}"? Related release records will also be removed.` : `确定要删除文件 "${file.name}" 吗？此操作将同时删除关联的版本记录。`)) {
         return;
       }
 
@@ -564,10 +577,10 @@ export default function FilesManagementPage() {
         if (result.success) {
           loadFiles();
         } else {
-          setError(result.error || "删除失败");
+          setError(result.error || tx("删除失败", "Delete failed"));
         }
       } catch (err) {
-        setError("删除失败");
+        setError(tx("删除失败", "Delete failed"));
       } finally {
         setDeleting(false);
       }
@@ -577,12 +590,12 @@ export default function FilesManagementPage() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-16">平台</TableHead>
-            <TableHead className="w-24">版本</TableHead>
-            <TableHead>文件名</TableHead>
-            <TableHead className="w-24">大小</TableHead>
-            <TableHead className="w-40">上传时间</TableHead>
-            <TableHead className="w-28">操作</TableHead>
+            <TableHead className="w-16">{tx("平台", "Platform")}</TableHead>
+            <TableHead className="w-24">{tx("版本", "Version")}</TableHead>
+            <TableHead>{tx("文件名", "File Name")}</TableHead>
+            <TableHead className="w-24">{tx("大小", "Size")}</TableHead>
+            <TableHead className="w-40">{tx("上传时间", "Uploaded At")}</TableHead>
+            <TableHead className="w-28">{tx("操作", "Actions")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -604,7 +617,7 @@ export default function FilesManagementPage() {
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {file.lastModified
-                  ? new Date(file.lastModified).toLocaleString("zh-CN")
+                  ? new Date(file.lastModified).toLocaleString(isIntlRegion ? "en-US" : "zh-CN")
                   : "-"}
               </TableCell>
               <TableCell>
@@ -615,7 +628,7 @@ export default function FilesManagementPage() {
                     size="icon"
                     onClick={() => handleReleaseDownload(file)}
                     disabled={downloading === file.name || (source === "cloudbase" && !file.fileId)}
-                    title="下载"
+                    title={tx("下载", "Download")}
                   >
                     {downloading === file.name ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -629,7 +642,7 @@ export default function FilesManagementPage() {
                     variant="ghost"
                     size="icon"
                     onClick={() => window.open(file.url, "_blank")}
-                    title="在新窗口打开"
+                    title={tx("在新窗口打开", "Open in new window")}
                   >
                     <ExternalLink className="h-4 w-4" />
                   </Button>
@@ -641,7 +654,7 @@ export default function FilesManagementPage() {
                     className="text-red-600 hover:text-red-700 hover:bg-red-50"
                     onClick={() => handleReleaseDelete(file)}
                     disabled={deleting}
-                    title="删除"
+                    title={tx("删除", "Delete")}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -659,14 +672,14 @@ export default function FilesManagementPage() {
     if (files.length === 0) {
       return (
         <div className="text-center py-12 text-muted-foreground">
-          暂无图标文件
+          {tx("暂无图标文件", "No icon files")}
         </div>
       );
     }
 
     // 处理社交链接图标文件删除
     async function handleSocialFileDelete(file: SocialLinkFile) {
-      if (!confirm(`确定要删除文件 "${file.name}" 吗？此操作将同时删除关联的社交链接记录。`)) {
+      if (!confirm(isIntlRegion ? `Delete file "${file.name}"? Related social link records will also be removed.` : `确定要删除文件 "${file.name}" 吗？此操作将同时删除关联的社交链接记录。`)) {
         return;
       }
 
@@ -684,10 +697,10 @@ export default function FilesManagementPage() {
         if (result.success) {
           loadFiles();
         } else {
-          setError(result.error || "删除失败");
+          setError(result.error || tx("删除失败", "Delete failed"));
         }
       } catch (err) {
-        setError("删除失败");
+        setError(tx("删除失败", "Delete failed"));
       } finally {
         setDeleting(false);
       }
@@ -697,11 +710,11 @@ export default function FilesManagementPage() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-16">预览</TableHead>
-            <TableHead>文件名</TableHead>
-            <TableHead className="w-24">大小</TableHead>
-            <TableHead className="w-40">创建时间</TableHead>
-            <TableHead className="w-28">操作</TableHead>
+            <TableHead className="w-16">{tx("预览", "Preview")}</TableHead>
+            <TableHead>{tx("文件名", "File Name")}</TableHead>
+            <TableHead className="w-24">{tx("大小", "Size")}</TableHead>
+            <TableHead className="w-40">{tx("创建时间", "Created At")}</TableHead>
+            <TableHead className="w-28">{tx("操作", "Actions")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -714,7 +727,7 @@ export default function FilesManagementPage() {
                   alt={file.name}
                   className="w-12 h-12 object-contain rounded cursor-pointer hover:opacity-80"
                   onClick={() => window.open(file.url, "_blank")}
-                  title="点击预览"
+                  title={tx("点击预览", "Click to preview")}
                 />
               </TableCell>
               <TableCell className="font-mono text-sm truncate max-w-xs">
@@ -725,7 +738,7 @@ export default function FilesManagementPage() {
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {file.lastModified
-                  ? new Date(file.lastModified).toLocaleString("zh-CN")
+                  ? new Date(file.lastModified).toLocaleString(isIntlRegion ? "en-US" : "zh-CN")
                   : "-"}
               </TableCell>
               <TableCell>
@@ -735,7 +748,7 @@ export default function FilesManagementPage() {
                     variant="ghost"
                     size="icon"
                     onClick={() => window.open(file.url, "_blank")}
-                    title="在新窗口打开"
+                    title={tx("在新窗口打开", "Open in new window")}
                   >
                     <ExternalLink className="h-4 w-4" />
                   </Button>
@@ -747,7 +760,7 @@ export default function FilesManagementPage() {
                     className="text-red-600 hover:text-red-700 hover:bg-red-50"
                     onClick={() => handleSocialFileDelete(file)}
                     disabled={deleting}
-                    title="删除"
+                    title={tx("删除", "Delete")}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -765,16 +778,16 @@ export default function FilesManagementPage() {
       {/* 页头 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">文件管理</h1>
+          <h1 className="text-2xl font-bold">{tx("文件管理", "File Management")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            查看和管理当前环境的云存储文件
+            {tx("查看和管理当前环境的云存储文件", "View and manage cloud storage files in this environment")}
           </p>
         </div>
         <Button variant="outline" onClick={loadFiles} disabled={loading}>
           <RefreshCw
             className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`}
           />
-          刷新
+          {tx("刷新", "Refresh")}
         </Button>
       </div>
 
@@ -805,34 +818,34 @@ export default function FilesManagementPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">广告文件</CardTitle>
+              <CardTitle className="text-sm font-medium">{tx("广告文件", "Ad Files")}</CardTitle>
               <ImageIcon className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{adsFiles.length}</div>
-              <p className="text-xs text-muted-foreground">当前环境</p>
+              <p className="text-xs text-muted-foreground">{tx("当前环境", "Current environment")}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">应用文件</CardTitle>
+              <CardTitle className="text-sm font-medium">{tx("应用文件", "App Files")}</CardTitle>
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{releaseFiles.length}</div>
-              <p className="text-xs text-muted-foreground">当前环境</p>
+              <p className="text-xs text-muted-foreground">{tx("当前环境", "Current environment")}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">图标文件</CardTitle>
+              <CardTitle className="text-sm font-medium">{tx("图标文件", "Icon Files")}</CardTitle>
               <LinkIcon className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{socialFiles.length}</div>
-              <p className="text-xs text-muted-foreground">当前环境</p>
+              <p className="text-xs text-muted-foreground">{tx("当前环境", "Current environment")}</p>
             </CardContent>
           </Card>
         </div>
@@ -843,21 +856,21 @@ export default function FilesManagementPage() {
         <TabsList className="grid w-full grid-cols-3 gap-2">
           <TabsTrigger value="ads" className="gap-1">
             <ImageIcon className="h-4 w-4" />
-            广告文件
+            {tx("广告文件", "Ad Files")}
             <Badge variant="secondary" className="ml-1">
               {adsFiles.length}
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="releases" className="gap-1">
             <Package className="h-4 w-4" />
-            应用文件
+            {tx("应用文件", "App Files")}
             <Badge variant="secondary" className="ml-1">
               {releaseFiles.length}
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="social" className="gap-1">
             <LinkIcon className="h-4 w-4" />
-            图标文件
+            {tx("图标文件", "Icon Files")}
             <Badge variant="secondary" className="ml-1">
               {socialFiles.length}
             </Badge>
@@ -869,7 +882,7 @@ export default function FilesManagementPage() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <ImageIcon className="h-5 w-5" />
-                广告文件
+                {tx("广告文件", "Ad Files")}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -889,7 +902,7 @@ export default function FilesManagementPage() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Package className="h-5 w-5" />
-                应用文件
+                {tx("应用文件", "App Files")}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -909,7 +922,7 @@ export default function FilesManagementPage() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <LinkIcon className="h-5 w-5" />
-                社交链接图标
+                {tx("社交链接图标", "Social Link Icons")}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -960,14 +973,14 @@ export default function FilesManagementPage() {
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
                     <FileIcon className="h-16 w-16 mx-auto mb-4" />
-                    <p>此文件类型不支持预览</p>
+                    <p>{tx("此文件类型不支持预览", "This file type cannot be previewed")}</p>
                   </div>
                 )}
               </div>
 
               {/* 文件 URL */}
               <div className="text-sm">
-                <span className="text-muted-foreground">文件地址：</span>
+                <span className="text-muted-foreground">{tx("文件地址：", "File URL:")}</span>
                 <a
                   href={actualPreviewUrl || previewFile.url}
                   target="_blank"
@@ -982,7 +995,7 @@ export default function FilesManagementPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setPreviewFile(null)}>
-              关闭
+              {tx("关闭", "Close")}
             </Button>
             <Button
               variant="outline"
@@ -994,11 +1007,11 @@ export default function FilesManagementPage() {
               ) : (
                 <Download className="h-4 w-4 mr-2" />
               )}
-              下载文件
+              {tx("下载文件", "Download File")}
             </Button>
             <Button onClick={() => window.open(actualPreviewUrl || previewFile?.url, "_blank")}>
               <ExternalLink className="h-4 w-4 mr-2" />
-              在新窗口打开
+              {tx("在新窗口打开", "Open in New Window")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1008,25 +1021,25 @@ export default function FilesManagementPage() {
       <Dialog open={!!renameFile} onOpenChange={(open) => !open && setRenameFile(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>重命名文件</DialogTitle>
+            <DialogTitle>{tx("重命名文件", "Rename File")}</DialogTitle>
             <DialogDescription>
-              输入新的文件名（包含扩展名）
+              {tx("输入新的文件名（包含扩展名）", "Enter a new file name (including extension)")}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>原文件名</Label>
+              <Label>{tx("原文件名", "Original File Name")}</Label>
               <Input value={renameFile?.name || ""} disabled />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="newFileName">新文件名</Label>
+              <Label htmlFor="newFileName">{tx("新文件名", "New File Name")}</Label>
               <Input
                 id="newFileName"
                 value={newFileName}
                 onChange={(e) => setNewFileName(e.target.value)}
-                placeholder="输入新文件名"
+                placeholder={tx("输入新文件名", "Enter new file name")}
               />
             </div>
           </div>
@@ -1039,7 +1052,7 @@ export default function FilesManagementPage() {
                 setNewFileName("");
               }}
             >
-              取消
+              {tx("取消", "Cancel")}
             </Button>
             <Button
               onClick={handleRename}
@@ -1048,10 +1061,10 @@ export default function FilesManagementPage() {
               {renaming ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  重命名中...
+                  {tx("重命名中...", "Renaming...")}
                 </>
               ) : (
-                "确认重命名"
+                tx("确认重命名", "Confirm Rename")
               )}
             </Button>
           </DialogFooter>
@@ -1062,29 +1075,29 @@ export default function FilesManagementPage() {
       <AlertDialog open={!!deleteFile} onOpenChange={(open) => !open && setDeleteFile(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogTitle>{tx("确认删除", "Confirm Deletion")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除文件 &quot;{deleteFile?.name}&quot; 吗？
+              {tx("确定要删除文件", "Delete file")} &quot;{deleteFile?.name}&quot;?
               <br />
               <span className="text-red-600">
-                此操作不可恢复。
+                {tx("此操作不可恢复。", "This action cannot be undone.")}
                 {deleteFile?.source === "cloudbase" && deleteFile?.adId && (
                   <>
                     <br />
-                    同时会删除 CloudBase 中关联的广告记录。
+                    {tx("同时会删除 CloudBase 中关联的广告记录。", "Related ad records in CloudBase will also be removed.")}
                   </>
                 )}
                 {deleteFile?.source === "supabase" && (
                   <>
                     <br />
-                    如果有广告正在使用此文件，将无法显示。
+                    {tx("如果有广告正在使用此文件，将无法显示。", "Ads currently using this file may not render properly.")}
                   </>
                 )}
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>{tx("取消", "Cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-red-600 hover:bg-red-700"
@@ -1093,7 +1106,7 @@ export default function FilesManagementPage() {
               {deleting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                "删除"
+                tx("删除", "Delete")
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

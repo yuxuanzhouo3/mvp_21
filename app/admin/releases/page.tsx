@@ -44,6 +44,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Apple, Download, Eye, EyeOff, Loader2, Monitor, Pencil, Plus, RefreshCw, Smartphone, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+function getRegion(): "CN" | "INTL" {
+  const region =
+    (process.env.NEXT_PUBLIC_DEPLOYMENT_REGION ||
+      process.env.NEXT_PUBLIC_APP_REGION ||
+      "CN")
+      .trim()
+      .toUpperCase();
+  return region === "INTL" ? "INTL" : "CN";
+}
+
+const isIntlRegion = getRegion() === "INTL";
+const tx = (zh: string, en: string) => (isIntlRegion ? en : zh);
+
 const PLATFORMS: Array<{ value: Platform; label: string; icon: React.ReactNode }> = [
   { value: "ios", label: "iOS", icon: <Apple className="h-4 w-4" /> },
   { value: "android", label: "Android", icon: <Smartphone className="h-4 w-4" /> },
@@ -150,12 +163,12 @@ export default function ReleasesManagementPage() {
       if (result.success && result.data) {
         setReleases(result.data);
       } else {
-        const message = result.error || "加载发布版本失败";
+        const message = result.error || tx("加载发布版本失败", "Failed to load releases");
         setError(message);
         toast.error(message);
       }
     } catch (e) {
-      const message = e instanceof Error ? e.message : "加载发布版本失败";
+      const message = e instanceof Error ? e.message : tx("加载发布版本失败", "Failed to load releases");
       setError(message);
       toast.error(message);
     } finally {
@@ -193,13 +206,13 @@ export default function ReleasesManagementPage() {
       const form = new FormData(event.currentTarget);
       const file = form.get("file");
       if (!version.trim()) {
-        const message = "请输入版本号";
+        const message = tx("请输入版本号", "Please enter a version number");
         setError(message);
         toast.error(message);
         return;
       }
       if (!file || !(file instanceof File) || file.size <= 0) {
-        const message = "请选择安装包文件";
+        const message = tx("请选择安装包文件", "Please choose an installer file");
         setError(message);
         toast.error(message);
         return;
@@ -213,7 +226,7 @@ export default function ReleasesManagementPage() {
       const uploadRes = await fetch("/api/upload/release", { method: "POST", body: upload });
       if (!uploadRes.ok) {
         const payload = await uploadRes.json().catch(() => null);
-        const message = payload?.error || "上传安装包失败";
+        const message = payload?.error || tx("上传安装包失败", "Failed to upload installer");
         setError(message);
         toast.error(message);
         return;
@@ -222,7 +235,7 @@ export default function ReleasesManagementPage() {
       const uploadPayload = (await uploadRes.json()) as { fileID?: string; fileUrl?: string };
       const fileRef = uploadPayload.fileID || uploadPayload.fileUrl;
       if (!fileRef) {
-        const message = "上传成功但未返回文件地址";
+        const message = tx("上传成功但未返回文件地址", "Upload succeeded but no file URL was returned");
         setError(message);
         toast.error(message);
         return;
@@ -241,7 +254,7 @@ export default function ReleasesManagementPage() {
 
       const result = await createRelease(payload);
       if (!result.success) {
-        const message = result.error || "创建版本失败";
+        const message = result.error || tx("创建版本失败", "Failed to create release");
         setError(message);
         toast.error(message);
         return;
@@ -250,9 +263,9 @@ export default function ReleasesManagementPage() {
       setDialogOpen(false);
       resetCreateForm();
       await loadData();
-      toast.success("版本已创建");
+      toast.success(tx("版本已创建", "Release created"));
     } catch (e) {
-      const message = e instanceof Error ? e.message : "创建版本失败";
+      const message = e instanceof Error ? e.message : tx("创建版本失败", "Failed to create release");
       setError(message);
       toast.error(message);
     } finally {
@@ -282,7 +295,7 @@ export default function ReleasesManagementPage() {
 
       const result = await updateRelease(editing.id, payload);
       if (!result.success) {
-        const message = result.error || "更新失败";
+        const message = result.error || tx("更新失败", "Update failed");
         setError(message);
         toast.error(message);
         return;
@@ -291,9 +304,9 @@ export default function ReleasesManagementPage() {
       setEditOpen(false);
       setEditing(null);
       await loadData();
-      toast.success("版本已更新");
+      toast.success(tx("版本已更新", "Release updated"));
     } catch (e) {
-      const message = e instanceof Error ? e.message : "更新失败";
+      const message = e instanceof Error ? e.message : tx("更新失败", "Update failed");
       setError(message);
       toast.error(message);
     } finally {
@@ -307,15 +320,15 @@ export default function ReleasesManagementPage() {
     try {
       const result = await deleteRelease(id);
       if (!result.success) {
-        const message = result.error || "删除失败";
+        const message = result.error || tx("删除失败", "Delete failed");
         setError(message);
         toast.error(message);
         return;
       }
       await loadData();
-      toast.success("版本已删除");
+      toast.success(tx("版本已删除", "Release deleted"));
     } catch (e) {
-      const message = e instanceof Error ? e.message : "删除失败";
+      const message = e instanceof Error ? e.message : tx("删除失败", "Delete failed");
       setError(message);
       toast.error(message);
     } finally {
@@ -329,15 +342,15 @@ export default function ReleasesManagementPage() {
     try {
       const result = await toggleReleaseStatus(item.id, !item.is_active);
       if (!result.success) {
-        const message = result.error || "切换状态失败";
+        const message = result.error || tx("切换状态失败", "Failed to toggle status");
         setError(message);
         toast.error(message);
         return;
       }
       await loadData();
-      toast.success(item.is_active ? "版本已停用" : "版本已启用");
+      toast.success(item.is_active ? tx("版本已停用", "Release disabled") : tx("版本已启用", "Release enabled"));
     } catch (e) {
-      const message = e instanceof Error ? e.message : "切换状态失败";
+      const message = e instanceof Error ? e.message : tx("切换状态失败", "Failed to toggle status");
       setError(message);
       toast.error(message);
     } finally {
@@ -349,28 +362,28 @@ export default function ReleasesManagementPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">发布管理</h1>
-          <p className="text-sm text-muted-foreground">管理多平台安装包发布，支持平台变体与启用状态切换。</p>
+          <h1 className="text-2xl font-bold">{tx("发布管理", "Release Management")}</h1>
+          <p className="text-sm text-muted-foreground">{tx("管理多平台安装包发布，支持平台变体与启用状态切换。", "Manage multi-platform release packages with variant and status controls.")}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => void loadData()} disabled={loading}>
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            刷新
+            {tx("刷新", "Refresh")}
           </Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button><Plus className="mr-2 h-4 w-4" />新建版本</Button>
+              <Button><Plus className="mr-2 h-4 w-4" />{tx("新建版本", "New Release")}</Button>
             </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>新建发布版本</DialogTitle>
-                <DialogDescription>上传安装包并创建发布记录。</DialogDescription>
+                <DialogTitle>{tx("新建发布版本", "Create Release")}</DialogTitle>
+                <DialogDescription>{tx("上传安装包并创建发布记录。", "Upload an installer and create a release record.")}</DialogDescription>
               </DialogHeader>
               <form onSubmit={onCreate} className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1"><Label>版本号 *</Label><Input value={version} onChange={(e) => setVersion(e.target.value)} placeholder="例如 1.2.3" /></div>
+                  <div className="space-y-1"><Label>{tx("版本号", "Version")} *</Label><Input value={version} onChange={(e) => setVersion(e.target.value)} placeholder={tx("例如 1.2.3", "e.g. 1.2.3")} /></div>
                   <div className="space-y-1">
-                    <Label>平台 *</Label>
+                    <Label>{tx("平台", "Platform")} *</Label>
                     <Select value={platform} onValueChange={(value) => setPlatform(value as Platform)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>{PLATFORMS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
@@ -380,24 +393,24 @@ export default function ReleasesManagementPage() {
 
                 {VARIANTS[platform].length > 0 ? (
                   <div className="space-y-1">
-                    <Label>变体</Label>
+                    <Label>{tx("变体", "Variant")}</Label>
                     <Select value={variant || "none"} onValueChange={(value) => setVariant(value === "none" ? undefined : (value as Variant))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">默认</SelectItem>
+                        <SelectItem value="none">{tx("默认", "Default")}</SelectItem>
                         {VARIANTS[platform].map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
                 ) : null}
 
-                <div className="space-y-1"><Label>安装包文件 *</Label><Input key={fileInputKey} name="file" type="file" required /></div>
-                <div className="space-y-1"><Label>更新说明</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} /></div>
-                <div className="flex items-center justify-between rounded-md border p-2"><span className="text-sm">立即启用</span><Switch checked={isActive} onCheckedChange={setIsActive} /></div>
-                <div className="flex items-center justify-between rounded-md border p-2"><span className="text-sm">强制更新</span><Switch checked={isMandatory} onCheckedChange={setIsMandatory} /></div>
+                <div className="space-y-1"><Label>{tx("安装包文件", "Installer File")} *</Label><Input key={fileInputKey} name="file" type="file" required /></div>
+                <div className="space-y-1"><Label>{tx("更新说明", "Release Notes")}</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} /></div>
+                <div className="flex items-center justify-between rounded-md border p-2"><span className="text-sm">{tx("立即启用", "Enable Immediately")}</span><Switch checked={isActive} onCheckedChange={setIsActive} /></div>
+                <div className="flex items-center justify-between rounded-md border p-2"><span className="text-sm">{tx("强制更新", "Force Update")}</span><Switch checked={isMandatory} onCheckedChange={setIsMandatory} /></div>
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>取消</Button>
-                  <Button type="submit" disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "创建"}</Button>
+                  <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{tx("取消", "Cancel")}</Button>
+                  <Button type="submit" disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : tx("创建", "Create")}</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -408,13 +421,13 @@ export default function ReleasesManagementPage() {
       {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
 
       <Card>
-        <CardHeader><CardTitle>筛选</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{tx("筛选", "Filters")}</CardTitle></CardHeader>
         <CardContent className="flex gap-3">
-          <Input placeholder="搜索版本/文件/说明" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+          <Input placeholder={tx("搜索版本/文件/说明", "Search version/file/notes")} value={keyword} onChange={(e) => setKeyword(e.target.value)} />
           <Select value={platformFilter} onValueChange={setPlatformFilter}>
-            <SelectTrigger className="w-40"><SelectValue placeholder="平台" /></SelectTrigger>
+            <SelectTrigger className="w-40"><SelectValue placeholder={tx("平台", "Platform")} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部平台</SelectItem>
+              <SelectItem value="all">{tx("全部平台", "All Platforms")}</SelectItem>
               {PLATFORMS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -422,7 +435,7 @@ export default function ReleasesManagementPage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>版本列表（{filtered.length}）</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{tx("版本列表", "Release List")} ({filtered.length})</CardTitle></CardHeader>
         <CardContent>
           {loading ? (
             <div className="py-10 text-center"><Loader2 className="inline h-6 w-6 animate-spin" /></div>
@@ -431,11 +444,11 @@ export default function ReleasesManagementPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>版本</TableHead>
-                  <TableHead>平台</TableHead>
-                  <TableHead>大小</TableHead>
-                  <TableHead>说明</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className="w-44">操作</TableHead>
+                  <TableHead>{tx("平台", "Platform")}</TableHead>
+                  <TableHead>{tx("大小", "Size")}</TableHead>
+                  <TableHead>{tx("说明", "Notes")}</TableHead>
+                  <TableHead>{tx("状态", "Status")}</TableHead>
+                  <TableHead className="w-44">{tx("操作", "Actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -453,8 +466,8 @@ export default function ReleasesManagementPage() {
                     <TableCell className="max-w-[280px] truncate" title={item.release_notes || ""}>{item.release_notes || "-"}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        <Badge variant={item.is_active ? "default" : "outline"}>{item.is_active ? "启用" : "停用"}</Badge>
-                        {item.is_mandatory ? <Badge variant="destructive">强制</Badge> : null}
+                        <Badge variant={item.is_active ? "default" : "outline"}>{item.is_active ? tx("启用", "Enabled") : tx("停用", "Disabled")}</Badge>
+                        {item.is_mandatory ? <Badge variant="destructive">{tx("强制", "Forced")}</Badge> : null}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -490,18 +503,18 @@ export default function ReleasesManagementPage() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>编辑版本</DialogTitle>
-            <DialogDescription>修改更新说明、启用状态和强制更新。</DialogDescription>
+            <DialogTitle>{tx("编辑版本", "Edit Release")}</DialogTitle>
+            <DialogDescription>{tx("修改更新说明、启用状态和强制更新。", "Update notes, status, and force-update flag.")}</DialogDescription>
           </DialogHeader>
           {editing ? (
             <form onSubmit={onSaveEdit} className="space-y-3">
-              <div className="space-y-1"><Label>版本</Label><Input value={`v${editing.version}`} disabled /></div>
-              <div className="space-y-1"><Label>更新说明</Label><Textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} rows={3} /></div>
-              <div className="flex items-center justify-between rounded-md border p-2"><span className="text-sm">启用</span><Switch checked={editActive} onCheckedChange={setEditActive} /></div>
-              <div className="flex items-center justify-between rounded-md border p-2"><span className="text-sm">强制更新</span><Switch checked={editMandatory} onCheckedChange={setEditMandatory} /></div>
+              <div className="space-y-1"><Label>{tx("版本", "Version")}</Label><Input value={`v${editing.version}`} disabled /></div>
+              <div className="space-y-1"><Label>{tx("更新说明", "Release Notes")}</Label><Textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} rows={3} /></div>
+              <div className="flex items-center justify-between rounded-md border p-2"><span className="text-sm">{tx("启用", "Enabled")}</span><Switch checked={editActive} onCheckedChange={setEditActive} /></div>
+              <div className="flex items-center justify-between rounded-md border p-2"><span className="text-sm">{tx("强制更新", "Force Update")}</span><Switch checked={editMandatory} onCheckedChange={setEditMandatory} /></div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>取消</Button>
-                <Button type="submit" disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "保存"}</Button>
+                <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>{tx("取消", "Cancel")}</Button>
+                <Button type="submit" disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : tx("保存", "Save")}</Button>
               </DialogFooter>
             </form>
           ) : null}

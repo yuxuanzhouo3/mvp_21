@@ -63,6 +63,19 @@ import {
   ArrowDownCircle,
 } from "lucide-react";
 
+function getRegion(): "CN" | "INTL" {
+  const region =
+    (process.env.NEXT_PUBLIC_DEPLOYMENT_REGION ||
+      process.env.NEXT_PUBLIC_APP_REGION ||
+      "CN")
+      .trim()
+      .toUpperCase();
+  return region === "INTL" ? "INTL" : "CN";
+}
+
+const isIntlRegion = getRegion() === "INTL";
+const tx = (zh: string, en: string) => (isIntlRegion ? en : zh);
+
 export default function PaymentsManagementPage() {
   // ==================== 状态管理 ====================
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -119,10 +132,10 @@ export default function PaymentsManagementPage() {
         setPayments(result.data.items);
         setTotal(result.data.total);
       } else {
-        setError("error" in result ? result.error : "加载失败");
+        setError("error" in result ? result.error : tx("加载失败", "Failed to load records"));
       }
     } catch (err) {
-      setError("加载支付记录失败");
+      setError(tx("加载支付记录失败", "Failed to load payments"));
     } finally {
       setLoading(false);
     }
@@ -136,7 +149,7 @@ export default function PaymentsManagementPage() {
         setStats(result.data);
       }
     } catch (err) {
-      console.error("加载统计失败:", err);
+      console.error("Failed to load payment stats:", err);
     } finally {
       setStatsLoading(false);
     }
@@ -162,28 +175,28 @@ export default function PaymentsManagementPage() {
         return (
           <Badge variant="default" className="bg-green-600 gap-1">
             <CheckCircle className="h-3 w-3" />
-            已完成
+            {tx("已完成", "Completed")}
           </Badge>
         );
       case "pending":
         return (
           <Badge variant="secondary" className="bg-yellow-600 gap-1">
             <Clock className="h-3 w-3" />
-            待处理
+            {tx("待处理", "Pending")}
           </Badge>
         );
       case "failed":
         return (
           <Badge variant="destructive" className="gap-1">
             <XCircle className="h-3 w-3" />
-            失败
+            {tx("失败", "Failed")}
           </Badge>
         );
       case "refunded":
         return (
           <Badge variant="outline" className="gap-1">
             <ArrowDownCircle className="h-3 w-3" />
-            已退款
+            {tx("已退款", "Refunded")}
           </Badge>
         );
       default:
@@ -213,7 +226,7 @@ export default function PaymentsManagementPage() {
   }
 
   function formatAmount(amount: number, currency: string) {
-    return new Intl.NumberFormat("zh-CN", {
+    return new Intl.NumberFormat(isIntlRegion ? "en-US" : "zh-CN", {
       style: "currency",
       currency: currency.toUpperCase(),
     }).format(amount);
@@ -221,7 +234,7 @@ export default function PaymentsManagementPage() {
 
   function formatDate(dateStr: string | undefined) {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString("zh-CN", {
+    return new Date(dateStr).toLocaleDateString(isIntlRegion ? "en-US" : "zh-CN", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -232,7 +245,7 @@ export default function PaymentsManagementPage() {
 
   function formatDateOnly(dateStr: string | undefined) {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString("zh-CN", {
+    return new Date(dateStr).toLocaleDateString(isIntlRegion ? "en-US" : "zh-CN", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -248,15 +261,15 @@ export default function PaymentsManagementPage() {
       {/* 页头 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">支付记录管理</h1>
+          <h1 className="text-2xl font-bold">{tx("支付记录管理", "Payment Records")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            查看和管理所有支付记录，共 {total} 条记录
+            {tx("查看和管理所有支付记录，共", "Review and manage all payment records,")} {total} {tx("条记录", "records")}
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={loadPayments} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            刷新
+            {tx("刷新", "Refresh")}
           </Button>
         </div>
       </div>
@@ -291,20 +304,20 @@ export default function PaymentsManagementPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  总支付数
+                  {tx("总支付数", "Total Payments")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.total}</div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  总订单数
+                  {tx("总订单数", "Total orders")}
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  本月支付
+                  {tx("本月支付", "This month")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -314,7 +327,7 @@ export default function PaymentsManagementPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  今日支付
+                  {tx("今日支付", "Today")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -324,7 +337,7 @@ export default function PaymentsManagementPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  总收入
+                  {tx("总收入", "Total revenue")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -342,7 +355,7 @@ export default function PaymentsManagementPage() {
         <CardHeader>
           <CardTitle className="text-base font-medium flex items-center gap-2">
             <TrendingUp className="h-4 w-4" />
-            按支付方式统计收入
+            {tx("按支付方式统计收入", "Revenue by payment method")}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -399,7 +412,7 @@ export default function PaymentsManagementPage() {
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="搜索用户邮箱或订单 ID..."
+                placeholder={tx("搜索用户邮箱或订单 ID...", "Search email or order ID...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -422,10 +435,10 @@ export default function PaymentsManagementPage() {
 
             <Select value={filterMethod} onValueChange={setFilterMethod}>
               <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="支付方式" />
+                <SelectValue placeholder={tx("支付方式", "Method")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">全部方式</SelectItem>
+                <SelectItem value="all">{tx("全部方式", "All methods")}</SelectItem>
                 {getAvailablePaymentMethods().map((method) => {
                   const config = getPaymentMethodConfig(method);
                   return (
@@ -439,12 +452,12 @@ export default function PaymentsManagementPage() {
 
             <Select value={filterType} onValueChange={setFilterType}>
               <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="支付类型" />
+                <SelectValue placeholder={tx("支付类型", "Payment type")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">全部类型</SelectItem>
-                <SelectItem value="subscription">订阅</SelectItem>
-                <SelectItem value="tokens">代币</SelectItem>
+                <SelectItem value="all">{tx("全部类型", "All types")}</SelectItem>
+                <SelectItem value="subscription">{tx("订阅", "Subscription")}</SelectItem>
+                <SelectItem value="tokens">{tx("代币", "Tokens")}</SelectItem>
                 <SelectItem value="pro">Pro</SelectItem>
               </SelectContent>
             </Select>
@@ -461,7 +474,7 @@ export default function PaymentsManagementPage() {
                   setFilterType("all");
                 }}
               >
-                清除筛选
+                {tx("清除筛选", "Clear filters")}
               </Button>
             )}
           </div>
@@ -471,7 +484,7 @@ export default function PaymentsManagementPage() {
       {/* 支付记录列表 */}
       <Card>
         <CardHeader>
-          <CardTitle>支付记录列表</CardTitle>
+          <CardTitle>{tx("支付记录列表", "Payment List")}</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -481,8 +494,8 @@ export default function PaymentsManagementPage() {
           ) : filteredPayments.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               {searchQuery || filterStatus !== "all" || filterMethod !== "all" || filterType !== "all"
-                ? "没有符合筛选条件的支付记录"
-                : "暂无支付记录"}
+                ? tx("没有符合筛选条件的支付记录", "No records match current filters")
+                : tx("暂无支付记录", "No payment records yet")}
             </div>
           ) : (
             <>
@@ -516,7 +529,7 @@ export default function PaymentsManagementPage() {
                             </div>
                             <div>
                               <div className="font-medium text-sm">
-                                {payment.user_email || "未知用户"}
+                                {payment.user_email || tx("未知用户", "Unknown user")}
                               </div>
                               <div className="text-xs text-muted-foreground">
                                 ID: {payment.user_id.slice(0, 8)}...
@@ -550,7 +563,7 @@ export default function PaymentsManagementPage() {
                             size="icon"
                             className="h-8 w-8"
                             onClick={() => setViewingPayment(payment)}
-                            title="查看详情"
+                            title={tx("查看详情", "View details")}
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -565,8 +578,8 @@ export default function PaymentsManagementPage() {
               {total > pageSize && (
                 <div className="flex items-center justify-between mt-4">
                   <div className="text-sm text-muted-foreground">
-                    显示第 {(page - 1) * pageSize + 1} -{" "}
-                    {Math.min(page * pageSize, total)} 条，共 {total} 条
+                    {tx("显示第", "Showing")} {(page - 1) * pageSize + 1} -{" "}
+                    {Math.min(page * pageSize, total)} {tx("条，共", "of")} {total} {tx("条", "")}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -576,11 +589,11 @@ export default function PaymentsManagementPage() {
                       disabled={page === 1}
                     >
                       <ChevronLeft className="h-4 w-4 mr-1" />
-                      上一页
+                      {tx("上一页", "Previous")}
                     </Button>
                     <div className="text-sm">
-                      第 <span className="font-medium">{page}</span> /{" "}
-                      <span>{totalPages}</span> 页
+                      {tx("第", "Page")} <span className="font-medium">{page}</span> /{" "}
+                      <span>{totalPages}</span> {tx("页", "")}
                     </div>
                     <Button
                       variant="outline"
@@ -588,7 +601,7 @@ export default function PaymentsManagementPage() {
                       onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                       disabled={page >= totalPages}
                     >
-                      下一页
+                      {tx("下一页", "Next")}
                       <ChevronRight className="h-4 w-4 ml-1" />
                     </Button>
                   </div>
@@ -603,7 +616,7 @@ export default function PaymentsManagementPage() {
       <Dialog open={!!viewingPayment} onOpenChange={() => setViewingPayment(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh]">
           <DialogHeader>
-            <DialogTitle>支付详情</DialogTitle>
+            <DialogTitle>{tx("支付详情", "Payment Details")}</DialogTitle>
           </DialogHeader>
           {viewingPayment && (
             <div className="space-y-6">
@@ -690,7 +703,7 @@ export default function PaymentsManagementPage() {
               variant="outline"
               onClick={() => setViewingPayment(null)}
             >
-	              关闭
+              {tx("关闭", "Close")}
             </Button>
           </DialogFooter>
         </DialogContent>

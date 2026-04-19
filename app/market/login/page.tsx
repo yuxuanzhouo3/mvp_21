@@ -1,18 +1,29 @@
-"use client"
+"use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
-const isIntlRegion = (process.env.NEXT_PUBLIC_DEPLOYMENT_REGION || "").toUpperCase() === "INTL"
+function getRegion(): "CN" | "INTL" {
+  const region =
+    (process.env.NEXT_PUBLIC_DEPLOYMENT_REGION ||
+      process.env.NEXT_PUBLIC_APP_REGION ||
+      "CN")
+      .trim()
+      .toUpperCase();
+
+  return region === "INTL" ? "INTL" : "CN";
+}
+
+const isIntlRegion = getRegion() === "INTL";
 
 const copy = {
   title: isIntlRegion ? "Marketing Console Login" : "营销系统后台登录",
   subtitle: isIntlRegion
     ? "Sign in to access analytics, acquisition, notifications, and fission modules."
-    : "登录后可进入用户分析、获客、通知、裂变四个子系统",
+    : "登录后可进入用户分析、获客、通知和裂变子系统。",
   accountLabel: isIntlRegion ? "Email / Username" : "账号",
   accountPlaceholder: isIntlRegion ? "Enter your email or username" : "请输入账号",
   passwordLabel: isIntlRegion ? "Password" : "密码",
@@ -20,56 +31,59 @@ const copy = {
   submit: isIntlRegion ? "Sign in" : "登录",
   submitting: isIntlRegion ? "Signing in..." : "登录中...",
   defaultError: isIntlRegion ? "Login failed" : "登录失败",
-}
+};
 
 export default function MarketLoginPage() {
-  const router = useRouter()
-  const [username, setUsername] = useState(isIntlRegion ? "" : "admin")
-  const [password, setPassword] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+  const router = useRouter();
+  const [username, setUsername] = useState(isIntlRegion ? "" : "admin");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const submitDisabled = useMemo(() => loading, [loading])
+  const submitDisabled = useMemo(() => loading, [loading]);
 
   useEffect(() => {
     const run = async () => {
-      const response = await fetch("/api/market/auth/session", { cache: "no-store" })
+      const response = await fetch("/api/market/auth/session", { cache: "no-store" });
       if (response.ok) {
-        router.replace("/market")
+        router.replace("/market");
       }
-    }
+    };
 
-    void run()
-  }, [router])
+    void run();
+  }, [router]);
 
   const submit = async (event: FormEvent) => {
-    event.preventDefault()
-    setLoading(true)
-    setError("")
+    event.preventDefault();
+    setLoading(true);
+    setError("");
 
     try {
       const response = await fetch("/api/market/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ username, password }),
-      })
+      });
 
-      const result = await response.json().catch(() => ({}))
+      const result = await response.json().catch(() => ({}));
       if (!response.ok || !result?.success) {
-        throw new Error(result?.error || copy.defaultError)
+        throw new Error(result?.error || copy.defaultError);
       }
 
-      router.replace("/market")
+      router.replace("/market");
     } catch (err: any) {
-      setError(err?.message || copy.defaultError)
+      setError(err?.message || copy.defaultError);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
-      <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 space-y-4">
+      <form
+        onSubmit={submit}
+        className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 space-y-4"
+      >
         <div>
           <h1 className="text-xl font-semibold">{copy.title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{copy.subtitle}</p>
@@ -101,5 +115,5 @@ export default function MarketLoginPage() {
         </Button>
       </form>
     </div>
-  )
+  );
 }

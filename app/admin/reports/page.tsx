@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * 管理后台 - 举报管理页面
@@ -55,6 +55,19 @@ import {
   User,
 } from "lucide-react";
 
+function getRegion(): "CN" | "INTL" {
+  const region =
+    (process.env.NEXT_PUBLIC_DEPLOYMENT_REGION ||
+      process.env.NEXT_PUBLIC_APP_REGION ||
+      "CN")
+      .trim()
+      .toUpperCase();
+  return region === "INTL" ? "INTL" : "CN";
+}
+
+const isIntlRegion = getRegion() === "INTL";
+const tx = (zh: string, en: string) => (isIntlRegion ? en : zh);
+
 // 举报类型定义
 interface Report {
   id: string;
@@ -71,12 +84,12 @@ interface Report {
 }
 
 // 举报类型映射
-const REPORT_TYPES: Record<string, { label: string; color: string }> = {
-  harassment: { label: "骚扰", color: "bg-red-100 text-red-800" },
-  spam: { label: "垃圾信息", color: "bg-yellow-100 text-yellow-800" },
-  inappropriate: { label: "不当内容", color: "bg-purple-100 text-purple-800" },
-  fake_profile: { label: "虚假资料", color: "bg-blue-100 text-blue-800" },
-  other: { label: "其他", color: "bg-gray-100 text-gray-800" },
+const REPORT_TYPES: Record<string, { labelZh: string; labelEn: string; color: string }> = {
+  harassment: { labelZh: "骚扰", labelEn: "Harassment", color: "bg-red-100 text-red-800" },
+  spam: { labelZh: "垃圾信息", labelEn: "Spam", color: "bg-yellow-100 text-yellow-800" },
+  inappropriate: { labelZh: "不当内容", labelEn: "Inappropriate Content", color: "bg-purple-100 text-purple-800" },
+  fake_profile: { labelZh: "虚假资料", labelEn: "Fake Profile", color: "bg-blue-100 text-blue-800" },
+  other: { labelZh: "其他", labelEn: "Other", color: "bg-gray-100 text-gray-800" },
 };
 
 export default function ReportsManagementPage() {
@@ -140,10 +153,10 @@ export default function ReportsManagementPage() {
         setReports(result.data.items);
         setTotal(result.data.total);
       } else {
-        setError(result.error || "加载失败");
+        setError(result.error || tx("加载失败", "Failed to load"));
       }
     } catch (err) {
-      setError("加载举报列表失败");
+      setError(tx("加载举报列表失败", "Failed to load reports"));
     } finally {
       setLoading(false);
     }
@@ -185,10 +198,10 @@ export default function ReportsManagementPage() {
         setProcessingReport(null);
         setAdminNotes("");
       } else {
-        alert(result.error || "操作失败");
+        alert(result.error || tx("操作失败", "Action failed"));
       }
     } catch (err) {
-      alert("操作失败，请重试");
+      alert(tx("操作失败，请重试", "Action failed, please try again"));
     } finally {
       setActionLoading(false);
     }
@@ -201,21 +214,21 @@ export default function ReportsManagementPage() {
         return (
           <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 gap-1">
             <Clock className="h-3 w-3" />
-            待处理
+            {tx("待处理", "Pending")}
           </Badge>
         );
       case "resolved":
         return (
           <Badge variant="default" className="bg-green-600 gap-1">
             <CheckCircle className="h-3 w-3" />
-            已处理
+            {tx("已处理", "Resolved")}
           </Badge>
         );
       case "dismissed":
         return (
           <Badge variant="outline" className="gap-1">
             <XCircle className="h-3 w-3" />
-            已驳回
+            {tx("已驳回", "Dismissed")}
           </Badge>
         );
       default:
@@ -227,14 +240,14 @@ export default function ReportsManagementPage() {
     const config = REPORT_TYPES[type] || REPORT_TYPES.other;
     return (
       <Badge variant="secondary" className={config.color}>
-        {config.label}
+        {isIntlRegion ? config.labelEn : config.labelZh}
       </Badge>
     );
   }
 
   function formatDate(dateStr: string | null | undefined) {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString("zh-CN", {
+    return new Date(dateStr).toLocaleDateString(isIntlRegion ? "en-US" : "zh-CN", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -266,15 +279,15 @@ export default function ReportsManagementPage() {
       {/* 页头 */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">举报管理</h1>
+          <h1 className="text-2xl font-bold">{tx("举报管理", "Reports Management")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            查看和处理用户举报，共 {total} 条记录
+            {tx("查看和处理用户举报，共", "Review and process user reports, total")} {total} {tx("条记录", "records")}
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={loadReports} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            刷新
+            {tx("刷新", "Refresh")}
           </Button>
         </div>
       </div>
@@ -291,7 +304,7 @@ export default function ReportsManagementPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              总举报数
+              {tx("总举报数", "Total Reports")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -301,7 +314,7 @@ export default function ReportsManagementPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              待处理
+              {tx("待处理", "Pending")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -311,7 +324,7 @@ export default function ReportsManagementPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              已处理
+              {tx("已处理", "Resolved")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -321,7 +334,7 @@ export default function ReportsManagementPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              已驳回
+              {tx("已驳回", "Dismissed")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -337,7 +350,7 @@ export default function ReportsManagementPage() {
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="搜索举报人、被举报人或描述..."
+                placeholder={tx("搜索举报人、被举报人或描述...", "Search reporter, reported user, or description...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -346,25 +359,25 @@ export default function ReportsManagementPage() {
 
             <Select value={filterStatus} onValueChange={setFilterStatus}>
               <SelectTrigger className="w-[120px]">
-                <SelectValue placeholder="状态" />
+                <SelectValue placeholder={tx("状态", "Status")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">全部状态</SelectItem>
-                <SelectItem value="pending">待处理</SelectItem>
-                <SelectItem value="resolved">已处理</SelectItem>
-                <SelectItem value="dismissed">已驳回</SelectItem>
+                <SelectItem value="all">{tx("全部状态", "All statuses")}</SelectItem>
+                <SelectItem value="pending">{tx("待处理", "Pending")}</SelectItem>
+                <SelectItem value="resolved">{tx("已处理", "Resolved")}</SelectItem>
+                <SelectItem value="dismissed">{tx("已驳回", "Dismissed")}</SelectItem>
               </SelectContent>
             </Select>
 
             <Select value={filterType} onValueChange={setFilterType}>
               <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="举报类型" />
+                <SelectValue placeholder={tx("举报类型", "Report type")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">全部类型</SelectItem>
+                <SelectItem value="all">{tx("全部类型", "All types")}</SelectItem>
                 {Object.entries(REPORT_TYPES).map(([key, value]) => (
                   <SelectItem key={key} value={key}>
-                    {value.label}
+                    {isIntlRegion ? value.labelEn : value.labelZh}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -381,7 +394,7 @@ export default function ReportsManagementPage() {
                   setFilterType("all");
                 }}
               >
-                清除筛选
+                {tx("清除筛选", "Clear filters")}
               </Button>
             )}
           </div>
@@ -391,7 +404,7 @@ export default function ReportsManagementPage() {
       {/* 举报列表 */}
       <Card>
         <CardHeader>
-          <CardTitle>举报列表</CardTitle>
+          <CardTitle>{tx("举报列表", "Report List")}</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -401,8 +414,8 @@ export default function ReportsManagementPage() {
           ) : filteredReports.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               {searchQuery || filterStatus !== "all" || filterType !== "all"
-                ? "没有符合筛选条件的举报记录"
-                : "暂无举报记录"}
+                ? tx("没有符合筛选条件的举报记录", "No reports match the current filters")
+                : tx("暂无举报记录", "No reports found")}
             </div>
           ) : (
             <>
@@ -411,13 +424,13 @@ export default function ReportsManagementPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[80px]">ID</TableHead>
-                      <TableHead>举报人</TableHead>
-                      <TableHead>被举报人</TableHead>
-                      <TableHead>类型</TableHead>
-                      <TableHead>描述</TableHead>
-                      <TableHead>状态</TableHead>
-                      <TableHead>创建时间</TableHead>
-                      <TableHead className="text-right">操作</TableHead>
+                      <TableHead>{tx("举报人", "Reporter")}</TableHead>
+                      <TableHead>{tx("被举报人", "Reported User")}</TableHead>
+                      <TableHead>{tx("类型", "Type")}</TableHead>
+                      <TableHead>{tx("描述", "Description")}</TableHead>
+                      <TableHead>{tx("状态", "Status")}</TableHead>
+                      <TableHead>{tx("创建时间", "Created At")}</TableHead>
+                      <TableHead className="text-right">{tx("操作", "Actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -465,7 +478,7 @@ export default function ReportsManagementPage() {
                               size="icon"
                               className="h-8 w-8"
                               onClick={() => setViewingReport(report)}
-                              title="查看详情"
+                              title={tx("查看详情", "View details")}
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
@@ -475,7 +488,7 @@ export default function ReportsManagementPage() {
                                 size="icon"
                                 className="h-8 w-8"
                                 onClick={() => setProcessingReport(report)}
-                                title="处理举报"
+                                title={tx("处理举报", "Process report")}
                               >
                                 <MessageSquare className="h-4 w-4" />
                               </Button>
@@ -492,8 +505,8 @@ export default function ReportsManagementPage() {
               {total > pageSize && (
                 <div className="flex items-center justify-between mt-4">
                   <div className="text-sm text-muted-foreground">
-                    显示第 {(page - 1) * pageSize + 1} -{" "}
-                    {Math.min(page * pageSize, total)} 条，共 {total} 条
+                    {tx("显示第", "Showing")} {(page - 1) * pageSize + 1} -{" "}
+                    {Math.min(page * pageSize, total)} {tx("条，共", "of")} {total} {tx("条", "items")}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -503,11 +516,11 @@ export default function ReportsManagementPage() {
                       disabled={page === 1}
                     >
                       <ChevronLeft className="h-4 w-4 mr-1" />
-                      上一页
+                      {tx("上一页", "Previous")}
                     </Button>
                     <div className="text-sm">
-                      第 <span className="font-medium">{page}</span> /{" "}
-                      <span>{totalPages}</span> 页
+                      {tx("第", "Page")} <span className="font-medium">{page}</span> /{" "}
+                      <span>{totalPages}</span>
                     </div>
                     <Button
                       variant="outline"
@@ -515,7 +528,7 @@ export default function ReportsManagementPage() {
                       onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                       disabled={page >= totalPages}
                     >
-                      下一页
+                      {tx("下一页", "Next")}
                       <ChevronRight className="h-4 w-4 ml-1" />
                     </Button>
                   </div>
@@ -530,62 +543,62 @@ export default function ReportsManagementPage() {
       <Dialog open={!!viewingReport} onOpenChange={() => setViewingReport(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh]">
           <DialogHeader>
-            <DialogTitle>举报详情</DialogTitle>
+            <DialogTitle>{tx("举报详情", "Report Details")}</DialogTitle>
           </DialogHeader>
           {viewingReport && (
             <div className="space-y-6">
               {/* 基本信息 */}
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-muted-foreground">举报ID：</span>
+                  <span className="text-muted-foreground">{tx("举报ID：", "Report ID:")}</span>
                   <div className="font-mono text-xs mt-1">{viewingReport.id}</div>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">举报类型：</span>
+                  <span className="text-muted-foreground">{tx("举报类型：", "Type:")}</span>
                   <div className="mt-1">{getTypeBadge(viewingReport.type)}</div>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">举报人ID：</span>
+                  <span className="text-muted-foreground">{tx("举报人ID：", "Reporter ID:")}</span>
                   <div className="font-mono text-xs mt-1">{viewingReport.reporter_id}</div>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">被举报人ID：</span>
+                  <span className="text-muted-foreground">{tx("被举报人ID：", "Reported User ID:")}</span>
                   <div className="font-mono text-xs mt-1">{viewingReport.reported_user_id}</div>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">状态：</span>
+                  <span className="text-muted-foreground">{tx("状态：", "Status:")}</span>
                   <div className="mt-1">{getStatusBadge(viewingReport.status)}</div>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">创建时间：</span>
+                  <span className="text-muted-foreground">{tx("创建时间：", "Created At:")}</span>
                   <div className="mt-1">{formatDate(viewingReport.created_at)}</div>
                 </div>
               </div>
 
               {/* 举报描述 */}
               <div>
-                <span className="text-muted-foreground text-sm">举报描述：</span>
+                <span className="text-muted-foreground text-sm">{tx("举报描述：", "Description:")}</span>
                 <div className="mt-2 p-3 bg-muted rounded-lg text-sm">
-                  {viewingReport.description || "无描述"}
+                  {viewingReport.description || tx("无描述", "No description")}
                 </div>
               </div>
 
               {/* 处理信息 */}
               {viewingReport.status !== "pending" && (
                 <div>
-                  <span className="text-muted-foreground text-sm">处理信息：</span>
+                  <span className="text-muted-foreground text-sm">{tx("处理信息：", "Handling Info:")}</span>
                   <div className="mt-2 p-3 bg-muted rounded-lg text-sm space-y-2">
                     <div>
-                      <span className="text-muted-foreground">处理人：</span>
+                      <span className="text-muted-foreground">{tx("处理人：", "Handled By:")}</span>
                       <span className="font-mono ml-2">{viewingReport.handled_by || "-"}</span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">处理时间：</span>
+                      <span className="text-muted-foreground">{tx("处理时间：", "Handled At:")}</span>
                       <span className="ml-2">{formatDate(viewingReport.handled_at)}</span>
                     </div>
                     {viewingReport.admin_notes && (
                       <div>
-                        <span className="text-muted-foreground">处理备注：</span>
+                        <span className="text-muted-foreground">{tx("处理备注：", "Admin Notes:")}</span>
                         <p className="mt-1">{viewingReport.admin_notes}</p>
                       </div>
                     )}
@@ -599,14 +612,14 @@ export default function ReportsManagementPage() {
               variant="outline"
               onClick={() => setViewingReport(null)}
             >
-              关闭
+              {tx("关闭", "Close")}
             </Button>
             {viewingReport?.status === "pending" && (
               <Button onClick={() => {
                 setViewingReport(null);
                 setProcessingReport(viewingReport);
               }}>
-                处理举报
+                {tx("处理举报", "Process report")}
               </Button>
             )}
           </DialogFooter>
@@ -620,27 +633,27 @@ export default function ReportsManagementPage() {
       }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>处理举报</DialogTitle>
+            <DialogTitle>{tx("处理举报", "Process report")}</DialogTitle>
             <DialogDescription>
-              请选择处理方式，并填写处理备注（可选）
+              {tx("请选择处理方式，并填写处理备注（可选）", "Choose an action and add admin notes (optional)")}
             </DialogDescription>
           </DialogHeader>
           {processingReport && (
             <div className="space-y-4">
               <div className="p-3 bg-muted rounded-lg text-sm">
-                <div className="font-medium mb-1">举报信息</div>
+                <div className="font-medium mb-1">{tx("举报信息", "Report Info")}</div>
                 <div className="text-muted-foreground">
-                  类型：{REPORT_TYPES[processingReport.type]?.label || processingReport.type}
+                  {tx("类型：", "Type:")} {isIntlRegion ? REPORT_TYPES[processingReport.type]?.labelEn : REPORT_TYPES[processingReport.type]?.labelZh || processingReport.type}
                 </div>
                 <div className="text-muted-foreground truncate">
-                  描述：{processingReport.description || "无"}
+                  {tx("描述：", "Description:")} {processingReport.description || tx("无", "N/A")}
                 </div>
               </div>
 
               <div>
-                <label className="text-sm font-medium">处理备注</label>
+                <label className="text-sm font-medium">{tx("处理备注", "Admin Notes")}</label>
                 <Textarea
-                  placeholder="请输入处理备注（可选）"
+                  placeholder={tx("请输入处理备注（可选）", "Enter admin notes (optional)")}
                   value={adminNotes}
                   onChange={(e) => setAdminNotes(e.target.value)}
                   rows={3}
@@ -658,7 +671,7 @@ export default function ReportsManagementPage() {
               }}
               disabled={actionLoading}
             >
-              取消
+              {tx("取消", "Cancel")}
             </Button>
             <Button
               variant="outline"
@@ -670,7 +683,7 @@ export default function ReportsManagementPage() {
               ) : (
                 <XCircle className="h-4 w-4 mr-2" />
               )}
-              驳回
+              {tx("驳回", "Dismiss")}
             </Button>
             <Button
               onClick={() => handleReportAction("resolved")}
@@ -681,7 +694,7 @@ export default function ReportsManagementPage() {
               ) : (
                 <CheckCircle className="h-4 w-4 mr-2" />
               )}
-              处理完成
+              {tx("处理完成", "Mark Resolved")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -689,3 +702,4 @@ export default function ReportsManagementPage() {
     </div>
   );
 }
+

@@ -1,14 +1,16 @@
-import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { requireMarketAdminSession } from "../require-market-session"
-import { AcquisitionClient } from "./acquisition-client"
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { requireMarketAdminSession } from "../require-market-session";
+import { AcquisitionClient } from "./acquisition-client";
+import { resolveDeploymentRegion } from "@/lib/config/deployment-region";
 
-export const runtime = "nodejs"
-export const dynamic = "force-dynamic"
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export default async function MarketAcquisitionPage() {
-  await requireMarketAdminSession()
+  await requireMarketAdminSession();
+  const isIntlRegion = resolveDeploymentRegion() === "INTL";
 
   return (
     <div className="min-h-screen bg-muted/20 px-4 py-4 md:px-8 md:py-6">
@@ -17,7 +19,7 @@ export default async function MarketAcquisitionPage() {
           <Button asChild variant="ghost" size="sm">
             <Link href="/market">
               <ArrowLeft className="mr-2 h-4 w-4" />
-              返回系统导航
+              {isIntlRegion ? "Back to System Navigation" : "返回系统导航"}
             </Link>
           </Button>
         </div>
@@ -25,5 +27,5 @@ export default async function MarketAcquisitionPage() {
         <AcquisitionClient />
       </div>
     </div>
-  )
+  );
 }
