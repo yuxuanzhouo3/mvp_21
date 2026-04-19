@@ -173,6 +173,13 @@ export async function csrfProtection(
     return response;
   }
 
+  // Next.js Server Actions use framework-level CSRF/origin protections and
+  // post back to the page path (for example /admin/login). These requests do
+  // not include our custom csrf-secret/csrf-token pair.
+  if (request.headers.has("next-action")) {
+    return response;
+  }
+
   // 获取CSRF token和secret
   const token = csrfManager.getTokenFromRequest(request);
   const secret = csrfManager.getSecretFromRequest(request);
