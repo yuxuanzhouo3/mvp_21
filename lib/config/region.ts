@@ -10,7 +10,92 @@ export type Region = "CN" | "INTL";
 
 let cachedRegion: Region | null = null;
 
+const DEFAULT_CN_HOSTS = ["morncontract.mornscience.top"];
+const DEFAULT_INTL_HOSTS = ["www.mornhub.quest"];
+
+function normalizeHostCandidate(value: string): string | null {
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return new URL(trimmed).hostname.toLowerCase();
+  } catch {
+    return trimmed.replace(/^https?:\/\//, "").split("/")[0] || null;
+  }
+}
+
+function parseHosts(envValue: string | undefined, fallback: string[]): string[] {
+  const fromEnv = (envValue || "")
+    .split(",")
+    .map((item) => normalizeHostCandidate(item))
+    .filter((item): item is string => Boolean(item));
+
+  if (fromEnv.length > 0) {
+    return fromEnv;
+  }
+
+  return fallback
+    .map((item) => normalizeHostCandidate(item))
+    .filter((item): item is string => Boolean(item));
+}
+
+function hostMatches(hostname: string, candidates: string[]): boolean {
+  return candidates.some(
+    (candidate) => hostname === candidate || hostname.endsWith(`.${candidate}`),
+  );
+}
+
+function resolveRegionFromHostname(hostname: string): Region | null {
+  const normalizedHost = hostname.trim().toLowerCase();
+  if (!normalizedHost) {
+    return null;
+  }
+
+  const cnHosts = parseHosts(
+    process.env.NEXT_PUBLIC_DOMESTIC_HOSTS,
+    DEFAULT_CN_HOSTS,
+  );
+  const intlHosts = parseHosts(
+    process.env.NEXT_PUBLIC_INTL_HOSTS,
+    DEFAULT_INTL_HOSTS,
+  );
+
+  if (hostMatches(normalizedHost, cnHosts)) {
+    return "CN";
+  }
+
+  if (hostMatches(normalizedHost, intlHosts)) {
+    return "INTL";
+  }
+
+  if (normalizedHost.endsWith(".cn")) {
+    return "CN";
+  }
+
+  if (normalizedHost.includes("mornscience.top")) {
+    return "CN";
+  }
+
+  if (normalizedHost.includes("mornhub.quest")) {
+    return "INTL";
+  }
+
+  return null;
+}
+
 function getDeployRegion(): Region {
+  if (typeof window !== "undefined") {
+    const runtimeRegion = resolveRegionFromHostname(
+      window.location.hostname || "",
+    );
+    if (runtimeRegion) {
+      cachedRegion = runtimeRegion;
+      return runtimeRegion;
+    }
+  }
+
   if (!cachedRegion) {
     cachedRegion = currentRegion;
   }

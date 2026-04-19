@@ -1,5 +1,8 @@
 import { describe, expect, test } from "@jest/globals";
-import { readOAuthCallbackError } from "@/lib/auth/oauth-callback";
+import {
+  readOAuthCallbackError,
+  readOAuthCallbackErrorFromSearch,
+} from "@/lib/auth/oauth-callback";
 
 describe("oauth callback error parser", () => {
   test("returns decoded error description from hash fragment", () => {
@@ -17,5 +20,13 @@ describe("oauth callback error parser", () => {
   test("returns undefined for empty fragments", () => {
     expect(readOAuthCallbackError("")).toBeUndefined();
     expect(readOAuthCallbackError("#")).toBeUndefined();
+  });
+
+  test("reads oauth error from query string", () => {
+    expect(
+      readOAuthCallbackErrorFromSearch(
+        "?error=invalid_request&error_description=redirect_uri_mismatch",
+      ),
+    ).toBe("redirect_uri_mismatch");
   });
 });

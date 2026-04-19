@@ -13,7 +13,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { useTranslations } from "@/lib/i18n";
-import { readOAuthCallbackError } from "@/lib/auth/oauth-callback";
+import {
+  readOAuthCallbackError,
+  readOAuthCallbackErrorFromSearch,
+} from "@/lib/auth/oauth-callback";
 
 function AuthCallbackContent() {
   const [error, setError] = useState("");
@@ -49,9 +52,14 @@ function AuthCallbackContent() {
       try {
         const currentHash =
           typeof window !== "undefined" ? window.location.hash : "";
+        const currentSearch =
+          typeof window !== "undefined" ? window.location.search : "";
 
         const oauthError =
-          typeof window !== "undefined" ? readOAuthCallbackError(currentHash) : undefined;
+          typeof window !== "undefined"
+            ? readOAuthCallbackError(currentHash) ||
+              readOAuthCallbackErrorFromSearch(currentSearch)
+            : undefined;
 
         if (oauthError) {
           setError(oauthError);
@@ -96,6 +104,36 @@ function AuthCallbackContent() {
           }
 
           if (session) {
+            try {
+              const { saveSupabaseUserCache, syncSupabaseAuthCookie } = await import(
+                "@/lib/auth/auth-state-manager-intl"
+              );
+              const metadata = session.user.user_metadata || {};
+              const profile = {
+                id: session.user.id,
+                email: session.user.email || "",
+                name:
+                  metadata.displayName ||
+                  metadata.full_name ||
+                  metadata.name ||
+                  "",
+                avatar: metadata.avatar || metadata.avatar_url || "",
+                role: metadata.role || "user",
+                subscription_plan: metadata.subscription_plan,
+                subscription_status: metadata.subscription_status,
+                membership_expires_at: metadata.membership_expires_at,
+                preferences: metadata.preferences,
+              };
+              const expiresInSeconds =
+                typeof session.expires_in === "number" && session.expires_in > 0
+                  ? session.expires_in
+                  : 3600;
+              saveSupabaseUserCache(profile, expiresInSeconds);
+              syncSupabaseAuthCookie(expiresInSeconds, profile.role || "user");
+            } catch (cacheError) {
+              console.warn("[AuthCallback] Failed to prime Supabase auth cache:", cacheError);
+            }
+
             router.replace(buildUrl(postAuthPath));
             return;
           }
