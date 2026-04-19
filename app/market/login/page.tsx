@@ -1,17 +1,35 @@
 "use client"
 
-import { FormEvent, useEffect, useState } from "react"
+import { FormEvent, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+const isIntlRegion = (process.env.NEXT_PUBLIC_DEPLOYMENT_REGION || "").toUpperCase() === "INTL"
+
+const copy = {
+  title: isIntlRegion ? "Marketing Console Login" : "营销系统后台登录",
+  subtitle: isIntlRegion
+    ? "Sign in to access analytics, acquisition, notifications, and fission modules."
+    : "登录后可进入用户分析、获客、通知、裂变四个子系统",
+  accountLabel: isIntlRegion ? "Email / Username" : "账号",
+  accountPlaceholder: isIntlRegion ? "Enter your email or username" : "请输入账号",
+  passwordLabel: isIntlRegion ? "Password" : "密码",
+  passwordPlaceholder: isIntlRegion ? "Enter your password" : "请输入密码",
+  submit: isIntlRegion ? "Sign in" : "登录",
+  submitting: isIntlRegion ? "Signing in..." : "登录中...",
+  defaultError: isIntlRegion ? "Login failed" : "登录失败",
+}
+
 export default function MarketLoginPage() {
   const router = useRouter()
-  const [username, setUsername] = useState("admin")
+  const [username, setUsername] = useState(isIntlRegion ? "" : "admin")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+
+  const submitDisabled = useMemo(() => loading, [loading])
 
   useEffect(() => {
     const run = async () => {
@@ -21,7 +39,7 @@ export default function MarketLoginPage() {
       }
     }
 
-    run()
+    void run()
   }, [router])
 
   const submit = async (event: FormEvent) => {
@@ -38,12 +56,12 @@ export default function MarketLoginPage() {
 
       const result = await response.json().catch(() => ({}))
       if (!response.ok || !result?.success) {
-        throw new Error(result?.error || "Login failed")
+        throw new Error(result?.error || copy.defaultError)
       }
 
       router.replace("/market")
     } catch (err: any) {
-      setError(err?.message || "Login failed")
+      setError(err?.message || copy.defaultError)
     } finally {
       setLoading(false)
     }
@@ -53,24 +71,33 @@ export default function MarketLoginPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 space-y-4">
         <div>
-          <h1 className="text-xl font-semibold">营销系统后台登录</h1>
-          <p className="mt-1 text-sm text-muted-foreground">登录后可进入用户分析、获客、通知、裂变四个子系统</p>
+          <h1 className="text-xl font-semibold">{copy.title}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{copy.subtitle}</p>
         </div>
 
         <div className="space-y-2">
-          <Label>用户名</Label>
-          <Input value={username} onChange={(event) => setUsername(event.target.value)} />
+          <Label>{copy.accountLabel}</Label>
+          <Input
+            value={username}
+            placeholder={copy.accountPlaceholder}
+            onChange={(event) => setUsername(event.target.value)}
+          />
         </div>
 
         <div className="space-y-2">
-          <Label>密码</Label>
-          <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+          <Label>{copy.passwordLabel}</Label>
+          <Input
+            type="password"
+            value={password}
+            placeholder={copy.passwordPlaceholder}
+            onChange={(event) => setPassword(event.target.value)}
+          />
         </div>
 
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-        <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? "登录中..." : "登录"}
+        <Button type="submit" className="w-full" disabled={submitDisabled}>
+          {loading ? copy.submitting : copy.submit}
         </Button>
       </form>
     </div>

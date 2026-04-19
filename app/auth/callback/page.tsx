@@ -20,7 +20,7 @@ function AuthCallbackContent() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { language } = useLanguage();
+  const { language, deploymentRegion } = useLanguage();
   const t = useTranslations(language);
   const text = t.authCallbackPage;
 
@@ -82,18 +82,37 @@ function AuthCallbackContent() {
           }
         }
 
-        const { getAuthClient } = await import("@/lib/auth/client");
-        const sessionResult = await getAuthClient().getSession();
+        if (deploymentRegion === "INTL") {
+          const { supabase } = await import("@/lib/integrations/supabase");
+          const {
+            data: { session },
+            error: sessionError,
+          } = await supabase.auth.getSession();
 
-        if (sessionResult.error) {
-          setError(sessionResult.error.message);
-          setLoading(false);
-          return;
-        }
+          if (sessionError) {
+            setError(sessionError.message);
+            setLoading(false);
+            return;
+          }
 
-        if (sessionResult.data.session) {
-          router.replace(buildUrl(postAuthPath));
-          return;
+          if (session) {
+            router.replace(buildUrl(postAuthPath));
+            return;
+          }
+        } else {
+          const { getAuthClient } = await import("@/lib/auth/client");
+          const sessionResult = await getAuthClient().getSession();
+
+          if (sessionResult.error) {
+            setError(sessionResult.error.message);
+            setLoading(false);
+            return;
+          }
+
+          if (sessionResult.data.session) {
+            router.replace(buildUrl(postAuthPath));
+            return;
+          }
         }
 
         setError(text.authFailed);
@@ -106,7 +125,7 @@ function AuthCallbackContent() {
     };
 
     void handleAuthCallback();
-  }, [buildUrl, postAuthPath, router, text]);
+  }, [buildUrl, deploymentRegion, postAuthPath, router, text]);
 
   if (loading) {
     return (

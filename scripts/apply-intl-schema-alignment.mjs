@@ -3,8 +3,15 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import dotenv from "dotenv";
 
-const REQUIRED_MIGRATION = "20260418_intl_schema_full_alignment.sql";
+const REQUIRED_MIGRATION = "20260419_intl_admin_console_alignment.sql";
 const REQUIRED_TABLES = [
+  "admins",
+  "system_logs",
+  "system_config",
+  "orders",
+  "advertisements",
+  "social_links",
+  "releases",
   "contract_templates",
   "subscriptions",
   "payments",

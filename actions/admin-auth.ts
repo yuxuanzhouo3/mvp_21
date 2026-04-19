@@ -9,7 +9,7 @@
 
 import { headers } from "next/headers";
 import { adminLogin, adminLogout as authLogout } from "@/lib/admin/auth";
-import { requireAdminSession } from "@/lib/admin/session";
+import { clearAdminSessionCookie, requireAdminSession } from "@/lib/admin/session";
 import { redirect } from "next/navigation";
 
 // ==================== 类型定义 ====================
@@ -22,6 +22,7 @@ export interface LoginResult {
 export interface ChangePasswordResult {
   success: boolean;
   error?: string;
+  reLoginRequired?: boolean;
 }
 
 export interface CurrentAdmin {
@@ -114,7 +115,15 @@ export async function changePasswordAction(formData: FormData): Promise<ChangePa
     const { changePassword } = await import("@/lib/admin/auth");
     const result = await changePassword(session.adminId, currentPassword, newPassword);
 
-    return result;
+    if (!result.success) {
+      return result;
+    }
+
+    await clearAdminSessionCookie();
+    return {
+      success: true,
+      reLoginRequired: true,
+    };
   } catch (error: any) {
     console.error("[changePasswordAction] failed:", {
       message: error?.message,

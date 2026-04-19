@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/admin/session";
 import { isChinaRegion } from "@/lib/config/region";
 import { CloudBaseConnector } from "@/lib/cloudbase/connector";
-import { getSupabaseAdmin } from "@/lib/integrations/supabase-admin";
+import { ensureSupabaseStorageBucket, getSupabaseAdmin } from "@/lib/integrations/supabase-admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
 
     console.log("[UPLOAD RELEASE] Using Supabase Storage", { finalName });
     const supabase = getSupabaseAdmin();
+    await ensureSupabaseStorageBucket("releases", { public: true });
     const { error: uploadError } = await supabase.storage
       .from("releases")
       .upload(finalName, file, {

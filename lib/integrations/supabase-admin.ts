@@ -6,6 +6,8 @@ import { assertSupabaseRuntimeEnv } from "@/lib/config/supabase-runtime";
 // Do not import this module into client components.
 
 let supabaseAdminInstance: ReturnType<typeof createClient> | null = null;
+const ensuredBuckets = new Set<string>();
+const ensuringBuckets = new Map<string, Promise<void>>();
 
 export function getSupabaseAdmin() {
   if (supabaseAdminInstance) {
@@ -58,3 +60,68 @@ export const supabaseAdmin = new Proxy({} as any, {
     return admin[prop as keyof typeof admin];
   },
 });
+
+export async function ensureSupabaseStorageBucket(
+  bucketName: string,
+  options?: { public?: boolean; fileSizeLimit?: string; allowedMimeTypes?: string[] },
+) {
+  if (!bucketName) {
+    throw new Error("Bucket name is required.");
+  }
+
+  if (ensuredBuckets.has(bucketName)) {
+    return;
+  }
+
+  const inFlight = ensuringBuckets.get(bucketName);
+  if (inFlight) {
+    await inFlight;
+    return;
+  }
+
+  const task = (async () => {
+    const admin = getSupabaseAdmin() as any;
+    const desiredPublic = options?.public ?? true;
+
+    const { data: existingBucket, error: getError } = await admin.storage.getBucket(bucketName);
+    if (!getError && existingBucket) {
+      ensuredBuckets.add(bucketName);
+      return;
+    }
+
+    const errorMessage = String(getError?.message || "").toLowerCase();
+    const statusCode = Number(getError?.statusCode || getError?.status || 0);
+    const isNotFound = statusCode === 404 || errorMessage.includes("not found");
+
+    if (!isNotFound && getError) {
+      throw getError;
+    }
+
+    const { error: createError } = await admin.storage.createBucket(bucketName, {
+      public: desiredPublic,
+      fileSizeLimit: options?.fileSizeLimit,
+      allowedMimeTypes: options?.allowedMimeTypes,
+    });
+
+    if (createError) {
+      const createMsg = String(createError.message || "").toLowerCase();
+      const alreadyExists =
+        createMsg.includes("already exists") ||
+        createMsg.includes("duplicate") ||
+        createMsg.includes("conflict");
+
+      if (!alreadyExists) {
+        throw createError;
+      }
+    }
+
+    ensuredBuckets.add(bucketName);
+  })();
+
+  ensuringBuckets.set(bucketName, task);
+  try {
+    await task;
+  } finally {
+    ensuringBuckets.delete(bucketName);
+  }
+}

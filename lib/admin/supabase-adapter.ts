@@ -1871,28 +1871,51 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
   async listStorageFiles(): Promise<StorageFile[]> {
     console.log('[SupabaseAdapter] 获取存储文件列表');
 
-    const { data, error } = await this.supabase
-      .storage
-      .from('admin-files')
-      .list();
+    const files: StorageFile[] = [];
+    const visited = new Set<string>();
+    const maxDepth = 6;
 
-    if (error) {
-      console.error('[SupabaseAdapter] 获取文件列表失败:', error);
-      throw new Error(`获取文件列表失败: ${error.message}`);
-    }
+    const walk = async (prefix = "", depth = 0): Promise<void> => {
+      if (depth > maxDepth) return;
+      if (visited.has(prefix)) return;
+      visited.add(prefix);
 
-    const storageEntries = (data ?? []) as Array<{
-      name: string;
-      created_at?: string;
-      metadata?: { size?: number; lastModified?: string };
-    }>;
-    const files: StorageFile[] = storageEntries.map((file) => ({
-      name: file.name,
-      url: this.supabase.storage.from('admin-files').getPublicUrl(file.name).data.publicUrl,
-      size: file.metadata?.size,
-      lastModified: file.metadata?.lastModified || file.created_at,
-      source: 'supabase' as const,
-    }));
+      const { data, error } = await this.supabase.storage
+        .from('admin-files')
+        .list(prefix, { limit: 1000 });
+
+      if (error) {
+        console.error('[SupabaseAdapter] 获取文件列表失败:', { prefix, error });
+        throw new Error(`获取文件列表失败: ${error.message}`);
+      }
+
+      const entries = (data ?? []) as Array<{
+        id?: string | null;
+        name: string;
+        created_at?: string;
+        metadata?: { size?: number; lastModified?: string } | null;
+      }>;
+
+      for (const entry of entries) {
+        const currentPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+        const isDirectory = !entry.id && !entry.metadata;
+
+        if (isDirectory) {
+          await walk(currentPath, depth + 1);
+          continue;
+        }
+
+        files.push({
+          name: currentPath,
+          url: this.supabase.storage.from('admin-files').getPublicUrl(currentPath).data.publicUrl,
+          size: entry.metadata?.size,
+          lastModified: entry.metadata?.lastModified || entry.created_at,
+          source: 'supabase' as const,
+        });
+      }
+    };
+
+    await walk();
 
     console.log('[SupabaseAdapter] 获取到', files.length, '个文件');
     return files;
@@ -1956,10 +1979,11 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
     const base64 = Buffer.from(arrayBuffer).toString('base64');
 
     console.log('[SupabaseAdapter] 文件下载成功');
+    const downloadName = fileName.split('/').pop() || fileName;
     return {
       data: base64,
       contentType: data.type,
-      fileName: fileName,
+      fileName: downloadName,
     };
   }
 }

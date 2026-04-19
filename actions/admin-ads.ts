@@ -4,7 +4,7 @@ import { isChinaRegion } from '@/lib/config/region';
 import { getDatabaseAdapter } from '@/lib/admin/database';
 import { requireAdminSession } from '@/lib/admin/session';
 import { CloudBaseConnector } from '@/lib/cloudbase/connector';
-import { getSupabaseAdmin } from '@/lib/integrations/supabase-admin';
+import { ensureSupabaseStorageBucket, getSupabaseAdmin } from '@/lib/integrations/supabase-admin';
 import type {
   Advertisement,
   CreateAdData,
@@ -66,6 +66,7 @@ async function uploadAdFile(file: File): Promise<{ fileUrl: string; fileSize: nu
   }
 
   const supabaseAdmin = getSupabaseAdmin();
+  await ensureSupabaseStorageBucket('admin-files', { public: true });
   const uploadBuffer = Buffer.from(await file.arrayBuffer());
   const { error: uploadError } = await supabaseAdmin.storage
     .from('admin-files')

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { changePasswordAction } from "@/actions/admin-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Lock, CheckCircle } from "lucide-react";
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -35,6 +37,11 @@ export default function SettingsPage() {
       setSuccess(true);
       // 清空表单
       form.reset();
+      if (result.reLoginRequired) {
+        setTimeout(() => {
+          router.replace("/admin/login");
+        }, 800);
+      }
     } else {
       setError(result.error || "修改失败");
     }
