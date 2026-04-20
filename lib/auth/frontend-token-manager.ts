@@ -3,6 +3,7 @@ import {
   getStoredAuthState,
   getValidAccessToken,
 } from "@/lib/auth/auth-state-manager";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { clearSupabaseUserCache } from "@/lib/auth/auth-state-manager-intl";
 import { isChinaRegion } from "@/lib/config/region";
 import { supabase } from "@/lib/integrations/supabase";
@@ -409,7 +410,8 @@ class TokenManager {
     try {
       const {
         data: { subscription },
-      } = supabase.auth.onAuthStateChange((event, session) => {
+      } = supabase.auth.onAuthStateChange(
+        (event: AuthChangeEvent, session: Session | null) => {
         if (event === "SIGNED_OUT") {
           this.clearIntlAuthState();
           window.dispatchEvent(new CustomEvent("token-expired"));
@@ -419,7 +421,8 @@ class TokenManager {
         if (session?.access_token) {
           window.dispatchEvent(new CustomEvent("token-refreshed"));
         }
-      });
+        },
+      );
       this.authSubscription = subscription;
     } catch (error) {
       console.warn("[TokenManager] Failed to setup auth state bridge:", error);
