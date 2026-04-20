@@ -8,7 +8,8 @@ function t(zh: string, en: string) {
   return isChinaRegion() ? zh : en;
 }
 
-function buildIntlTimeoutFallbackAnalysis(content: string) {
+function buildDegradedFallbackAnalysis(content: string) {
+  const isCn = isChinaRegion();
   const normalized = content.trim();
   const shortSummary =
     normalized.length > 240 ? `${normalized.slice(0, 240)}...` : normalized;
@@ -25,32 +26,36 @@ function buildIntlTimeoutFallbackAnalysis(content: string) {
     confidence: 0.35,
     partyA: {
       name: "",
-      role: "Party A",
+      role: isCn ? "甲方" : "Party A",
       identified: false,
     },
     partyB: {
       name: "",
-      role: "Party B",
+      role: isCn ? "乙方" : "Party B",
       identified: false,
     },
     keyTerms: [
       {
         type: "scope",
-        label: "Collaboration scope",
-        value: shortSummary || "To be completed manually",
+        label: isCn ? "合作范围" : "Collaboration scope",
+        value: shortSummary || (isCn ? "请手动补充" : "To be completed manually"),
         source: "fallback-parser",
         confidence: 0.4,
-        suggestion: "Please refine obligations, deliverables, and acceptance criteria.",
+        suggestion: isCn
+          ? "请补充双方义务、交付内容与验收标准。"
+          : "Please refine obligations, deliverables, and acceptance criteria.",
       },
       ...(amountMatch
         ? [
             {
               type: "amount",
-              label: "Amount",
+              label: isCn ? "金额" : "Amount",
               value: amountMatch[0],
               source: "fallback-parser",
               confidence: 0.55,
-              suggestion: "Please confirm total amount, payment schedule, and tax terms.",
+              suggestion: isCn
+                ? "请确认总金额、付款节点与税费约定。"
+                : "Please confirm total amount, payment schedule, and tax terms.",
             },
           ]
         : []),
@@ -58,44 +63,55 @@ function buildIntlTimeoutFallbackAnalysis(content: string) {
         ? [
             {
               type: "timeline",
-              label: "Timeline",
+              label: isCn ? "时间节点" : "Timeline",
               value: dateMatch[0],
               source: "fallback-parser",
               confidence: 0.5,
-              suggestion: "Please verify start date, milestones, and final delivery date.",
+              suggestion: isCn
+                ? "请确认开始日期、里程碑与最终交付日期。"
+                : "Please verify start date, milestones, and final delivery date.",
             },
           ]
         : []),
     ],
-    summary:
-      "OpenAI request timed out. A fallback draft analysis was generated. Please review and complete key terms before finalizing.",
+    summary: isCn
+      ? "DashScope 服务暂时不可用，已生成降级分析草稿。请在定稿前补全并确认关键条款。"
+      : "DashScope service is temporarily unavailable. A fallback draft analysis was generated. Please review and complete key terms before finalizing.",
     riskAlerts: [
       {
         severity: "medium",
-        issue: "AI timeout fallback in use",
-        impact: "Some contract fields may be incomplete or generic.",
-        suggestion:
-          "Manually verify parties, payment amount, timeline, breach terms, and governing law before generating final contract text.",
+        issue: isCn ? "当前使用 AI 降级分析" : "AI degraded fallback in use",
+        impact: isCn
+          ? "部分合同字段可能不完整或较为通用。"
+          : "Some contract fields may be incomplete or generic.",
+        suggestion: isCn
+          ? "生成正式合同前，请手动核对主体信息、金额、时间节点、违约责任与适用法律。"
+          : "Manually verify parties, payment amount, timeline, breach terms, and governing law before generating final contract text.",
       },
     ],
     missingInfo: [
       {
-        item: "Explicit parties' legal names",
+        item: isCn ? "双方完整法定名称" : "Explicit parties' legal names",
         importance: "high",
       },
       {
-        item: "Payment milestones and due dates",
+        item: isCn ? "付款节点与到期日" : "Payment milestones and due dates",
         importance: "high",
       },
       {
-        item: "Acceptance criteria and delivery scope",
+        item: isCn ? "验收标准与交付范围" : "Acceptance criteria and delivery scope",
         importance: "high",
       },
     ],
-    professionalAdvice: [
-      "Use this fallback only as a starting point.",
-      "Confirm all legal and commercial terms with both parties.",
-    ],
+    professionalAdvice: isCn
+      ? [
+          "降级分析仅可作为起草起点使用。",
+          "请与双方确认全部法律与商务条款后再签署。",
+        ]
+      : [
+          "Use this fallback only as a starting point.",
+          "Confirm all legal and commercial terms with both parties.",
+        ],
   };
 }
 
@@ -266,7 +282,7 @@ export async function POST(request: NextRequest) {
             : "dashscope_unavailable_fallback";
         return NextResponse.json({
           success: true,
-          data: buildIntlTimeoutFallbackAnalysis(fallbackContent),
+          data: buildDegradedFallbackAnalysis(fallbackContent),
           meta: {
             degraded: true,
             reason: fallbackReason,

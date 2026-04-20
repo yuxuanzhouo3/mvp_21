@@ -107,6 +107,14 @@ function ImportContent() {
       );
     }
 
+    if (analysisResult?.meta?.degraded) {
+      toast.warning(
+        isEn
+          ? "AI primary service is unavailable. Switched to degraded mode (you can continue editing the draft)."
+          : "AI 主服务不可用，当前已切换降级模式（可继续编辑草稿）。",
+      );
+    }
+
     const { analysisResult: enrichedAnalysis, activeCompanyProfile } =
       await prepareDraftAnalysisForCurrentUser(analysisResult.data);
     const draftTitle = deriveDraftTitle(enrichedAnalysis);
