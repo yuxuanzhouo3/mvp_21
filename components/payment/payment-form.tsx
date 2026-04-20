@@ -19,6 +19,7 @@ import { getAuthClient } from "@/lib/auth/client";
 import { RegionType } from "@/lib/architecture-modules/core/types";
 import { paymentRouter } from "@/lib/architecture-modules/layers/third-party/payment/router";
 import { useTranslations } from "@/lib/i18n";
+import { getPricingByMethod, type PaymentMethod } from "@/lib/payment/payment-config";
 import { toast } from "@/hooks/use-toast";
 
 interface PaymentFormProps {
@@ -63,9 +64,15 @@ export function PaymentForm({
 
   const paymentRequestRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const deploymentRegion =
+    process.env.NEXT_PUBLIC_DEPLOYMENT_REGION === "INTL" ? "INTL" : "CN";
+  const isIntlDeployment = deploymentRegion === "INTL";
 
   const regionMethods = paymentRouter.getAvailableMethods(region);
-  const availableMethods = paymentConfig?.availableMethods ?? regionMethods;
+  const resolvedMethods = paymentConfig?.availableMethods ?? regionMethods;
+  const availableMethods = isIntlDeployment
+    ? resolvedMethods.filter((method) => method === "stripe")
+    : resolvedMethods;
   const unavailableReasons = regionMethods
     .map((method) => ({
       method,
@@ -128,6 +135,12 @@ export function PaymentForm({
     }
   }, [availableMethods, selectedMethod]);
 
+  useEffect(() => {
+    if (!selectedMethod && availableMethods.length === 1) {
+      setSelectedMethod(availableMethods[0]);
+    }
+  }, [availableMethods, selectedMethod]);
+
   const handlePayment = async () => {
     if (!selectedMethod) {
       onError(t.payment.selectPaymentMethod);
@@ -153,6 +166,10 @@ export function PaymentForm({
     setIsProcessing(true);
 
     try {
+      const canonicalPricing = getPricingByMethod(selectedMethod as PaymentMethod);
+      const canonicalAmount = canonicalPricing[billingCycle];
+      const canonicalCurrency = canonicalPricing.currency;
+
       try {
         localStorage.setItem(
           "pending_payment",
@@ -160,8 +177,8 @@ export function PaymentForm({
             planType: planId,
             billingCycle,
             userId,
-            amount,
-            currency,
+            amount: canonicalAmount,
+            currency: canonicalCurrency,
             description,
             idempotencyKey,
           }),
@@ -190,8 +207,8 @@ export function PaymentForm({
         headers,
         body: JSON.stringify({
           method: selectedMethod,
-          amount,
-          currency,
+          amount: canonicalAmount,
+          currency: canonicalCurrency,
           description,
           planType: planId,
           billingCycle,

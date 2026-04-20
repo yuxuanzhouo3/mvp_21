@@ -15,7 +15,6 @@ import { useLanguage } from "@/components/language-provider";
 import { useUser } from "@/components/user-context";
 import { useToast } from "@/hooks/use-toast";
 import { RegionType } from "@/lib/architecture-modules/core/types";
-import { isChinaRegion } from "@/lib/config/region";
 import { useTranslations } from "@/lib/i18n";
 import { getAmountByCurrency } from "@/lib/payment/payment-config";
 
@@ -51,8 +50,11 @@ function PaymentPageContent() {
   const [activeTab, setActiveTab] = useState("plans");
 
   const currentPlan = user?.subscription_plan || "free";
-  const region = isChinaRegion() ? RegionType.CHINA : RegionType.USA;
-  const currency = isChinaRegion() ? "CNY" : "USD";
+  const deploymentRegion =
+    process.env.NEXT_PUBLIC_DEPLOYMENT_REGION === "INTL" ? "INTL" : "CN";
+  const isCnDeployment = deploymentRegion === "CN";
+  const region = isCnDeployment ? RegionType.CHINA : RegionType.USA;
+  const currency = isCnDeployment ? "CNY" : "USD";
   const requestedPlan = searchParams.get("plan");
   const requestedCycle = searchParams.get("cycle");
   const requestedTab = searchParams.get("tab");

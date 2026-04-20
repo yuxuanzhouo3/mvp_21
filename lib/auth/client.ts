@@ -1,6 +1,5 @@
 import { getAuth } from "@/lib/auth/adapter";
 import { resolveUserRole } from "@/lib/auth/user-role";
-import { isChinaRegion } from "@/lib/config/region";
 
 export interface AuthUser {
   id: string;
@@ -871,7 +870,13 @@ class CloudBaseAuthClient implements AuthClient {
 }
 
 function createAuthClient(): AuthClient {
-  if (isChinaRegion()) {
+  const envRegion =
+    process.env.NEXT_PUBLIC_DEPLOYMENT_REGION?.toUpperCase() === "INTL"
+      ? "INTL"
+      : "CN";
+  const useChinaAuth = envRegion === "CN";
+
+  if (useChinaAuth) {
     console.log("[Auth Client] Using CloudBase auth client");
     return new CloudBaseAuthClient();
   }
