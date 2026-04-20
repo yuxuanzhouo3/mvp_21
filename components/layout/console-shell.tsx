@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { isChinaRegion } from "@/lib/config/region";
 
 interface ConsoleCrumb {
   label: string;
@@ -33,6 +34,7 @@ export function ConsoleShell({
   children,
 }: ConsoleShellProps) {
   const lastIndex = crumbs.length - 1;
+  const disableAutoScroll = !isChinaRegion();
 
   return (
     <>
@@ -50,7 +52,11 @@ export function ConsoleShell({
                     </BreadcrumbPage>
                   ) : crumb.href ? (
                     <BreadcrumbLink asChild>
-                      <Link href={crumb.href} className="max-w-[9rem] truncate sm:max-w-none">
+                      <Link
+                        href={crumb.href}
+                        scroll={disableAutoScroll ? false : undefined}
+                        className="max-w-[9rem] truncate sm:max-w-none"
+                      >
                         {crumb.label}
                       </Link>
                     </BreadcrumbLink>

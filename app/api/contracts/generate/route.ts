@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { generateContract } from "@/lib/ai";
+import { ContractAIError, generateContract } from "@/lib/ai";
 import { type AIAnalysisResult } from "@/lib/ai/types";
 import {
   loadChinaAccountProfile,
@@ -14,6 +14,173 @@ import { buildMembershipEntitlements } from "@/lib/membership/policy";
 
 function t(zh: string, en: string) {
   return isChinaRegion() ? zh : en;
+}
+
+function parseBudget(name: string, fallback: number, min: number, max: number) {
+  const raw = process.env[name];
+  const parsed = Number.parseInt(raw || "", 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function getGenerateRouteTimeoutMs() {
+  const routeBudget = parseBudget("AI_GENERATE_ROUTE_BUDGET_MS", 45_000, 100, 180_000);
+  const totalBudget = parseBudget("AI_GENERATE_TOTAL_ROUTE_BUDGET_MS", 55_000, 200, 180_000);
+  const safetyBuffer = parseBudget("AI_GENERATE_ROUTE_SAFETY_BUFFER_MS", 3_000, 0, 30_000);
+  const effective = Math.max(100, Math.min(routeBudget, totalBudget - safetyBuffer));
+  return effective;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, reason: string) {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(reason));
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+function isTimeoutLikeError(error: unknown) {
+  if (error instanceof ContractAIError) {
+    const message = (error.message || "").toLowerCase();
+    return (
+      error.code === "AI_TIMEOUT" ||
+      error.code === "AI_PROVIDER_TIMEOUT" ||
+      message.includes("timeout") ||
+      message.includes("timed out")
+    );
+  }
+
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return message.includes("timeout") || message.includes("timed out");
+  }
+
+  return false;
+}
+
+function mapContractTypeLabel(contractType: string | undefined) {
+  const type = (contractType || "custom").toLowerCase();
+  if (isChinaRegion()) {
+    switch (type) {
+      case "labor":
+        return "劳动合同";
+      case "service":
+        return "服务合同";
+      case "cooperation":
+        return "合作协议";
+      case "nda":
+        return "保密协议";
+      case "freelance":
+        return "自由职业合同";
+      case "tech":
+      case "software":
+        return "技术开发合同";
+      default:
+        return "商事合同";
+    }
+  }
+
+  switch (type) {
+    case "labor":
+      return "Employment Contract";
+    case "service":
+      return "Service Agreement";
+    case "cooperation":
+      return "Cooperation Agreement";
+    case "nda":
+      return "NDA";
+    case "freelance":
+      return "Freelance Agreement";
+    case "tech":
+    case "software":
+      return "Technology Development Agreement";
+    default:
+      return "Business Contract";
+  }
+}
+
+function buildFallbackContractFromAnalysis(analysisResult: AIAnalysisResult) {
+  const contractType = analysisResult.contractType || "custom";
+  const contractLabel = mapContractTypeLabel(contractType);
+  const keyTerms = Array.isArray(analysisResult.keyTerms)
+    ? analysisResult.keyTerms
+        .map((item) => {
+          const label = typeof item?.label === "string" ? item.label.trim() : "";
+          const value = typeof item?.value === "string" ? item.value.trim() : "";
+          return label && value ? `${label}: ${value}` : "";
+        })
+        .filter(Boolean)
+    : [];
+
+  const partyAName =
+    analysisResult.partyA?.name || (isChinaRegion() ? "待补充甲方信息" : "Party A (to be completed)");
+  const partyBName =
+    analysisResult.partyB?.name || (isChinaRegion() ? "待补充乙方信息" : "Party B (to be completed)");
+
+  return {
+    title: isChinaRegion() ? `${contractLabel}（草稿）` : `${contractLabel} (Draft)`,
+    contractType,
+    sections: [
+      {
+        id: "section-1",
+        title: isChinaRegion() ? "1. 合同主体" : "1. Parties",
+        content: isChinaRegion()
+          ? `甲方：${partyAName}\n乙方：${partyBName}`
+          : `Party A: ${partyAName}\nParty B: ${partyBName}`,
+        order: 1,
+        editable: true,
+      },
+      {
+        id: "section-2",
+        title: isChinaRegion() ? "2. 合作内容与关键条款" : "2. Scope and Key Terms",
+        content:
+          keyTerms.length > 0
+            ? keyTerms.map((item) => `- ${item}`).join("\n")
+            : isChinaRegion()
+              ? "请补充合作范围、交付内容、验收标准等关键信息。"
+              : "Please complete key scope details, deliverables, and acceptance criteria.",
+        order: 2,
+        editable: true,
+      },
+      {
+        id: "section-3",
+        title: isChinaRegion() ? "3. 付款与时间安排" : "3. Payment and Timeline",
+        content:
+          (typeof analysisResult.summary === "string" && analysisResult.summary.trim()) ||
+          (isChinaRegion()
+            ? "请补充金额、付款节点、起止日期与违约责任。"
+            : "Please complete amount, milestones, timeline, and breach terms."),
+        order: 3,
+        editable: true,
+      },
+    ],
+    disclaimer: isChinaRegion()
+      ? "当前为 AI 超时降级草稿，请在发送签署前完成法律与业务复核。"
+      : "This is a degraded draft due to AI timeout. Please complete legal and business review before signing.",
+    signature: {
+      partyA: {
+        name: isChinaRegion() ? "【待补充：甲方名称】" : "[To be completed: Party A]",
+        title: isChinaRegion() ? "甲方（盖章）" : "Party A (Signature / Seal)",
+      },
+      partyB: {
+        name: isChinaRegion() ? "【待补充：乙方名称】" : "[To be completed: Party B]",
+        title: isChinaRegion() ? "乙方（签字/盖章）" : "Party B (Signature / Seal)",
+      },
+    },
+  };
 }
 
 async function requireCurrentUser(request: NextRequest) {
@@ -105,6 +272,7 @@ async function requireCurrentUser(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  let analysisResultForFallback: AIAnalysisResult | null = null;
   try {
     const auth = await requireCurrentUser(request);
     if ("error" in auth) {
@@ -127,6 +295,7 @@ export async function POST(request: NextRequest) {
       templateVersion?: number;
       customFields?: Record<string, string>;
     };
+    analysisResultForFallback = analysisResult ?? null;
 
     if (!analysisResult || !analysisResult.contractType) {
       return NextResponse.json(
@@ -162,7 +331,9 @@ export async function POST(request: NextRequest) {
     let resolvedTemplateVersion = templateVersion;
 
     if ((!resolvedTemplateContent || !resolvedTemplateContent.trim()) && templateId) {
-      const template = await getDashboardTemplateById(auth.userId, templateId).catch(() => null);
+      const template = await getDashboardTemplateById(auth.userId, templateId).catch(
+        () => null,
+      );
       if (template?.content) {
         resolvedTemplateName = template.name;
         resolvedTemplateContent = template.content;
@@ -170,14 +341,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const contract = await generateContract({
-      analysisResult,
-      templateId,
-      templateName: resolvedTemplateName,
-      templateContent: resolvedTemplateContent,
-      templateVersion: resolvedTemplateVersion,
-      customFields,
-    });
+    const timeoutMs = getGenerateRouteTimeoutMs();
+    const contract = await withTimeout(
+      generateContract({
+        analysisResult,
+        templateId,
+        templateName: resolvedTemplateName,
+        templateContent: resolvedTemplateContent,
+        templateVersion: resolvedTemplateVersion,
+        customFields,
+      }),
+      timeoutMs,
+      `AI generation route timeout after ${timeoutMs}ms`,
+    );
 
     return NextResponse.json({
       success: true,
@@ -185,6 +361,22 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Generate contract failed:", error);
+
+    if (isTimeoutLikeError(error)) {
+      if (analysisResultForFallback && analysisResultForFallback.contractType) {
+        return NextResponse.json({
+          success: true,
+          data: buildFallbackContractFromAnalysis(analysisResultForFallback),
+          meta: {
+            degraded: true,
+            reason:
+              error instanceof Error
+                ? error.message
+                : "AI generation route timeout",
+          },
+        });
+      }
+    }
 
     if (error instanceof Error && error.message.includes("API")) {
       return NextResponse.json(

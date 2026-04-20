@@ -93,6 +93,22 @@ function validateSourceEnv(targetName, envEntries) {
     }
   }
 
+  if (targetName === "intl") {
+    if (!hasValue(envEntries, "OPENAI_API_KEY")) {
+      errors.push("OPENAI_API_KEY is required for INTL deployment");
+    }
+
+    const openaiBaseUrl = (envEntries.get("OPENAI_BASE_URL") || "").trim().toLowerCase();
+    if (
+      openaiBaseUrl &&
+      (openaiBaseUrl.includes("dashscope") || openaiBaseUrl.includes("aliyuncs.com"))
+    ) {
+      errors.push(
+        "OPENAI_BASE_URL points to DashScope. Use https://api.openai.com/v1 (or a compatible OpenAI proxy endpoint) for INTL deployment.",
+      );
+    }
+  }
+
   return { errors };
 }
 

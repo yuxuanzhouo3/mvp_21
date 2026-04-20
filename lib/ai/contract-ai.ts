@@ -4,6 +4,8 @@ import OpenAI from "openai";
 import { isChinaRegion } from "@/lib/config/region";
 import {
   getDashScopeBaseUrl,
+  getOpenAIBaseUrl,
+  getOpenAIModel,
   getQwenModel,
 } from "@/lib/config/runtime-env";
 import type {
@@ -41,7 +43,7 @@ import {
 } from "./prompts/experts";
 
 type AILanguage = AnalyzePromptLanguage & GeneratePromptLanguage;
-type AIProvider = "dashscope";
+type AIProvider = "dashscope" | "openai";
 
 export class ContractAIError extends Error {
   code: string;
@@ -69,7 +71,29 @@ function hasDashScope() {
   return Boolean(process.env.DASHSCOPE_API_KEY?.trim());
 }
 
+function hasOpenAI() {
+  return Boolean(process.env.OPENAI_API_KEY?.trim());
+}
+
+function hasProvider(provider: AIProvider) {
+  if (provider === "openai") {
+    return hasOpenAI();
+  }
+  return hasDashScope();
+}
+
+function getProviderKeyName(provider: AIProvider) {
+  return provider === "openai" ? "OPENAI_API_KEY" : "DASHSCOPE_API_KEY";
+}
+
 function getAIClientByProvider(provider: AIProvider): OpenAI {
+  if (provider === "openai") {
+    return new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      baseURL: getOpenAIBaseUrl(),
+    });
+  }
+
   return new OpenAI({
     apiKey: process.env.DASHSCOPE_API_KEY,
     baseURL: getDashScopeBaseUrl(),
@@ -77,6 +101,9 @@ function getAIClientByProvider(provider: AIProvider): OpenAI {
 }
 
 function getModelByProvider(provider: AIProvider): string {
+  if (provider === "openai") {
+    return getOpenAIModel();
+  }
   return getQwenModel();
 }
 
@@ -103,7 +130,7 @@ function mapProviderError(error: unknown, provider: AIProvider): ContractAIError
 
   if (status === 401 || status === 403) {
     return new ContractAIError(
-      `DashScope API key is unavailable: ${message}`,
+      `${getProviderKeyName(provider)} is unavailable: ${message}`,
       "AI_KEY_UNAVAILABLE",
       503,
       provider,
@@ -117,7 +144,7 @@ function mapProviderError(error: unknown, provider: AIProvider): ContractAIError
     normalizedMessage.includes("authentication")
   ) {
     return new ContractAIError(
-      `DashScope API key is unavailable: ${message}`,
+      `${getProviderKeyName(provider)} is unavailable: ${message}`,
       "AI_KEY_UNAVAILABLE",
       503,
       provider,
@@ -135,26 +162,40 @@ function mapProviderError(error: unknown, provider: AIProvider): ContractAIError
 async function runWithProviderFallback<T>(
   task: (context: { provider: AIProvider; client: OpenAI; model: string }) => Promise<T>,
 ): Promise<T> {
-  const provider: AIProvider = "dashscope";
+  const providers: AIProvider[] = isChinaRegion() ? ["dashscope"] : ["openai"];
+  let lastError: ContractAIError | null = null;
 
-  if (!hasDashScope()) {
-    throw new ContractAIError(
-      "DASHSCOPE_API_KEY is unavailable",
-      "AI_KEY_UNAVAILABLE",
+  for (const provider of providers) {
+    if (!hasProvider(provider)) {
+      lastError = new ContractAIError(
+        `${getProviderKeyName(provider)} is unavailable`,
+        "AI_KEY_UNAVAILABLE",
+        503,
+        provider,
+      );
+      continue;
+    }
+
+    try {
+      return await task({
+        provider,
+        client: getAIClientByProvider(provider),
+        model: getModelByProvider(provider),
+      });
+    } catch (error) {
+      lastError = mapProviderError(error, provider);
+    }
+  }
+
+  throw (
+    lastError ||
+    new ContractAIError(
+      "No AI provider is configured",
+      "AI_NOT_CONFIGURED",
       503,
-      provider,
-    );
-  }
-
-  try {
-    return await task({
-      provider,
-      client: getAIClientByProvider(provider),
-      model: getModelByProvider(provider),
-    });
-  } catch (error) {
-    throw mapProviderError(error, provider);
-  }
+      providers[0],
+    )
+  );
 }
 
 function normalizeContractType(contractType: unknown): ContractType | "custom" {

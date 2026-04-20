@@ -26,6 +26,9 @@ function AuthCallbackContent() {
   const { language, deploymentRegion } = useLanguage();
   const t = useTranslations(language);
   const text = t.authCallbackPage;
+  const envRegion =
+    process.env.NEXT_PUBLIC_DEPLOYMENT_REGION === "INTL" ? "INTL" : "CN";
+  const isIntlRegion = deploymentRegion === "INTL" || envRegion === "INTL";
 
   const requestedRedirect = searchParams.get("redirect");
   const normalizedRedirect = requestedRedirect?.split("?")[0] || "";
@@ -90,8 +93,45 @@ function AuthCallbackContent() {
           }
         }
 
-        if (deploymentRegion === "INTL") {
+        if (isIntlRegion) {
           const { supabase } = await import("@/lib/integrations/supabase");
+          const code =
+            typeof window !== "undefined"
+              ? new URLSearchParams(currentSearch).get("code")
+              : null;
+
+          if (code) {
+            const {
+              data: { session: existingSession },
+              error: existingSessionError,
+            } = await supabase.auth.getSession();
+
+            if (existingSessionError) {
+              setError(existingSessionError.message);
+              setLoading(false);
+              return;
+            }
+
+            if (!existingSession) {
+              const { error: exchangeError } =
+                await supabase.auth.exchangeCodeForSession(code);
+              if (exchangeError) {
+                const {
+                  data: { session: retriedSession },
+                  error: retrySessionError,
+                } = await supabase.auth.getSession();
+
+                if (retrySessionError || !retriedSession) {
+                  setError(
+                    retrySessionError?.message || exchangeError.message,
+                  );
+                  setLoading(false);
+                  return;
+                }
+              }
+            }
+          }
+
           const {
             data: { session },
             error: sessionError,
@@ -134,7 +174,9 @@ function AuthCallbackContent() {
               console.warn("[AuthCallback] Failed to prime Supabase auth cache:", cacheError);
             }
 
-            router.replace(buildUrl(postAuthPath));
+            router.replace(buildUrl(postAuthPath), {
+              scroll: isIntlRegion ? false : undefined,
+            });
             return;
           }
         } else {
@@ -148,7 +190,9 @@ function AuthCallbackContent() {
           }
 
           if (sessionResult.data.session) {
-            router.replace(buildUrl(postAuthPath));
+            router.replace(buildUrl(postAuthPath), {
+              scroll: isIntlRegion ? false : undefined,
+            });
             return;
           }
         }
@@ -163,7 +207,7 @@ function AuthCallbackContent() {
     };
 
     void handleAuthCallback();
-  }, [buildUrl, deploymentRegion, postAuthPath, router, text]);
+  }, [buildUrl, isIntlRegion, postAuthPath, router, text]);
 
   if (loading) {
     return (
@@ -202,7 +246,11 @@ function AuthCallbackContent() {
 
           <div className="mt-4 text-center">
             <button
-              onClick={() => router.push(buildUrl("/auth"))}
+              onClick={() =>
+                router.push(buildUrl("/auth"), {
+                  scroll: isIntlRegion ? false : undefined,
+                })
+              }
               className="text-blue-600 hover:text-blue-800 underline"
             >
               {text.backToLogin}

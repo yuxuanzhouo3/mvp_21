@@ -96,6 +96,29 @@ function AuthPageContent() {
     return "/dashboard";
   }, [requestedRedirect]);
   const postAuthUrl = useMemo(() => buildUrl(postAuthPath), [buildUrl, postAuthPath]);
+  const authOrigin = useMemo(() => {
+    if (typeof window === "undefined") return "";
+
+    const currentOrigin = window.location.origin;
+    if (region === RegionType.CHINA) {
+      return currentOrigin;
+    }
+
+    const host = window.location.hostname.toLowerCase();
+    if (host === "localhost" || host === "127.0.0.1") {
+      return currentOrigin;
+    }
+
+    if (config.appUrl) {
+      try {
+        return new URL(config.appUrl).origin;
+      } catch {
+        return currentOrigin;
+      }
+    }
+
+    return currentOrigin;
+  }, [config.appUrl, region]);
 
   useEffect(() => {
     if (!configLoading) {
@@ -312,7 +335,7 @@ function AuthPageContent() {
           password,
           options: {
             data: { name: email.split("@")[0] },
-            emailRedirectTo: `${window.location.origin}${buildUrl("/auth/callback", { redirect: postAuthPath })}`,
+            emailRedirectTo: `${authOrigin}${buildUrl("/auth/callback", { redirect: postAuthPath })}`,
           },
         });
         if (err) throw err;
@@ -338,7 +361,7 @@ function AuthPageContent() {
     }
     setLoading(true);
     try {
-      const redirectTo = `${window.location.origin}${buildUrl("/auth/callback", { redirect: postAuthPath })}`;
+      const redirectTo = `${authOrigin}${buildUrl("/auth/callback", { redirect: postAuthPath })}`;
       let err: Error | null = null;
 
       if (region !== RegionType.CHINA) {
@@ -405,7 +428,7 @@ function AuthPageContent() {
       } else {
         const { error: err } = await authClient.signInWithOtp({
           email,
-          options: { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}${buildUrl("/auth", { mode: "signin" })}` },
+          options: { shouldCreateUser: false, emailRedirectTo: `${authOrigin}${buildUrl("/auth", { mode: "signin" })}` },
         });
         if (err) throw err;
       }

@@ -1,5 +1,6 @@
 import type { AIAnalysisResult } from "@/lib/ai/types";
 import { tokenManager } from "@/lib/auth/frontend-token-manager";
+import { isChinaRegion } from "@/lib/config/region";
 import type { UnifiedCompanyProfile } from "@/lib/data/unified-models";
 
 export interface ActiveCompanyProfileSnapshot {
@@ -53,13 +54,38 @@ export function createActiveCompanyProfileSnapshot(
 export function buildCompanyProfileContactSummary(
   profile: ActiveCompanyProfileSnapshot,
 ) {
+  const isCn = isChinaRegion();
   const segments = [
-    profile.contactPerson ? `联系人: ${profile.contactPerson}` : "",
-    profile.contactPhone ? `电话: ${profile.contactPhone}` : "",
-    profile.contactEmail ? `邮箱: ${profile.contactEmail}` : "",
-    profile.address ? `地址: ${profile.address}` : "",
-    profile.legalPerson ? `法定代表人: ${profile.legalPerson}` : "",
-    profile.creditCode ? `统一社会信用代码: ${profile.creditCode}` : "",
+    profile.contactPerson
+      ? isCn
+        ? `联系人: ${profile.contactPerson}`
+        : `Contact: ${profile.contactPerson}`
+      : "",
+    profile.contactPhone
+      ? isCn
+        ? `电话: ${profile.contactPhone}`
+        : `Phone: ${profile.contactPhone}`
+      : "",
+    profile.contactEmail
+      ? isCn
+        ? `邮箱: ${profile.contactEmail}`
+        : `Email: ${profile.contactEmail}`
+      : "",
+    profile.address
+      ? isCn
+        ? `地址: ${profile.address}`
+        : `Address: ${profile.address}`
+      : "",
+    profile.legalPerson
+      ? isCn
+        ? `法定代表人: ${profile.legalPerson}`
+        : `Legal Representative: ${profile.legalPerson}`
+      : "",
+    profile.creditCode
+      ? isCn
+        ? `统一社会信用代码: ${profile.creditCode}`
+        : `Registration Code: ${profile.creditCode}`
+      : "",
   ].filter(Boolean);
 
   return segments.join(" | ");
@@ -81,7 +107,7 @@ export function applyActiveCompanyProfileToAnalysis(
     partyA: {
       ...currentPartyA,
       name: profile.companyName,
-      role: currentPartyA.role || "甲方",
+      role: currentPartyA.role || (isChinaRegion() ? "甲方" : "Party A"),
       company: profile.companyName,
       position: currentPartyA.position || profile.legalPerson || undefined,
       contact: contactSummary || currentPartyA.contact || undefined,

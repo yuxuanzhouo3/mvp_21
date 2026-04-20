@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/sidebar";
 import { normalizeAvatarSrc } from "@/lib/account/avatar";
 import { getAppDisplayName } from "@/lib/config/deployment.config";
+import { isChinaRegion } from "@/lib/config/region";
 import { useTranslations } from "@/lib/i18n";
 
 const consoleItems = [
@@ -64,6 +65,7 @@ export function AppSidebar() {
   const { user, signOut } = useUser();
   const isEn = language === "en";
   const appName = getAppDisplayName();
+  const disableAutoScroll = !isChinaRegion();
   const modules = t.platform?.consoleModules;
 
   const labels = {
@@ -90,7 +92,9 @@ export function AppSidebar() {
     try {
       await signOut();
     } finally {
-      router.push("/auth?mode=signin");
+      router.push("/auth?mode=signin", {
+        scroll: disableAutoScroll ? false : undefined,
+      });
     }
   };
 
@@ -115,6 +119,7 @@ export function AppSidebar() {
       <SidebarHeader className="border-b border-border/70 px-2 py-3">
         <Link
           href="/dashboard"
+          scroll={disableAutoScroll ? false : undefined}
           className="flex items-center gap-2 rounded-md px-2 py-2 transition-opacity hover:opacity-80"
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
@@ -132,7 +137,10 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <div className="px-2 py-2">
               <Button className="w-full" size="sm" asChild>
-                <Link href="/dashboard/contracts/new">
+                <Link
+                  href="/dashboard/contracts/new"
+                  scroll={disableAutoScroll ? false : undefined}
+                >
                   <Plus className="mr-2 h-4 w-4" />
                   {labels.newContract}
                 </Link>
@@ -156,7 +164,7 @@ export function AppSidebar() {
                       (item.url !== "/dashboard" && pathname.startsWith(item.url))
                     }
                   >
-                    <Link href={item.url}>
+                    <Link href={item.url} scroll={disableAutoScroll ? false : undefined}>
                       <item.icon className="h-4 w-4" />
                       <span>{labels[item.key as keyof typeof labels]}</span>
                     </Link>
@@ -175,7 +183,7 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
-                  <Link href="/payment?tab=plans">
+                  <Link href="/payment?tab=plans" scroll={disableAutoScroll ? false : undefined}>
                     <CreditCard className="h-4 w-4" />
                     <span>{labels.plans}</span>
                     <ArrowUpRight className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
@@ -184,7 +192,7 @@ export function AppSidebar() {
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
-                  <Link href="/contact">
+                  <Link href="/contact" scroll={disableAutoScroll ? false : undefined}>
                     <Settings className="h-4 w-4" />
                     <span>{labels.support}</span>
                     <ArrowUpRight className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
@@ -219,11 +227,23 @@ export function AppSidebar() {
               <DropdownMenuContent side="right" align="end" className="w-56">
                 <DropdownMenuLabel>{labels.myAccount}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => router.push("/dashboard/settings")}>
+                <DropdownMenuItem
+                  onSelect={() =>
+                    router.push("/dashboard/settings", {
+                      scroll: disableAutoScroll ? false : undefined,
+                    })
+                  }
+                >
                   <Settings className="mr-2 h-4 w-4" />
                   {labels.settings}
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => router.push("/dashboard/billing")}>
+                <DropdownMenuItem
+                  onSelect={() =>
+                    router.push("/dashboard/billing", {
+                      scroll: disableAutoScroll ? false : undefined,
+                    })
+                  }
+                >
                   <CreditCard className="mr-2 h-4 w-4" />
                   {labels.billing}
                 </DropdownMenuItem>

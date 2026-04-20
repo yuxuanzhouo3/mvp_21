@@ -48,6 +48,41 @@ function asNullableRecord(...values: unknown[]): Record<string, unknown> | null 
   return null;
 }
 
+function toErrorDetail(error: unknown) {
+  if (!error) {
+    return null;
+  }
+
+  if (error instanceof Error) {
+    const base: Record<string, unknown> = {
+      name: error.name,
+      message: error.message,
+    };
+
+    const asRecord = error as unknown as Record<string, unknown>;
+    if (typeof asRecord.code === "string") base.code = asRecord.code;
+    if (typeof asRecord.details === "string") base.details = asRecord.details;
+    if (typeof asRecord.hint === "string") base.hint = asRecord.hint;
+    if (typeof asRecord.status === "number") base.status = asRecord.status;
+
+    return base;
+  }
+
+  if (typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    return {
+      message:
+        typeof record.message === "string" ? record.message : String(error),
+      ...(typeof record.code === "string" ? { code: record.code } : {}),
+      ...(typeof record.details === "string" ? { details: record.details } : {}),
+      ...(typeof record.hint === "string" ? { hint: record.hint } : {}),
+      ...(typeof record.status === "number" ? { status: record.status } : {}),
+    };
+  }
+
+  return { message: String(error) };
+}
+
 async function requireCurrentUser(request: NextRequest) {
   const { token, error: tokenError } = extractTokenFromRequest(request);
 
@@ -290,8 +325,19 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Failed to create contract:", error);
+    const detail = toErrorDetail(error);
     return NextResponse.json(
-      { success: false, error: { message: "Failed to create contract." } },
+      {
+        success: false,
+        error: {
+          message: "Failed to create contract.",
+          ...(process.env.NODE_ENV !== "production"
+            ? {
+                detail,
+              }
+            : {}),
+        },
+      },
       { status: 500 },
     );
   }

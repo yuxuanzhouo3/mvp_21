@@ -14,6 +14,26 @@ function t(zh: string, en: string) {
   return isChinaRegion() ? zh : en;
 }
 
+function getAiKeyLabel() {
+  return isChinaRegion() ? "DASHSCOPE_API_KEY" : "OPENAI_API_KEY";
+}
+
+function isTimeoutLikeError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes("timeout") || message.includes("timed out");
+}
+
+function buildTimeoutFallbackReply() {
+  const key = getAiKeyLabel();
+  return isChinaRegion()
+    ? `AI 对话暂时超时，已切换为降级模式。请继续补充关键事实（合作范围、金额、时间节点、违约责任），随后仍可创建草稿。${key} 配置正常后可恢复完整 AI 对话体验。`
+    : `AI chat timed out and switched to degraded mode. Please continue with key facts (scope, amount, timeline, breach terms), and you can still create a draft. Full AI chat resumes once ${key} is available.`;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { token, error: tokenError } = extractTokenFromRequest(request);
@@ -99,7 +119,8 @@ export async function POST(request: NextRequest) {
         content: typeof item?.content === "string" ? item.content.trim() : "",
       }))
       .filter(
-        (item: { role: "user" | "assistant"; content: string }) => item.content.length > 0,
+        (item: { role: "user" | "assistant"; content: string }) =>
+          item.content.length > 0,
       )
       .slice(-20);
 
@@ -124,11 +145,43 @@ export async function POST(request: NextRequest) {
 
     const isKeyUnavailable =
       error instanceof Error && error.message === "AI_CHAT_KEY_UNAVAILABLE";
+    const isTimeout = isTimeoutLikeError(error);
+
+    if (isTimeout) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          reply: buildTimeoutFallbackReply(),
+          ready: false,
+          completionScore: 0.25,
+          summary: t(
+            "AI 对话超时，已进入降级模式。请继续补充合同关键信息。",
+            "AI chat timed out. Degraded mode is active. Please continue adding key contract facts.",
+          ),
+          missingFields: [
+            t("合同双方", "parties"),
+            t("合作范围", "scope"),
+            t("金额与付款方式", "payment terms"),
+            t("时间节点", "timeline"),
+          ],
+          suggestedTitle: t("合同草稿", "Contract Draft"),
+          collectedData: {},
+          draftSourceContent: t(
+            "请继续输入：合同双方、合作内容、金额与付款节点、时间安排。",
+            "Please continue with: parties, scope, amount/payment milestones, and timeline.",
+          ),
+        },
+        meta: {
+          degraded: true,
+          reason: "ai_chat_timeout",
+        },
+      });
+    }
 
     const message = isKeyUnavailable
       ? t(
-          "DASHSCOPE_API_KEY 密钥不可用，请联系管理员检查配置。",
-          "DASHSCOPE_API_KEY is unavailable. Please ask the administrator to check the configuration.",
+          `${getAiKeyLabel()} 密钥不可用，请联系管理员检查配置。`,
+          `${getAiKeyLabel()} is unavailable. Please ask the administrator to check the configuration.`,
         )
       : t("AI 对话请求失败。", "AI chat request failed.");
 

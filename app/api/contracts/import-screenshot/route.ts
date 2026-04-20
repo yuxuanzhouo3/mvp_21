@@ -22,7 +22,29 @@ function mapOcrErrorMessage(error: ContractChatOcrError) {
   return error.message;
 }
 
+function buildOcrTimeoutFallback(
+  sourceHint?: "wechat" | "feishu" | "screenshot",
+) {
+  const resolvedSource = sourceHint || "screenshot";
+  if (isChinaRegion()) {
+    return {
+      sourceType: resolvedSource,
+      conversationText:
+        "OCR 识别超时。请手动补充聊天内容，例如：甲方/乙方、合作范围、金额、付款节点、时间安排。",
+      summary: "OCR 超时，已返回可编辑的降级文本。",
+    };
+  }
+
+  return {
+    sourceType: resolvedSource,
+    conversationText:
+      "OCR timed out. Please manually add chat facts, such as parties, scope, amount, milestones, and timeline.",
+    summary: "OCR timed out; returned editable degraded text.",
+  };
+}
+
 export async function POST(request: NextRequest) {
+  let sourceHintForFallback: "wechat" | "feishu" | "screenshot" | undefined;
   try {
     const { token, error: tokenError } = extractTokenFromRequest(request);
 
@@ -50,6 +72,7 @@ export async function POST(request: NextRequest) {
       body?.sourceHint === "screenshot"
         ? body.sourceHint
         : undefined;
+    sourceHintForFallback = sourceHint;
 
     if (!imageBase64) {
       return NextResponse.json(
@@ -73,6 +96,18 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof ContractChatOcrError) {
+      if (error.code === "OCR_TIMEOUT") {
+        return NextResponse.json({
+          success: true,
+          data: buildOcrTimeoutFallback(sourceHintForFallback),
+          meta: {
+            degraded: true,
+            reason: "ocr_timeout_fallback",
+            provider: error.provider,
+          },
+        });
+      }
+
       return NextResponse.json(
         {
           success: false,
