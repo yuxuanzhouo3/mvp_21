@@ -94,47 +94,58 @@ function AuthCallbackContent() {
 
         if (isIntlRegion) {
           const { supabase } = await import("@/lib/integrations/supabase");
+
+          const waitForIntlSession = async (attempts = 6, delayMs = 350) => {
+            for (let attempt = 0; attempt < attempts; attempt += 1) {
+              const {
+                data: { session },
+                error: sessionError,
+              } = await supabase.auth.getSession();
+
+              if (sessionError) {
+                return { session: null, error: sessionError };
+              }
+
+              if (session) {
+                return { session, error: null as Error | null };
+              }
+
+              if (attempt < attempts - 1) {
+                await new Promise((resolve) => setTimeout(resolve, delayMs));
+              }
+            }
+
+            return { session: null, error: null as Error | null };
+          };
+
           const code =
             typeof window !== "undefined"
               ? new URLSearchParams(currentSearch).get("code")
               : null;
 
-          if (code) {
-            const {
-              data: { session: existingSession },
-              error: existingSessionError,
-            } = await supabase.auth.getSession();
+          const initialSessionCheck = await waitForIntlSession(2, 200);
+          if (initialSessionCheck.error) {
+            setError(initialSessionCheck.error.message);
+            setLoading(false);
+            return;
+          }
 
-            if (existingSessionError) {
-              setError(existingSessionError.message);
-              setLoading(false);
-              return;
-            }
+          if (!initialSessionCheck.session && code) {
+            const { error: exchangeError } =
+              await supabase.auth.exchangeCodeForSession(code);
 
-            if (!existingSession) {
-              const { error: exchangeError } =
-                await supabase.auth.exchangeCodeForSession(code);
-              if (exchangeError) {
-                const {
-                  data: { session: retriedSession },
-                  error: retrySessionError,
-                } = await supabase.auth.getSession();
-
-                if (retrySessionError || !retriedSession) {
-                  setError(
-                    retrySessionError?.message || exchangeError.message,
-                  );
-                  setLoading(false);
-                  return;
-                }
-              }
+            if (exchangeError) {
+              console.warn(
+                "[AuthCallback] exchangeCodeForSession failed, will retry session read:",
+                exchangeError.message,
+              );
             }
           }
 
           const {
-            data: { session },
+            session,
             error: sessionError,
-          } = await supabase.auth.getSession();
+          } = await waitForIntlSession();
 
           if (sessionError) {
             setError(sessionError.message);
