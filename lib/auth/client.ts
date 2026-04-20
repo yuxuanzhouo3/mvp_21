@@ -272,12 +272,33 @@ class SupabaseAuthClient implements AuthClient {
     error: Error | null;
   }> {
     try {
+      const supabase = await this.ensureSupabase();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        return {
+          data: { user: null },
+          error: sessionError,
+        };
+      }
+
+      if (!session?.user) {
+        const { clearSupabaseUserCache } = await import(
+          "@/lib/auth/auth-state-manager-intl"
+        );
+        clearSupabaseUserCache();
+        return { data: { user: null }, error: null };
+      }
+
       const { getSupabaseUserCache } = await import(
         "@/lib/auth/auth-state-manager-intl"
       );
       const cachedUser = getSupabaseUserCache();
 
-      if (cachedUser) {
+      if (cachedUser && cachedUser.id === session.user.id) {
         console.log("[Supabase Auth] Using cached user profile");
         return {
           data: {
@@ -295,9 +316,17 @@ class SupabaseAuthClient implements AuthClient {
         };
       }
 
-      console.log("[Supabase Auth] Cache miss, falling back to session user");
-      const supabase = await this.ensureSupabase();
-      return await supabase.auth.getUser();
+      console.log("[Supabase Auth] Cache miss/stale, using session user");
+      return {
+        data: {
+          user: {
+            id: session.user.id,
+            email: session.user.email || undefined,
+            user_metadata: session.user.user_metadata || {},
+          },
+        },
+        error: null,
+      };
     } catch (error) {
       return {
         data: { user: null },

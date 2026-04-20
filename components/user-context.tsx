@@ -213,26 +213,34 @@ export function UserProvider({ children }: { children: ReactNode }) {
           const { getSupabaseUserCache, syncSupabaseAuthCookie } = await import(
             "@/lib/auth/auth-state-manager-intl"
           );
+          const { saveSupabaseUserCache, clearSupabaseUserCache } = await import(
+            "@/lib/auth/auth-state-manager-intl"
+          );
           const cachedUser = getSupabaseUserCache();
 
-          if (cachedUser) {
-            console.log("[UserContext] Restored user from Supabase cache");
-            syncSupabaseAuthCookie(undefined, cachedUser.role || "user");
-            authState = { user: cachedUser as UserProfile };
+          // INTL: always validate local cache against live Supabase session to avoid
+          // stale-account display and false signed-in state after OAuth switches.
+          const { data, error } = await supabase.auth.getSession();
+          if (error) {
+            console.error("[UserContext] Failed to read Supabase session:", error);
+            clearSupabaseUserCache();
+          } else if (data?.session?.user) {
+            const restoredUser = mapSupabaseSessionUser(data.session.user);
+            const mergedUser =
+              cachedUser && cachedUser.id === restoredUser.id
+                ? ({ ...cachedUser, ...restoredUser } as UserProfile)
+                : restoredUser;
+            saveSupabaseUserCache(mergedUser);
+            syncSupabaseAuthCookie(undefined, mergedUser.role || "user");
+            authState = { user: mergedUser };
           } else {
-            console.log("[UserContext] Cache miss, reading Supabase session");
-            const { data, error } = await supabase.auth.getSession();
-
-            if (error) {
-              console.error("[UserContext] Failed to read Supabase session:", error);
-            } else if (data?.session?.user) {
-              const restoredUser = mapSupabaseSessionUser(data.session.user);
-              const { saveSupabaseUserCache } = await import(
-                "@/lib/auth/auth-state-manager-intl"
+            if (cachedUser) {
+              console.log(
+                "[UserContext] Supabase session missing, clearing stale cache user",
               );
-              saveSupabaseUserCache(restoredUser);
-              authState = { user: restoredUser };
             }
+            clearSupabaseUserCache();
+            authState = null;
           }
         }
 
