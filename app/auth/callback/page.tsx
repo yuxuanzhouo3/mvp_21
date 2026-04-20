@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { useTranslations } from "@/lib/i18n";
+import { isChinaRegion } from "@/lib/config/region";
 import {
   readOAuthCallbackError,
   readOAuthCallbackErrorFromSearch,
@@ -23,10 +24,10 @@ function AuthCallbackContent() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { language, deploymentRegion } = useLanguage();
+  const { language } = useLanguage();
   const t = useTranslations(language);
   const text = t.authCallbackPage;
-  const isIntlRegion = deploymentRegion === "INTL";
+  const isIntlRegion = !isChinaRegion();
 
   const requestedRedirect = searchParams.get("redirect");
   const normalizedRedirect = requestedRedirect?.split("?")[0] || "";
