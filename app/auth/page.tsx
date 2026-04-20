@@ -599,7 +599,8 @@ function AuthPageContent() {
         {region === RegionType.CHINA && cnLoginChannel === "phone" && !otpMethodAvailable && !configLoading ? (
           <Alert>
             <AlertDescription>
-              SMS OTP sign-in is temporarily unavailable: {smsAvailability?.reason || "SMS service is not fully configured."}
+              手机验证码登录暂不可用：
+              {smsAvailability?.reason || "短信服务尚未完成配置。"}
             </AlertDescription>
           </Alert>
         ) : null}

@@ -6,7 +6,6 @@ import {
   normalizeContractRecord,
   type UnifiedContractRecord,
 } from "@/lib/data/unified-models";
-import { supabase } from "@/lib/integrations/supabase";
 
 export type ContractListStatus =
   | "draft"
@@ -191,50 +190,10 @@ function normalizeContractDetail(raw: Record<string, any>): ContractDetail {
   return normalizeContractRecord(raw);
 }
 
-async function readIntlSessionHeaders() {
-  try {
-    const { data, error } = await supabase.auth.getSession();
-    if (error) {
-      console.warn("[contracts/client] Failed to read Supabase session:", error);
-      return null;
-    }
-
-    const token = data?.session?.access_token;
-    if (!token) {
-      return null;
-    }
-
-    return {
-      Authorization: `Bearer ${token}`,
-    };
-  } catch (error) {
-    console.warn("[contracts/client] Supabase getSession threw:", error);
-    return null;
-  }
-}
-
 async function getAuthHeaders() {
-  const directHeaders = await tokenManager.getAuthHeaderAsync();
-  if (directHeaders) {
-    return directHeaders;
-  }
-
-  const sessionHeaders = await readIntlSessionHeaders();
-  if (sessionHeaders) {
-    return sessionHeaders;
-  }
-
-  const refreshedHeaders = await refreshIntlAuthHeaders();
-  if (refreshedHeaders) {
-    return refreshedHeaders;
-  }
-
-  const retryHeaders = await tokenManager.getAuthHeaderAsync();
-  if (retryHeaders) {
-    return retryHeaders;
-  }
-
-  throw new Error("UNAUTHORIZED");
+  const headers = await tokenManager.getAuthHeaderAsync();
+  if (!headers) throw new Error("UNAUTHORIZED");
+  return headers;
 }
 
 async function getAuthHeadersWithRetry(
@@ -264,28 +223,6 @@ async function getAuthHeadersWithRetry(
   throw new Error("UNAUTHORIZED");
 }
 
-async function refreshIntlAuthHeaders() {
-  try {
-    const { data, error } = await supabase.auth.refreshSession();
-    if (error) {
-      console.warn("[contracts/client] Failed to refresh Supabase session:", error);
-      return null;
-    }
-
-    const token = data?.session?.access_token;
-    if (!token) {
-      return null;
-    }
-
-    return {
-      Authorization: `Bearer ${token}`,
-    };
-  } catch (error) {
-    console.warn("[contracts/client] Supabase session refresh threw:", error);
-    return null;
-  }
-}
-
 async function fetchWithAuthRetry(
   input: string,
   init: RequestInit = {},
@@ -304,8 +241,13 @@ async function fetchWithAuthRetry(
     return response;
   }
 
-  const refreshedHeaders = await refreshIntlAuthHeaders();
-  if (!refreshedHeaders) {
+  await sleep(150);
+  const retryHeaders = await tokenManager.getAuthHeaderAsync();
+  if (!retryHeaders) {
+    return response;
+  }
+
+  if (retryHeaders.Authorization === headers.Authorization) {
     return response;
   }
 
@@ -313,7 +255,7 @@ async function fetchWithAuthRetry(
     ...requestInit,
     headers: {
       ...(init.headers || {}),
-      ...refreshedHeaders,
+      ...retryHeaders,
     },
   });
 }

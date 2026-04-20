@@ -103,6 +103,21 @@ function resolveLanguageFromHost(defaultLanguage: Language): Language {
   return defaultLanguage;
 }
 
+function resolveRuntimeLanguage(
+  deploymentRegion: DeploymentRegion,
+  defaultLanguage: Language,
+): Language {
+  // Keep language deterministic by deployment region:
+  // CN deployment must always be Chinese; INTL deployment uses English.
+  if (deploymentRegion === "CN") {
+    return "zh";
+  }
+  if (deploymentRegion === "INTL") {
+    return "en";
+  }
+  return resolveLanguageFromHost(defaultLanguage);
+}
+
 interface LanguageProviderProps {
   children: ReactNode;
   initialLanguage?: Language;
@@ -118,19 +133,25 @@ export function LanguageProvider({
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const runtimeLanguage = resolveLanguageFromHost(initialLanguage);
+    const runtimeLanguage = resolveRuntimeLanguage(
+      deploymentRegion,
+      initialLanguage,
+    );
     setMounted(true);
     localStorage.setItem(STORAGE_KEY, runtimeLanguage);
     document.documentElement.lang = runtimeLanguage;
     setLanguageState(runtimeLanguage);
-  }, [initialLanguage]);
+  }, [deploymentRegion, initialLanguage]);
 
   const setLanguage = (lang: Language) => {
-    const runtimeLanguage = resolveLanguageFromHost(initialLanguage);
+    const runtimeLanguage = resolveRuntimeLanguage(
+      deploymentRegion,
+      initialLanguage,
+    );
 
     if (lang !== runtimeLanguage) {
       console.info(
-        `[LanguageProvider] Language is fixed by entry host. Keeping ${runtimeLanguage}.`,
+        `[LanguageProvider] Language is fixed by deployment region. Keeping ${runtimeLanguage}.`,
       );
     }
 
@@ -140,7 +161,10 @@ export function LanguageProvider({
   };
 
   const toggleLanguage = () => {
-    const runtimeLanguage = resolveLanguageFromHost(initialLanguage);
+    const runtimeLanguage = resolveRuntimeLanguage(
+      deploymentRegion,
+      initialLanguage,
+    );
     setLanguage(runtimeLanguage);
   };
 
