@@ -11,7 +11,7 @@ export type Region = "CN" | "INTL";
 let cachedRegion: Region | null = null;
 
 const DEFAULT_CN_HOSTS = ["morncontract.mornscience.top"];
-const DEFAULT_INTL_HOSTS = ["www.mornhub.quest"];
+const DEFAULT_INTL_HOSTS = ["www.mornhub.quest", "mornhub.quest"];
 
 function normalizeHostCandidate(value: string): string | null {
   const trimmed = value.trim().toLowerCase();
@@ -86,13 +86,7 @@ function resolveRegionFromHostname(hostname: string): Region | null {
 }
 
 function getDeployRegion(): Region {
-  const hostOverrideEnabled =
-    typeof window !== "undefined" &&
-    String(process.env.NEXT_PUBLIC_ENABLE_HOST_REGION_OVERRIDE || "")
-      .trim()
-      .toLowerCase() === "true";
-
-  if (hostOverrideEnabled) {
+  if (typeof window !== "undefined") {
     const runtimeRegion = resolveRegionFromHostname(
       window.location.hostname || "",
     );
@@ -102,9 +96,11 @@ function getDeployRegion(): Region {
     }
   }
 
-  // Use deployment region as the single source of truth by default.
-  // Hostname-based detection can be enabled only via explicit override flag.
-  cachedRegion = currentRegion;
+  // Fallback to deployment region when host cannot be resolved
+  // (for example local development hosts).
+  if (!cachedRegion) {
+    cachedRegion = currentRegion;
+  }
 
   return cachedRegion;
 }
