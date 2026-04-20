@@ -29,6 +29,26 @@ import { initializeAuthTokenPreloader } from "@/lib/auth/auth-token-preloader";
 
 const AUTH_STATE_KEY = "app-auth-state";
 
+function clearIntlAuthArtifacts(): void {
+  if (typeof window === "undefined") return;
+
+  try {
+    localStorage.removeItem("supabase-user-cache");
+
+    const keysToDelete: string[] = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key && /^sb-.*-auth-token$/i.test(key)) {
+        keysToDelete.push(key);
+      }
+    }
+
+    keysToDelete.forEach((key) => localStorage.removeItem(key));
+  } catch (error) {
+    console.warn("⚠️ [Auth] Failed to clear INTL auth artifacts:", error);
+  }
+}
+
 function syncAuthCookies(maxAge: number, role?: string): void {
   document.cookie = `auth-logged-in=1; path=/; max-age=${maxAge}; SameSite=Lax`;
   document.cookie = `auth-role=${role || "user"}; path=/; max-age=${maxAge}; SameSite=Lax`;
@@ -104,6 +124,9 @@ export function saveAuthState(
   if (typeof window === "undefined") return;
 
   try {
+    // CN login should not reuse stale INTL session artifacts when switching envs.
+    clearIntlAuthArtifacts();
+
     const authState: StoredAuthState = {
       accessToken,
       refreshToken,

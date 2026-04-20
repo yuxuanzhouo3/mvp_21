@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { useLanguage } from "@/components/language-provider";
+import { useUser } from "@/components/user-context";
 import { ConsoleShell } from "@/components/layout/console-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,6 +40,7 @@ function formatDateTime(value: string | undefined, isEn: boolean) {
 
 export default function SignaturesPage() {
   const { language } = useLanguage();
+  const { user, loading: userLoading } = useUser();
   const isEn = language === "en";
   const t = useTranslations(language);
   const [contracts, setContracts] = useState<ContractListItem[]>([]);
@@ -69,6 +71,22 @@ export default function SignaturesPage() {
   useEffect(() => {
     let cancelled = false;
 
+    if (userLoading) {
+      setLoading(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!user) {
+      setContracts([]);
+      setError("");
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     async function loadContracts() {
       try {
         setLoading(true);
@@ -94,7 +112,7 @@ export default function SignaturesPage() {
     return () => {
       cancelled = true;
     };
-  }, [isEn]);
+  }, [isEn, user, userLoading]);
 
   const signatureContracts = useMemo(() => {
     return [...contracts]

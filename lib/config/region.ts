@@ -86,7 +86,13 @@ function resolveRegionFromHostname(hostname: string): Region | null {
 }
 
 function getDeployRegion(): Region {
-  if (typeof window !== "undefined") {
+  const hostOverrideEnabled =
+    typeof window !== "undefined" &&
+    String(process.env.NEXT_PUBLIC_ENABLE_HOST_REGION_OVERRIDE || "")
+      .trim()
+      .toLowerCase() === "true";
+
+  if (hostOverrideEnabled) {
     const runtimeRegion = resolveRegionFromHostname(
       window.location.hostname || "",
     );
@@ -96,9 +102,9 @@ function getDeployRegion(): Region {
     }
   }
 
-  if (!cachedRegion) {
-    cachedRegion = currentRegion;
-  }
+  // Use deployment region as the single source of truth by default.
+  // Hostname-based detection can be enabled only via explicit override flag.
+  cachedRegion = currentRegion;
 
   return cachedRegion;
 }

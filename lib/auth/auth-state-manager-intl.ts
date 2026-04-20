@@ -26,6 +26,28 @@ export interface SupabaseUserCache {
 const SUPABASE_USER_CACHE_KEY = "supabase-user-cache";
 const DEFAULT_CACHE_DURATION = 3600;
 
+function clearCnAuthArtifacts() {
+  if (typeof window === "undefined") return;
+
+  try {
+    localStorage.removeItem("app-auth-state");
+    localStorage.removeItem("auth-token");
+    localStorage.removeItem("auth-user");
+    localStorage.removeItem("auth-logged-in");
+
+    const debugKeys: string[] = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith("DEBUG_")) {
+        debugKeys.push(key);
+      }
+    }
+    debugKeys.forEach((key) => localStorage.removeItem(key));
+  } catch (error) {
+    console.warn("[Supabase Cache] Failed to clear CN auth artifacts:", error);
+  }
+}
+
 export function syncSupabaseAuthCookie(
   expiresIn: number = DEFAULT_CACHE_DURATION,
   role: string = "user",
@@ -50,6 +72,9 @@ export function saveSupabaseUserCache(
   if (typeof window === "undefined") return;
 
   try {
+    // INTL login should not reuse stale CN session artifacts when switching envs.
+    clearCnAuthArtifacts();
+
     const sanitizedUser: SupabaseUserProfile = {
       id: user.id,
       email: user.email,

@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 
 import { useLanguage } from "@/components/language-provider";
+import { useUser } from "@/components/user-context";
 import { ConsoleShell } from "@/components/layout/console-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,7 @@ function getTemplateRootId(template: DashboardTemplate) {
 export default function TemplatesPage() {
   const router = useRouter();
   const { language } = useLanguage();
+  const { user, loading: userLoading } = useUser();
   const isEn = language === "en";
   const [templates, setTemplates] = useState<DashboardTemplate[]>([]);
   const [permissions, setPermissions] = useState<DashboardTemplatePermissions>({
@@ -158,8 +160,19 @@ export default function TemplatesPage() {
   }, [content.loadFailed]);
 
   useEffect(() => {
+    if (userLoading) {
+      return;
+    }
+
+    if (!user) {
+      setTemplates([]);
+      setError("");
+      setLoading(false);
+      return;
+    }
+
     void loadTemplates();
-  }, [loadTemplates]);
+  }, [loadTemplates, user, userLoading]);
 
   const formatDate = (value?: string) => {
     if (!value) {

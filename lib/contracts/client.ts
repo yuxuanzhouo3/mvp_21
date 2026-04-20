@@ -76,6 +76,10 @@ export class ContractClientError extends Error {
   }
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function mapLoadStatusToCode(status: number): ContractLoadErrorCode {
   if (status === 401) {
     return "UNAUTHORIZED";
@@ -203,6 +207,33 @@ async function getAuthHeaders() {
   throw new Error("UNAUTHORIZED");
 }
 
+async function getAuthHeadersWithRetry(
+  attempts = 3,
+  delayMs = 250,
+): Promise<Record<string, string>> {
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const headers = await getAuthHeaders();
+      if (headers) {
+        return headers;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (attempt < attempts - 1) {
+      await sleep(delayMs);
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+  throw new Error("UNAUTHORIZED");
+}
+
 async function refreshIntlAuthHeaders() {
   try {
     const { data, error } = await supabase.auth.refreshSession();
@@ -229,7 +260,7 @@ async function fetchWithAuthRetry(
   input: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  const headers = await getAuthHeaders();
+  const headers = await getAuthHeadersWithRetry();
   const requestInit: RequestInit = {
     ...init,
     headers: {
