@@ -108,6 +108,19 @@ function getProviderKeyLabel(provider?: string) {
 
 function getAiErrorMessage(error: ContractAIError): string {
   const keyLabel = getProviderKeyLabel(error.provider);
+  const detail = (error.message || "").toLowerCase();
+  const isAccountStandingIssue =
+    detail.includes("overdue-payment") ||
+    detail.includes("account is in good standing") ||
+    detail.includes("access denied");
+
+  if (isAccountStandingIssue) {
+    return t(
+      "AI 账号当前不可用（可能欠费或被限制），已无法调用模型。请联系管理员处理 DashScope 账户状态。",
+      "AI account is currently unavailable (possibly overdue or restricted). Please ask the administrator to restore DashScope account standing.",
+    );
+  }
+
   switch (error.code) {
     case "AI_KEY_UNAVAILABLE":
     case "AI_NOT_CONFIGURED":
@@ -144,20 +157,31 @@ function isTimeoutLikeAiError(error: ContractAIError) {
 }
 
 function shouldUseIntlDegradedFallback(error: ContractAIError) {
-  if (isChinaRegion()) {
-    return false;
-  }
+  const message = (error.message || "").toLowerCase();
+  const isAccountStandingIssue =
+    message.includes("overdue-payment") ||
+    message.includes("account is in good standing") ||
+    message.includes("access denied");
 
-  // Keep production strict by default. Local/dev can keep flowing with a safe fallback.
-  if (process.env.NODE_ENV === "production") {
-    return false;
-  }
-
-  return (
+  if (
     error.code === "AI_TIMEOUT" ||
     error.code === "AI_PROVIDER_TIMEOUT" ||
     isTimeoutLikeAiError(error)
-  );
+  ) {
+    return true;
+  }
+
+  if (
+    error.code === "AI_PROVIDER_FAILED" ||
+    error.code === "AI_KEY_UNAVAILABLE" ||
+    error.code === "AI_NOT_CONFIGURED" ||
+    error.code === "AI_RATE_LIMITED" ||
+    isAccountStandingIssue
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export async function POST(request: NextRequest) {
@@ -230,9 +254,16 @@ export async function POST(request: NextRequest) {
         shouldUseIntlDegradedFallback(error) && Boolean(fallbackContent.trim());
 
       if (shouldUseTimeoutFallback) {
+        const message = (error.message || "").toLowerCase();
+        const isAccountStandingIssue =
+          message.includes("overdue-payment") ||
+          message.includes("account is in good standing") ||
+          message.includes("access denied");
         const fallbackReason = isTimeoutLikeAiError(error)
           ? "dashscope_timeout_fallback"
-          : "dashscope_unavailable_fallback";
+          : isAccountStandingIssue
+            ? "dashscope_account_standing_fallback"
+            : "dashscope_unavailable_fallback";
         return NextResponse.json({
           success: true,
           data: buildIntlTimeoutFallbackAnalysis(fallbackContent),

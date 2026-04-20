@@ -110,6 +110,21 @@ function mapProviderError(error: unknown, provider: AIProvider): ContractAIError
     );
   }
 
+  if (
+    normalizedMessage.includes("overdue-payment") ||
+    normalizedMessage.includes("arrearage") ||
+    normalizedMessage.includes("insufficient balance") ||
+    normalizedMessage.includes("account is in good standing") ||
+    normalizedMessage.includes("access denied")
+  ) {
+    return new ContractAIError(
+      `AI provider billing issue: ${message}`,
+      "AI_BILLING_REQUIRED",
+      503,
+      provider,
+    );
+  }
+
   if (status === 401 || status === 403) {
     return new ContractAIError(
       `${getProviderKeyName(provider)} is unavailable: ${message}`,

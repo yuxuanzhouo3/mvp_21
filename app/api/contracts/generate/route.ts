@@ -102,6 +102,18 @@ function isTimeoutLikeError(error: unknown) {
   return false;
 }
 
+function isAccountStandingIssue(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("overdue-payment") ||
+    message.includes("account is in good standing") ||
+    message.includes("access denied")
+  );
+}
+
 function mapContractTypeLabel(contractType: string | undefined) {
   const type = (contractType || "custom").toLowerCase();
   if (isChinaRegion()) {
@@ -411,7 +423,16 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Generate contract failed:", error);
 
-    if (isTimeoutLikeError(error)) {
+    const shouldUseDegradedFallback =
+      isTimeoutLikeError(error) ||
+      isAccountStandingIssue(error) ||
+      (error instanceof ContractAIError &&
+        (error.code === "AI_PROVIDER_FAILED" ||
+          error.code === "AI_KEY_UNAVAILABLE" ||
+          error.code === "AI_NOT_CONFIGURED" ||
+          error.code === "AI_RATE_LIMITED"));
+
+    if (shouldUseDegradedFallback) {
       if (analysisResultForFallback && analysisResultForFallback.contractType) {
         return NextResponse.json({
           success: true,
@@ -421,7 +442,7 @@ export async function POST(request: NextRequest) {
             reason:
               error instanceof Error
                 ? error.message
-                : "AI generation route timeout",
+                : "AI generation degraded fallback",
           },
         });
       }
