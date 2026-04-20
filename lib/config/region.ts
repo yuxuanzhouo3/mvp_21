@@ -123,6 +123,33 @@ const paymentMethods = isChinaRegion()
   : ["stripe"];
 const paymentCurrency = isChinaRegion() ? "CNY" : "USD";
 
+function resolveAvailableAiModels(provider: "dashscope" | "openai"): string[] {
+  if (provider === "dashscope") {
+    if (typeof window !== "undefined") {
+      return ["qwen-plus", "qwen-max", "qwen-vl-plus"];
+    }
+
+    try {
+      return [getQwenModel(), "qwen-max", "qwen-vl-plus"];
+    } catch (error) {
+      console.warn("[RegionConfig] Failed to resolve Qwen model, using fallback:", error);
+      return ["qwen-plus", "qwen-max", "qwen-vl-plus"];
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    // Browser bundle must not depend on server-only OPENAI_* env variables.
+    return ["gpt-4.1"];
+  }
+
+  try {
+    return [getOpenAIModel()];
+  } catch (error) {
+    console.warn("[RegionConfig] Failed to resolve OpenAI model, using fallback:", error);
+    return ["gpt-4.1"];
+  }
+}
+
 export const RegionConfig = {
   auth: {
     provider: deploymentConfig.auth.provider,
@@ -141,10 +168,7 @@ export const RegionConfig = {
   },
   ai: {
     provider: aiProvider,
-    availableModels:
-      aiProvider === "dashscope"
-        ? [getQwenModel(), "qwen-max", "qwen-vl-plus"]
-        : [getOpenAIModel()],
+    availableModels: resolveAvailableAiModels(aiProvider),
   },
   storage: {
     provider: deploymentConfig.database.provider,
