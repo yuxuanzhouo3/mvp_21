@@ -22,7 +22,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Textarea } from "@/components/ui/textarea";
 import { useFocusScrollIntoView } from "@/hooks/use-mobile-keyboard";
 import { tokenManager } from "@/lib/auth/frontend-token-manager";
-import { createContractForCurrentUser } from "@/lib/contracts/client";
+import {
+  ContractCreateError,
+  createContractForCurrentUser,
+} from "@/lib/contracts/client";
 import { prepareDraftAnalysisForCurrentUser } from "@/lib/contracts/draft-context";
 import {
   buildContractParties,
@@ -186,6 +189,18 @@ function ImportContent() {
       );
     } catch (error) {
       console.error("[CreateImportPage] Failed to analyze and create draft:", error);
+
+      if (
+        error instanceof ContractCreateError &&
+        error.code === "CONTRACT_QUOTA_EXCEEDED"
+      ) {
+        toast.error(
+          isEn
+            ? "Your free contract quota for this month has been used up. Please upgrade your plan or try again next month."
+            : "你本月免费合同配额已用完，请升级套餐或下月再试。",
+        );
+        return;
+      }
 
       if (error instanceof Error && error.message === "UNAUTHORIZED") {
         toast.error(isEn ? "Please sign in before creating a draft." : "请先登录，再创建草稿。");

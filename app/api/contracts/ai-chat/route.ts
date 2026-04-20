@@ -6,12 +6,43 @@ import {
   loadIntlAccountProfile,
 } from "@/lib/account/server-profile";
 import { extractTokenFromRequest, verifyAuthToken } from "@/lib/auth/auth-utils";
+import { isAdminRole } from "@/lib/auth/user-role";
 import { isChinaRegion } from "@/lib/config/region";
 import { loadAdminSettings } from "@/lib/data/admin-settings-store";
 import { buildMembershipEntitlements } from "@/lib/membership/policy";
 
 function t(zh: string, en: string) {
   return isChinaRegion() ? zh : en;
+}
+
+function parseIntlAdminEmailAllowlist(): string[] {
+  const raw =
+    process.env.INTL_ADMIN_EMAIL_ALLOWLIST ||
+    process.env.ADMIN_ROLE_EMAIL_ALLOWLIST ||
+    "";
+
+  return raw
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isIntlAdminAllowlistedEmail(email?: string | null): boolean {
+  if (isChinaRegion()) {
+    return false;
+  }
+
+  if (!email || typeof email !== "string") {
+    return false;
+  }
+
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  const allowlist = parseIntlAdminEmailAllowlist();
+  return allowlist.includes(normalized);
 }
 
 function getAiKeyLabel() {
@@ -65,6 +96,23 @@ export async function POST(request: NextRequest) {
             : undefined,
         );
 
+    let role =
+      profile?.role ||
+      authResult.user?.role ||
+      authResult.user?.user_metadata?.role ||
+      authResult.user?.app_metadata?.role ||
+      "user";
+    const email =
+      profile?.email ||
+      authResult.user?.email ||
+      authResult.user?.user_metadata?.email ||
+      null;
+
+    if (isIntlAdminAllowlistedEmail(email)) {
+      role = "admin";
+    }
+
+    if (!isAdminRole(role)) {
     const settings = await loadAdminSettings();
     const entitlements = buildMembershipEntitlements(
       {
@@ -99,6 +147,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 403 },
       );
+    }
     }
 
     const body = await request.json();

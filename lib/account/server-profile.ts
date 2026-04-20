@@ -13,7 +13,10 @@ import { getDatabase } from "@/lib/cloudbase/cloudbase-service";
 import { getSupabaseAdmin } from "@/lib/integrations/supabase-admin";
 import { resolveMembershipState } from "@/lib/membership/policy";
 
-type SupabaseAuthUserLike = Pick<SupabaseUser, "id" | "email" | "user_metadata">;
+type SupabaseAuthUserLike = Pick<
+  SupabaseUser,
+  "id" | "email" | "user_metadata" | "app_metadata" | "role"
+>;
 
 interface SubscriptionSnapshot {
   plan: string;
@@ -129,17 +132,21 @@ export async function loadIntlAccountProfile(
 ): Promise<AccountProfile | null> {
   let resolvedUser = authUser || null;
 
-  if (!resolvedUser) {
+  try {
     const {
       data: { user },
       error,
     } = await getSupabaseAdmin().auth.admin.getUserById(userId);
 
-    if (error || !user) {
-      return null;
+    if (!error && user) {
+      resolvedUser = user;
     }
+  } catch (error) {
+    console.warn("[AccountProfile] Failed to load INTL auth user by id:", error);
+  }
 
-    resolvedUser = user;
+  if (!resolvedUser) {
+    return null;
   }
 
   const metadata = resolvedUser.user_metadata || {};

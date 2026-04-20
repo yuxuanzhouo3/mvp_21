@@ -22,6 +22,36 @@ import { isAdminRole } from "@/lib/auth/user-role";
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
+function parseIntlAdminEmailAllowlist(): string[] {
+  const raw =
+    process.env.INTL_ADMIN_EMAIL_ALLOWLIST ||
+    process.env.ADMIN_ROLE_EMAIL_ALLOWLIST ||
+    "";
+
+  return raw
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isIntlAdminAllowlistedEmail(email?: string | null): boolean {
+  if (isChinaRegion()) {
+    return false;
+  }
+
+  if (!email || typeof email !== "string") {
+    return false;
+  }
+
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  const allowlist = parseIntlAdminEmailAllowlist();
+  return allowlist.includes(normalized);
+}
+
 function parsePositiveInt(value: string | null, fallback: number) {
   const parsed = Number.parseInt(value || "", 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -108,10 +138,15 @@ async function requireCurrentUser(request: NextRequest) {
     };
   }
 
-  const role =
+  let role =
     authResult.user?.role ||
     authResult.user?.user_metadata?.role ||
+    authResult.user?.app_metadata?.role ||
     "user";
+  const email =
+    authResult.user?.email ||
+    authResult.user?.user_metadata?.email ||
+    null;
 
   let subscriptionPlan =
     authResult.user?.subscription_plan ||
@@ -139,6 +174,7 @@ async function requireCurrentUser(request: NextRequest) {
         );
 
     if (profile) {
+      role = profile.role || role;
       subscriptionPlan = profile.subscription_plan || subscriptionPlan;
       subscriptionStatus = profile.subscription_status || subscriptionStatus;
       membershipExpiresAt =
@@ -148,6 +184,10 @@ async function requireCurrentUser(request: NextRequest) {
     }
   } catch (error) {
     console.warn("[/api/contracts] Failed to load membership snapshot:", error);
+  }
+
+  if (isIntlAdminAllowlistedEmail(email)) {
+    role = "admin";
   }
 
   return {

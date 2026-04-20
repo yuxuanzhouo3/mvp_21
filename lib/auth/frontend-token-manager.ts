@@ -10,9 +10,17 @@ import { supabase } from "@/lib/integrations/supabase";
 class TokenManager {
   private static instance: TokenManager;
   private refreshTimer: NodeJS.Timeout | null = null;
+  private refreshInFlight: Promise<string | null> | null = null;
+  private lastIntlRefreshAt = 0;
+  private visibilityHandler: (() => void) | null = null;
+  private focusHandler: (() => void) | null = null;
+  private onlineHandler: (() => void) | null = null;
+  private storageHandler: ((event: StorageEvent) => void) | null = null;
+  private authSubscription: { unsubscribe: () => void } | null = null;
 
   private constructor() {
     this.setupAutoRefresh();
+    this.setupIntlSessionResilience();
   }
 
   static getInstance(): TokenManager {
@@ -46,17 +54,16 @@ class TokenManager {
       const { data, error } = await supabase.auth.getSession();
       if (error) {
         console.warn("[TokenManager] Failed to read Supabase session:", error);
-        return null;
       }
 
-      const token = data?.session?.access_token;
-      if (!token) {
-        console.warn("[TokenManager] No valid Supabase token available");
-        return null;
-      }
+      const session = data?.session || this.getSupabaseStoredSession();
+      const token = session?.access_token || null;
+      const expiresAtMs = typeof session?.expires_at === "number"
+        ? session.expires_at * 1000
+        : null;
 
-      const isValid = await this.validateSupabaseAccessToken(token);
-      if (isValid) {
+      // Prefer local session state; avoid hard-failing on transient network issues.
+      if (token && (!expiresAtMs || Date.now() < expiresAtMs - 30_000)) {
         return token;
       }
 
@@ -65,7 +72,12 @@ class TokenManager {
         return refreshedToken;
       }
 
-      console.warn("[TokenManager] Supabase token is invalid and refresh failed");
+      // If refresh failed but we still have a token that is not strictly expired, keep using it.
+      if (token && (!expiresAtMs || Date.now() < expiresAtMs)) {
+        return token;
+      }
+
+      console.warn("[TokenManager] No recoverable Supabase token available");
       this.clearIntlAuthState();
       return null;
     } catch (error) {
@@ -181,6 +193,10 @@ class TokenManager {
         if (authKey) {
           localStorage.removeItem(authKey);
         }
+        void supabase.auth.signOut().catch(() => {
+          // Ignore sign-out transport errors; local cleanup already happened.
+        });
+        clearSupabaseUserCache();
       }
 
       console.log("[TokenManager] Cleared local token state");
@@ -193,6 +209,31 @@ class TokenManager {
     if (this.refreshTimer) {
       clearInterval(this.refreshTimer);
       this.refreshTimer = null;
+    }
+
+    if (this.visibilityHandler && typeof window !== "undefined") {
+      document.removeEventListener("visibilitychange", this.visibilityHandler);
+      this.visibilityHandler = null;
+    }
+
+    if (this.focusHandler && typeof window !== "undefined") {
+      window.removeEventListener("focus", this.focusHandler);
+      this.focusHandler = null;
+    }
+
+    if (this.onlineHandler && typeof window !== "undefined") {
+      window.removeEventListener("online", this.onlineHandler);
+      this.onlineHandler = null;
+    }
+
+    if (this.storageHandler && typeof window !== "undefined") {
+      window.removeEventListener("storage", this.storageHandler);
+      this.storageHandler = null;
+    }
+
+    if (this.authSubscription) {
+      this.authSubscription.unsubscribe();
+      this.authSubscription = null;
     }
   }
 
@@ -257,9 +298,27 @@ class TokenManager {
               detail: { remainingTime },
             }),
           );
+
+          if (!isChinaRegion()) {
+            // Proactively refresh before expiry to survive tab switches/backgrounding.
+            void this.tryRefreshSupabaseToken();
+          }
         }
 
         if (remainingTime <= 0 && this.isTokenValid() === false) {
+          if (!isChinaRegion()) {
+            void this.tryRefreshSupabaseToken().then((token) => {
+              if (token) {
+                window.dispatchEvent(new CustomEvent("token-refreshed"));
+                return;
+              }
+
+              this.clearToken();
+              window.dispatchEvent(new CustomEvent("token-expired"));
+            });
+            return;
+          }
+
           this.clearToken();
           window.dispatchEvent(new CustomEvent("token-expired"));
         }
@@ -269,25 +328,24 @@ class TokenManager {
     }, 30000);
   }
 
-  private async validateSupabaseAccessToken(token: string): Promise<boolean> {
-    try {
-      const {
-        data: { user },
-        error,
-      } = await supabase.auth.getUser(token);
-
-      if (error || !user) {
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.warn("[TokenManager] Failed to validate Supabase token:", error);
-      return false;
-    }
-  }
-
   private async tryRefreshSupabaseToken(): Promise<string | null> {
+    if (isChinaRegion()) {
+      return null;
+    }
+
+    if (this.refreshInFlight) {
+      return this.refreshInFlight;
+    }
+
+    const now = Date.now();
+    // Throttle refresh bursts triggered by focus/visibility/timer at the same time.
+    if (now - this.lastIntlRefreshAt < 3000) {
+      const session = this.getSupabaseStoredSession();
+      return session?.access_token || null;
+    }
+    this.lastIntlRefreshAt = now;
+
+    this.refreshInFlight = (async () => {
     try {
       const { data, error } = await supabase.auth.refreshSession();
       if (error) {
@@ -300,11 +358,71 @@ class TokenManager {
         return null;
       }
 
-      const isRefreshedTokenValid = await this.validateSupabaseAccessToken(refreshedToken);
-      return isRefreshedTokenValid ? refreshedToken : null;
+      return refreshedToken;
     } catch (error) {
       console.warn("[TokenManager] Supabase session refresh threw:", error);
       return null;
+    } finally {
+      this.refreshInFlight = null;
+    }
+    })();
+
+    return this.refreshInFlight;
+  }
+
+  private setupIntlSessionResilience(): void {
+    if (typeof window === "undefined" || isChinaRegion()) {
+      return;
+    }
+
+    this.visibilityHandler = () => {
+      if (document.visibilityState === "visible") {
+        void this.tryRefreshSupabaseToken();
+      }
+    };
+
+    this.focusHandler = () => {
+      void this.tryRefreshSupabaseToken();
+    };
+
+    this.onlineHandler = () => {
+      void this.tryRefreshSupabaseToken();
+    };
+
+    this.storageHandler = (event: StorageEvent) => {
+      const authKey = this.getSupabaseStorageKey();
+      if (!authKey || event.key !== authKey) {
+        return;
+      }
+
+      // Keep tabs aligned when session state changes elsewhere.
+      if (!event.newValue) {
+        this.clearIntlAuthState();
+      }
+    };
+
+    document.addEventListener("visibilitychange", this.visibilityHandler);
+    window.addEventListener("focus", this.focusHandler);
+    window.addEventListener("online", this.onlineHandler);
+    window.addEventListener("storage", this.storageHandler);
+
+    try {
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === "SIGNED_OUT") {
+          this.clearIntlAuthState();
+          window.dispatchEvent(new CustomEvent("token-expired"));
+          return;
+        }
+
+        if (session?.access_token) {
+          window.dispatchEvent(new CustomEvent("token-refreshed"));
+        }
+      });
+      this.authSubscription = subscription;
+    } catch (error) {
+      console.warn("[TokenManager] Failed to setup auth state bridge:", error);
     }
   }
 

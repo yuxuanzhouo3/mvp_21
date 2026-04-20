@@ -76,6 +76,36 @@ export class ContractClientError extends Error {
   }
 }
 
+export type ContractCreateErrorCode =
+  | "CONTRACT_QUOTA_EXCEEDED"
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
+  | "RATE_LIMITED"
+  | "NOT_FOUND"
+  | "SERVER_ERROR"
+  | "UNKNOWN";
+
+export class ContractCreateError extends Error {
+  readonly code: ContractCreateErrorCode;
+  readonly status: number;
+  readonly data?: Record<string, unknown>;
+
+  constructor(
+    code: ContractCreateErrorCode,
+    message: string,
+    options: {
+      status: number;
+      data?: Record<string, unknown>;
+    },
+  ) {
+    super(message);
+    this.name = "ContractCreateError";
+    this.code = code;
+    this.status = options.status;
+    this.data = options.data;
+  }
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -288,6 +318,74 @@ async function fetchWithAuthRetry(
   });
 }
 
+function toCreateErrorCode(status: number, code?: string): ContractCreateErrorCode {
+  if (code === "CONTRACT_QUOTA_EXCEEDED") {
+    return "CONTRACT_QUOTA_EXCEEDED";
+  }
+  if (status === 401) {
+    return "UNAUTHORIZED";
+  }
+  if (status === 403) {
+    return "FORBIDDEN";
+  }
+  if (status === 404) {
+    return "NOT_FOUND";
+  }
+  if (status === 429) {
+    return "RATE_LIMITED";
+  }
+  if (status >= 500) {
+    return "SERVER_ERROR";
+  }
+  return "UNKNOWN";
+}
+
+async function readCreateErrorPayload(response: Response): Promise<{
+  code: ContractCreateErrorCode;
+  message: string;
+  status: number;
+  data?: Record<string, unknown>;
+}> {
+  const fallbackMessage =
+    response.status === 401
+      ? "UNAUTHORIZED"
+      : `CREATE_FAILED_${response.status}`;
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    return {
+      code: toCreateErrorCode(response.status),
+      message: fallbackMessage,
+      status: response.status,
+    };
+  }
+
+  try {
+    const payload = (await response.json()) as {
+      error?: { message?: string; code?: string };
+      data?: Record<string, unknown>;
+    };
+    const errorMessage = payload?.error?.message;
+    const errorCode = payload?.error?.code;
+    const normalizedMessage =
+      typeof errorMessage === "string" && errorMessage.trim()
+        ? errorMessage
+        : fallbackMessage;
+    return {
+      code: toCreateErrorCode(response.status, errorCode),
+      message: response.status === 401 ? "UNAUTHORIZED" : normalizedMessage,
+      status: response.status,
+      data: payload?.data,
+    };
+  } catch {
+    return {
+      code: toCreateErrorCode(response.status),
+      message: fallbackMessage,
+      status: response.status,
+    };
+  }
+}
+
 export async function listContractsForCurrentUser(): Promise<ContractListItem[]> {
   try {
     const response = await fetchWithAuthRetry("/api/contracts?limit=100", {
@@ -354,7 +452,11 @@ export async function createContractForCurrentUser(
   });
 
   if (!response.ok) {
-    throw new Error(`CREATE_FAILED_${response.status}`);
+    const payloadError = await readCreateErrorPayload(response);
+    throw new ContractCreateError(payloadError.code, payloadError.message, {
+      status: payloadError.status,
+      data: payloadError.data,
+    });
   }
 
   const result = await response.json();
