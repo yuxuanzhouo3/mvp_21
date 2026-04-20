@@ -1,11 +1,5 @@
-import OpenAI from "openai";
-
 import { isChinaRegion } from "@/lib/config/region";
-import {
-  getOpenAIBaseUrl,
-  getOpenAIModel,
-  getQwenModel,
-} from "@/lib/config/runtime-env";
+import { getQwenModel } from "@/lib/config/runtime-env";
 
 export interface ContractChatScreenshotData {
   sourceType: "wechat" | "feishu" | "screenshot";
@@ -14,7 +8,7 @@ export interface ContractChatScreenshotData {
 }
 
 export interface ContractChatScreenshotAnalysisResult {
-  provider: "dashscope" | "openai";
+  provider: "dashscope";
   rawText: string;
   data: ContractChatScreenshotData;
 }
@@ -22,13 +16,13 @@ export interface ContractChatScreenshotAnalysisResult {
 export class ContractChatOcrError extends Error {
   status: number;
   code: string;
-  provider?: "dashscope" | "openai";
+  provider?: "dashscope";
 
   constructor(
     message: string,
     code: string,
     status = 500,
-    provider?: "dashscope" | "openai",
+    provider?: "dashscope",
   ) {
     super(message);
     this.name = "ContractChatOcrError";
@@ -270,141 +264,9 @@ async function callDashScope(imageBase64: string): Promise<string> {
   );
 }
 
-function getOpenAIOcrModel() {
-  const configured = process.env.OPENAI_OCR_MODEL?.trim();
-  if (configured) {
-    return configured;
-  }
-
-  return getOpenAIModel();
-}
-
-async function callOpenAI(imageBase64: string): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey?.trim()) {
-    throw new ContractChatOcrError(
-      "OPENAI_API_KEY is unavailable",
-      "OCR_KEY_UNAVAILABLE",
-      503,
-      "openai",
-    );
-  }
-
-  const client = new OpenAI({
-    apiKey,
-    baseURL: getOpenAIBaseUrl(),
-  });
-  const model = getOpenAIOcrModel();
-  const timeoutMs = resolveOcrProviderTimeoutMs();
-  const abortController = new AbortController();
-
-  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  let response: any;
-  try {
-    const completionPromise = (client.chat.completions.create as any)(
-      {
-        model,
-        temperature: 0.1,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: getOcrPrompt() },
-              {
-                type: "image_url",
-                image_url: {
-                  url: imageBase64,
-                },
-              },
-            ],
-          },
-        ],
-      } as any,
-      { signal: abortController.signal },
-    ) as Promise<Awaited<ReturnType<typeof client.chat.completions.create>>>;
-
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutHandle = setTimeout(() => {
-        abortController.abort("OCR_TIMEOUT");
-        reject(
-          new ContractChatOcrError(
-            `OpenAI OCR timeout after ${timeoutMs}ms`,
-            "OCR_TIMEOUT",
-            504,
-            "openai",
-          ),
-        );
-      }, timeoutMs);
-    });
-
-    response = await Promise.race([completionPromise, timeoutPromise]);
-  } catch (error) {
-    if (error instanceof ContractChatOcrError) {
-      throw error;
-    }
-
-    const status =
-      typeof (error as { status?: unknown })?.status === "number"
-        ? (error as { status: number }).status
-        : undefined;
-    const message = error instanceof Error ? error.message : String(error);
-
-    if (status === 401 || status === 403 || /api key|unauthorized|authentication/i.test(message)) {
-      throw new ContractChatOcrError(
-        `OPENAI_API_KEY is unavailable: ${message}`,
-        "OCR_KEY_UNAVAILABLE",
-        503,
-        "openai",
-      );
-    }
-    if (
-      status === 408 ||
-      status === 429 ||
-      status === 504 ||
-      /timeout|timed out|abort|aborted/i.test(message)
-    ) {
-      throw new ContractChatOcrError(
-        `OpenAI OCR timeout: ${message}`,
-        "OCR_TIMEOUT",
-        504,
-        "openai",
-      );
-    }
-
-    throw new ContractChatOcrError(
-      `OpenAI OCR failed: ${message}`,
-      "OCR_PROVIDER_FAILED",
-      502,
-      "openai",
-    );
-  } finally {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-    }
-  }
-
-  const content = response.choices?.[0]?.message?.content;
-  if (typeof content === "string" && content.trim()) {
-    return content;
-  }
-
-  throw new ContractChatOcrError(
-    "OpenAI OCR returned an empty response",
-    "OCR_EMPTY_RESPONSE",
-    502,
-    "openai",
-  );
-}
-
 async function callOcrProvider(imageBase64: string) {
-  if (isChinaRegion()) {
-    const rawText = await callDashScope(imageBase64);
-    return { provider: "dashscope" as const, rawText };
-  }
-
-  const rawText = await callOpenAI(imageBase64);
-  return { provider: "openai" as const, rawText };
+  const rawText = await callDashScope(imageBase64);
+  return { provider: "dashscope" as const, rawText };
 }
 
 export async function analyzeContractChatScreenshot(
@@ -427,14 +289,10 @@ export async function analyzeContractChatScreenshot(
   };
 }
 
-export function getContractChatOcrProvider() {
-  return isChinaRegion() ? "dashscope" : "openai";
+export function getContractChatOcrProvider(): "dashscope" {
+  return "dashscope";
 }
 
 export function getContractChatOcrModel() {
-  if (isChinaRegion()) {
-    return process.env.DASHSCOPE_OCR_MODEL || getQwenModel();
-  }
-
-  return getOpenAIOcrModel();
+  return process.env.DASHSCOPE_OCR_MODEL || getQwenModel();
 }

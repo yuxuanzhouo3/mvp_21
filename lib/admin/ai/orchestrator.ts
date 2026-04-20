@@ -733,7 +733,7 @@ async function ensureCoverAsset(job: AiGenerationJob, prompt: string, aspectRati
 
   const poll = await pollPosterGeneration({
     region: job.region,
-    provider: job.region === 'CN' ? 'aliyun-wanx-image' : 'openai',
+    provider: 'aliyun-wanx-image',
     model: job.provider_model,
     taskId: outputPayload.cover_generation.task_id,
   })

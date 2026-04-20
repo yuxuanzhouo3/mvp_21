@@ -1,5 +1,4 @@
 ﻿import { resolveDeploymentRegion as getDeploymentRegion } from '@/lib/config/deployment-region'
-import { getOpenAIModel } from '@/lib/config/runtime-env'
 import type { AiLanguage, AiProvider, AiRegion } from '@/lib/admin/types'
 
 export interface AiProviderRoute {
@@ -23,44 +22,24 @@ export function resolveAiRegion(explicitRegion?: AiRegion): AiRegion {
 
 export function resolveAiProviderRoute(explicitRegion?: AiRegion): AiProviderRoute {
   const region = resolveAiRegion(explicitRegion)
-
-  if (region === 'CN') {
-    return {
-      region,
-      language: 'zh-CN',
-      analysisProvider: 'aliyun-bailian',
-      analysisModel: process.env.ALIYUN_QWEN_MODEL || 'qwen-plus',
-      posterProvider: 'aliyun-wanx-image',
-      posterModel: process.env.ALIYUN_WAN_IMAGE_MODEL || 'wan2.5-t2i-preview',
-      videoProvider: 'aliyun-wanx-video',
-      videoModel: process.env.ALIYUN_WAN_VIDEO_MODEL || 'wan2.5-t2v-preview',
-    }
-  }
-
   return {
     region,
-    language: 'en-US',
-    analysisProvider: 'openai',
-    analysisModel: getOpenAIModel(),
-    posterProvider: 'openai',
-    posterModel: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
-    videoProvider: 'gemini',
-    videoModel: process.env.GEMINI_VIDEO_MODEL || 'veo-3.1-generate-preview',
+    language: region === 'CN' ? 'zh-CN' : 'en-US',
+    analysisProvider: 'aliyun-bailian',
+    analysisModel: process.env.ALIYUN_QWEN_MODEL || process.env.AI_MODEL || process.env.QWEN_MODEL || 'qwen-plus',
+    posterProvider: 'aliyun-wanx-image',
+    posterModel: process.env.ALIYUN_WAN_IMAGE_MODEL || 'wan2.5-t2i-preview',
+    videoProvider: 'aliyun-wanx-video',
+    videoModel: process.env.ALIYUN_WAN_VIDEO_MODEL || 'wan2.5-t2v-preview',
   }
 }
 
-export function getDashScopeApiBase(region: AiRegion): string {
-  if (region === 'CN') {
-    return process.env.DASHSCOPE_API_BASE || 'https://dashscope.aliyuncs.com/api/v1'
-  }
-  return process.env.DASHSCOPE_API_BASE_INTL || 'https://dashscope-intl.aliyuncs.com/api/v1'
+export function getDashScopeApiBase(_region: AiRegion): string {
+  return process.env.DASHSCOPE_API_BASE || 'https://dashscope.aliyuncs.com/api/v1'
 }
 
-export function getDashScopeCompatibleBase(region: AiRegion): string {
-  if (region === 'CN') {
-    return process.env.DASHSCOPE_COMPAT_BASE || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-  }
-  return process.env.DASHSCOPE_COMPAT_BASE_INTL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
+export function getDashScopeCompatibleBase(_region: AiRegion): string {
+  return process.env.DASHSCOPE_COMPAT_BASE || process.env.AI_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 }
 
 export function getGeminiApiBase(): string {

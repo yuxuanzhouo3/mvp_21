@@ -261,14 +261,9 @@ export function validateEnvironment():
         );
       }
 
-      const openAiModel = envData.OPENAI_MODEL?.trim();
-      if (!openAiModel) {
+      if (!envData.DASHSCOPE_API_KEY?.trim()) {
         conditionalErrors.push(
-          "OPENAI_MODEL: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to INTL"
-        );
-      } else if (!/^gpt-4/i.test(openAiModel)) {
-        conditionalErrors.push(
-          "OPENAI_MODEL: Must be an explicit GPT-4 series model when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to INTL"
+          "DASHSCOPE_API_KEY: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to INTL"
         );
       }
     }
@@ -319,6 +314,12 @@ export function validateEnvironment():
       if (!envData.TENCENT_SMS_SECRET_KEY) {
         conditionalErrors.push(
           "TENCENT_SMS_SECRET_KEY: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to CN"
+        );
+      }
+
+      if (!envData.DASHSCOPE_API_KEY?.trim()) {
+        conditionalErrors.push(
+          "DASHSCOPE_API_KEY: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to CN"
         );
       }
     }

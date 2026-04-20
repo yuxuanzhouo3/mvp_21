@@ -100,13 +100,10 @@ function buildIntlTimeoutFallbackAnalysis(content: string) {
 }
 
 function getProviderKeyLabel(provider?: string) {
-  if (provider === "openai") {
-    return "OPENAI_API_KEY";
-  }
   if (provider === "dashscope") {
     return "DASHSCOPE_API_KEY";
   }
-  return isChinaRegion() ? "DASHSCOPE_API_KEY" : "OPENAI_API_KEY";
+  return "DASHSCOPE_API_KEY";
 }
 
 function getAiErrorMessage(error: ContractAIError): string {
@@ -234,8 +231,8 @@ export async function POST(request: NextRequest) {
 
       if (shouldUseTimeoutFallback) {
         const fallbackReason = isTimeoutLikeAiError(error)
-          ? "openai_timeout_fallback"
-          : "openai_unavailable_fallback";
+          ? "dashscope_timeout_fallback"
+          : "dashscope_unavailable_fallback";
         return NextResponse.json({
           success: true,
           data: buildIntlTimeoutFallbackAnalysis(fallbackContent),

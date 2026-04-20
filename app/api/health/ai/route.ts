@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import {
   getDashScopeBaseUrl,
-  getOpenAIBaseUrl,
-  getOpenAIModel,
+  getUnifiedAIApiKey,
   getQwenModel,
 } from "@/lib/config/runtime-env";
 
@@ -20,7 +19,7 @@ type FailureKind =
 
 interface ProviderHealthReport {
   target: HealthTarget;
-  provider: "dashscope" | "openai";
+  provider: "dashscope";
   status: HealthStatus;
   checks: {
     keyConfigured: boolean;
@@ -85,140 +84,17 @@ function classifyNetworkError(error: unknown): { kind: FailureKind; detail: stri
 }
 
 async function probeOpenAI(): Promise<ProviderHealthReport> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim() || "";
-  const baseUrl = normalizeBaseUrl(getOpenAIBaseUrl());
-  let model = "";
-
-  try {
-    model = getOpenAIModel();
-  } catch (error) {
-    return {
-      target: "INTL",
-      provider: "openai",
-      status: "error",
-      checks: {
-        keyConfigured: Boolean(apiKey),
-        modelConfigured: false,
-        apiReachable: false,
-        authPassed: false,
-        quotaAvailable: false,
-      },
-      failureKind: "missing_model",
-      message: "OPENAI_MODEL is missing or invalid.",
-      baseUrl,
-      detail: error instanceof Error ? error.message : String(error),
-    };
-  }
-
-  if (!apiKey) {
-    return {
-      target: "INTL",
-      provider: "openai",
-      status: "error",
-      checks: {
-        keyConfigured: false,
-        modelConfigured: true,
-        apiReachable: false,
-        authPassed: false,
-        quotaAvailable: false,
-      },
-      failureKind: "missing_key",
-      message: "OPENAI_API_KEY is not configured.",
-      model,
-      baseUrl,
-    };
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: "health-check" }],
-        max_tokens: 1,
-      }),
-    });
-
-    const bodyText = await response.text();
-
-    if (!response.ok) {
-      const failureKind = classifyProviderFailure(response.status, bodyText);
-      return {
-        target: "INTL",
-        provider: "openai",
-        status: "error",
-        checks: {
-          keyConfigured: true,
-          modelConfigured: true,
-          apiReachable: true,
-          authPassed: failureKind !== "invalid_key",
-          quotaAvailable: failureKind !== "quota_exceeded",
-        },
-        failureKind,
-        message: `OpenAI health check failed with HTTP ${response.status}.`,
-        model,
-        baseUrl,
-        httpStatus: response.status,
-        detail: bodyText.slice(0, 500),
-      };
-    }
-
-    return {
-      target: "INTL",
-      provider: "openai",
-      status: "ok",
-      checks: {
-        keyConfigured: true,
-        modelConfigured: true,
-        apiReachable: true,
-        authPassed: true,
-        quotaAvailable: true,
-      },
-      message: "OpenAI health check passed.",
-      model,
-      baseUrl,
-      httpStatus: response.status,
-    };
-  } catch (error) {
-    const { kind, detail } = classifyNetworkError(error);
-    return {
-      target: "INTL",
-      provider: "openai",
-      status: "error",
-      checks: {
-        keyConfigured: true,
-        modelConfigured: true,
-        apiReachable: false,
-        authPassed: false,
-        quotaAvailable: false,
-      },
-      failureKind: kind,
-      message: "OpenAI health check failed before receiving a valid API response.",
-      model,
-      baseUrl,
-      detail,
-    };
-  } finally {
-    clearTimeout(timer);
-  }
+  return probeDashScope("INTL");
 }
 
-async function probeDashScope(): Promise<ProviderHealthReport> {
-  const apiKey = process.env.DASHSCOPE_API_KEY?.trim() || "";
+async function probeDashScope(target: HealthTarget): Promise<ProviderHealthReport> {
+  const apiKey = getUnifiedAIApiKey();
   const baseUrl = normalizeBaseUrl(getDashScopeBaseUrl());
   const model = getQwenModel();
 
   if (!apiKey) {
     return {
-      target: "CN",
+      target,
       provider: "dashscope",
       status: "error",
       checks: {
@@ -258,7 +134,7 @@ async function probeDashScope(): Promise<ProviderHealthReport> {
     if (!response.ok) {
       const failureKind = classifyProviderFailure(response.status, bodyText);
       return {
-        target: "CN",
+        target,
         provider: "dashscope",
         status: "error",
         checks: {
@@ -278,7 +154,7 @@ async function probeDashScope(): Promise<ProviderHealthReport> {
     }
 
     return {
-      target: "CN",
+      target,
       provider: "dashscope",
       status: "ok",
       checks: {
@@ -296,7 +172,7 @@ async function probeDashScope(): Promise<ProviderHealthReport> {
   } catch (error) {
     const { kind, detail } = classifyNetworkError(error);
     return {
-      target: "CN",
+      target,
       provider: "dashscope",
       status: "error",
       checks: {
@@ -323,7 +199,7 @@ export async function GET(request: NextRequest) {
 
   const reports: ProviderHealthReport[] = [];
   for (const target of targets) {
-    reports.push(target === "CN" ? await probeDashScope() : await probeOpenAI());
+    reports.push(target === "CN" ? await probeDashScope("CN") : await probeOpenAI());
   }
 
   const hasError = reports.some((report) => report.status === "error");

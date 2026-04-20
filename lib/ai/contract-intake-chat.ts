@@ -2,10 +2,9 @@
 
 import { isChinaRegion } from "@/lib/config/region";
 import {
-  getDashScopeBaseUrl,
-  getOpenAIBaseUrl,
-  getOpenAIModel,
-  getQwenModel,
+  getUnifiedAIApiKey,
+  getUnifiedAIBaseUrl,
+  getUnifiedAIModel,
 } from "@/lib/config/runtime-env";
 
 export interface IntakeChatMessage {
@@ -159,29 +158,19 @@ function getIntakePrompt(messages: IntakeChatMessage[]) {
 }
 
 function getChatClient() {
-  if (isChinaRegion()) {
-    if (!process.env.DASHSCOPE_API_KEY?.trim()) {
-      throw new Error("AI_CHAT_KEY_UNAVAILABLE");
-    }
-
-    return new OpenAI({
-      apiKey: process.env.DASHSCOPE_API_KEY,
-      baseURL: getDashScopeBaseUrl(),
-    });
-  }
-
-  if (!process.env.OPENAI_API_KEY?.trim()) {
+  const apiKey = getUnifiedAIApiKey();
+  if (!apiKey) {
     throw new Error("AI_CHAT_KEY_UNAVAILABLE");
   }
 
   return new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-    baseURL: getOpenAIBaseUrl(),
+    apiKey,
+    baseURL: getUnifiedAIBaseUrl(),
   });
 }
 
 function getChatModel() {
-  return isChinaRegion() ? getQwenModel() : getOpenAIModel();
+  return getUnifiedAIModel();
 }
 
 function normalizeString(value: unknown) {
@@ -374,3 +363,4 @@ export async function runContractIntakeChat(
 
   return draft;
 }
+

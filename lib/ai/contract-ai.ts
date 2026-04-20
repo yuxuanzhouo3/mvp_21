@@ -3,10 +3,9 @@ import OpenAI from "openai";
 
 import { isChinaRegion } from "@/lib/config/region";
 import {
-  getDashScopeBaseUrl,
-  getOpenAIBaseUrl,
-  getOpenAIModel,
-  getQwenModel,
+  getUnifiedAIApiKey,
+  getUnifiedAIBaseUrl,
+  getUnifiedAIModel,
 } from "@/lib/config/runtime-env";
 import type {
   AIAnalysisResult,
@@ -43,7 +42,7 @@ import {
 } from "./prompts/experts";
 
 type AILanguage = AnalyzePromptLanguage & GeneratePromptLanguage;
-type AIProvider = "dashscope" | "openai";
+type AIProvider = "dashscope";
 
 export class ContractAIError extends Error {
   code: string;
@@ -68,43 +67,26 @@ function resolveLanguage(input?: "zh" | "en"): AILanguage {
 }
 
 function hasDashScope() {
-  return Boolean(process.env.DASHSCOPE_API_KEY?.trim());
-}
-
-function hasOpenAI() {
-  return Boolean(process.env.OPENAI_API_KEY?.trim());
+  return Boolean(getUnifiedAIApiKey());
 }
 
 function hasProvider(provider: AIProvider) {
-  if (provider === "openai") {
-    return hasOpenAI();
-  }
   return hasDashScope();
 }
 
 function getProviderKeyName(provider: AIProvider) {
-  return provider === "openai" ? "OPENAI_API_KEY" : "DASHSCOPE_API_KEY";
+  return "DASHSCOPE_API_KEY";
 }
 
 function getAIClientByProvider(provider: AIProvider): OpenAI {
-  if (provider === "openai") {
-    return new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      baseURL: getOpenAIBaseUrl(),
-    });
-  }
-
   return new OpenAI({
-    apiKey: process.env.DASHSCOPE_API_KEY,
-    baseURL: getDashScopeBaseUrl(),
+    apiKey: getUnifiedAIApiKey(),
+    baseURL: getUnifiedAIBaseUrl(),
   });
 }
 
 function getModelByProvider(provider: AIProvider): string {
-  if (provider === "openai") {
-    return getOpenAIModel();
-  }
-  return getQwenModel();
+  return getUnifiedAIModel();
 }
 
 function mapProviderError(error: unknown, provider: AIProvider): ContractAIError {
@@ -162,7 +144,8 @@ function mapProviderError(error: unknown, provider: AIProvider): ContractAIError
 async function runWithProviderFallback<T>(
   task: (context: { provider: AIProvider; client: OpenAI; model: string }) => Promise<T>,
 ): Promise<T> {
-  const providers: AIProvider[] = isChinaRegion() ? ["dashscope"] : ["openai"];
+  const preferredProvider: AIProvider = "dashscope";
+  const providers: AIProvider[] = [preferredProvider];
   let lastError: ContractAIError | null = null;
 
   for (const provider of providers) {
@@ -193,7 +176,7 @@ async function runWithProviderFallback<T>(
       "No AI provider is configured",
       "AI_NOT_CONFIGURED",
       503,
-      providers[0],
+      preferredProvider,
     )
   );
 }

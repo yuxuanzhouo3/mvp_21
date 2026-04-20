@@ -46,7 +46,7 @@ function isIntlAdminAllowlistedEmail(email?: string | null): boolean {
 }
 
 function getAiKeyLabel() {
-  return isChinaRegion() ? "DASHSCOPE_API_KEY" : "OPENAI_API_KEY";
+  return "DASHSCOPE_API_KEY";
 }
 
 function isTimeoutLikeError(error: unknown) {

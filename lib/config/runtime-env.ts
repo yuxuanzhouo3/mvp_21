@@ -61,6 +61,7 @@ export function getWechatPayPlatformPublicKey(): string {
 
 export function getDashScopeBaseUrl(): string {
   return pickFirstNonEmpty(
+    process.env.AI_BASE_URL,
     process.env.DASHSCOPE_BASE_URL,
     "https://dashscope.aliyuncs.com/compatible-mode/v1",
   );
@@ -68,30 +69,52 @@ export function getDashScopeBaseUrl(): string {
 
 export function getOpenAIBaseUrl(): string {
   return pickFirstNonEmpty(
+    process.env.AI_BASE_URL,
     process.env.OPENAI_BASE_URL,
-    "https://api.openai.com/v1",
+    process.env.DASHSCOPE_BASE_URL,
+    "https://dashscope.aliyuncs.com/compatible-mode/v1",
   );
 }
 
 export function getQwenModel(): string {
   return pickFirstNonEmpty(
+    process.env.AI_MODEL,
     process.env.QWEN_MODEL,
     "qwen-plus",
   );
 }
 
 export function getOpenAIModel(): string {
-  const model = pickFirstNonEmpty(process.env.OPENAI_MODEL);
-  if (model) {
-    if (!/^gpt-4/i.test(model)) {
-      throw new Error("OPENAI_MODEL must be an explicit GPT-4 series model (for example: gpt-4.1).");
-    }
-    return model;
-  }
+  return pickFirstNonEmpty(
+    process.env.AI_MODEL,
+    process.env.OPENAI_MODEL,
+    process.env.QWEN_MODEL,
+    "qwen-plus",
+  );
+}
 
-  if (process.env.NODE_ENV === "test") {
-    return "gpt-4.1";
-  }
+export function getUnifiedAIApiKey(): string {
+  return pickFirstNonEmpty(
+    process.env.AI_API_KEY,
+    process.env.DASHSCOPE_API_KEY,
+    process.env.OPENAI_API_KEY,
+  );
+}
 
-  throw new Error("OPENAI_MODEL is required and must be set explicitly.");
+export function getUnifiedAIBaseUrl(): string {
+  return pickFirstNonEmpty(
+    process.env.AI_BASE_URL,
+    process.env.DASHSCOPE_BASE_URL,
+    process.env.OPENAI_BASE_URL,
+    "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  );
+}
+
+export function getUnifiedAIModel(): string {
+  return pickFirstNonEmpty(
+    process.env.AI_MODEL,
+    process.env.QWEN_MODEL,
+    process.env.OPENAI_MODEL,
+    "qwen-plus",
+  );
 }

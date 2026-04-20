@@ -4,7 +4,7 @@
  */
 
 import { currentRegion, deploymentConfig } from "./deployment.config";
-import { getOpenAIModel, getQwenModel } from "./runtime-env";
+import { getQwenModel } from "./runtime-env";
 
 export type Region = "CN" | "INTL";
 
@@ -119,36 +119,22 @@ export const isInternationalRegion = (): boolean =>
 const paymentProviders = deploymentConfig.payment.providers;
 const primaryPaymentMethod =
   paymentProviders[0] || (isChinaRegion() ? "wechat" : "stripe");
-const aiProvider = isChinaRegion() ? "dashscope" : "openai";
+const aiProvider = "dashscope";
 const paymentMethods = isChinaRegion()
   ? ["wechat", "alipay"]
   : ["stripe", "paypal"];
 const paymentCurrency = isChinaRegion() ? "CNY" : "USD";
 
-function resolveAvailableAiModels(provider: "dashscope" | "openai"): string[] {
-  if (provider === "dashscope") {
-    if (typeof window !== "undefined") {
-      return ["qwen-plus", "qwen-max", "qwen-vl-plus"];
-    }
-
-    try {
-      return [getQwenModel(), "qwen-max", "qwen-vl-plus"];
-    } catch (error) {
-      console.warn("[RegionConfig] Failed to resolve Qwen model, using fallback:", error);
-      return ["qwen-plus", "qwen-max", "qwen-vl-plus"];
-    }
-  }
-
+function resolveAvailableAiModels(): string[] {
   if (typeof window !== "undefined") {
-    // Browser bundle must not depend on server-only OPENAI_* env variables.
-    return ["gpt-4.1"];
+    return ["qwen-plus"];
   }
 
   try {
-    return [getOpenAIModel()];
+    return [getQwenModel()];
   } catch (error) {
-    console.warn("[RegionConfig] Failed to resolve OpenAI model, using fallback:", error);
-    return ["gpt-4.1"];
+    console.warn("[RegionConfig] Failed to resolve Qwen model, using fallback:", error);
+    return ["qwen-plus"];
   }
 }
 
@@ -170,7 +156,7 @@ export const RegionConfig = {
   },
   ai: {
     provider: aiProvider,
-    availableModels: resolveAvailableAiModels(aiProvider),
+    availableModels: resolveAvailableAiModels(),
   },
   storage: {
     provider: deploymentConfig.database.provider,
@@ -208,8 +194,8 @@ export function validateRegionConfig(): { valid: boolean; errors: string[] } {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
       errors.push("INTL deployment requires NEXT_PUBLIC_SUPABASE_URL");
     }
-    if (!process.env.OPENAI_API_KEY) {
-      errors.push("INTL deployment requires OPENAI_API_KEY");
+    if (!process.env.DASHSCOPE_API_KEY) {
+      errors.push("INTL deployment requires DASHSCOPE_API_KEY");
     }
   }
 
