@@ -141,7 +141,7 @@ export const commonSchemas = {
 
   // 支付创建
   createPayment: z.object({
-    method: z.enum(["stripe", "alipay", "wechat"]),
+    method: z.enum(["stripe", "paypal", "alipay", "wechat"]),
     amount: z.number().positive().max(10000), // 最大10000元
     currency: z.enum(["CNY", "USD"]),
     description: z.string().max(500).optional(),

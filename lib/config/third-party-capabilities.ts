@@ -6,7 +6,7 @@ import {
 } from "@/lib/config/runtime-env";
 
 type Region = "CN" | "INTL";
-type PaymentMethod = "stripe" | "wechat" | "alipay";
+type PaymentMethod = "stripe" | "paypal" | "wechat" | "alipay";
 type AuthMethod = "sms" | "google";
 
 export interface CapabilityStatus {
@@ -262,6 +262,26 @@ function getStripeStatus(region: Region): CapabilityStatus {
   return createStatus(true);
 }
 
+function getPayPalStatus(region: Region): CapabilityStatus {
+  if (region !== "INTL" || !getPaymentProviders().includes("paypal")) {
+    return createStatus(false, "PayPal is not supported in this deployment.");
+  }
+
+  if (!isPresent(process.env.PAYPAL_CLIENT_ID)) {
+    return createStatus(false, "PAYPAL_CLIENT_ID is missing.");
+  }
+
+  if (!isPresent(process.env.PAYPAL_CLIENT_SECRET)) {
+    return createStatus(false, "PAYPAL_CLIENT_SECRET is missing.");
+  }
+
+  if (!looksLikeUrl(getAppUrl())) {
+    return createStatus(false, "APP_URL or NEXT_PUBLIC_APP_URL is missing or invalid.");
+  }
+
+  return createStatus(true);
+}
+
 function getAlipayStatus(region: Region): CapabilityStatus {
   if (region !== "CN" || !getPaymentProviders().includes("alipay")) {
     return createStatus(false, "Alipay is not supported in this deployment.");
@@ -330,6 +350,7 @@ export function getPaymentConfigSnapshot(): PaymentConfigSnapshot {
   const region = currentRegion;
   const methods: Record<PaymentMethod, CapabilityStatus> = {
     stripe: getStripeStatus(region),
+    paypal: getPayPalStatus(region),
     wechat: getWechatPayStatus(region),
     alipay: getAlipayStatus(region),
   };

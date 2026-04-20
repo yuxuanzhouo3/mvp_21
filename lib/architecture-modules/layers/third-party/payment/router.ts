@@ -1,4 +1,3 @@
-// lib/architecture-modules/layers/third-party/payment/router.ts - 支付路由器
 import { RegionType } from "../../../core/types";
 
 export interface PaymentProvider {
@@ -14,7 +13,7 @@ export interface PaymentOrder {
   userId: string;
   planType: string;
   billingCycle: "monthly" | "yearly";
-  metadata?: Record<string, any>; // 添加可选的 metadata 字段
+  metadata?: Record<string, any>;
 }
 
 export interface PaymentResult {
@@ -47,7 +46,7 @@ export class PaymentRouter {
 
   async createPayment(
     region: RegionType,
-    order: PaymentOrder
+    order: PaymentOrder,
   ): Promise<PaymentResult> {
     const methods = this.getPaymentMethodsForRegion(region);
 
@@ -77,9 +76,9 @@ export class PaymentRouter {
       case RegionType.CHINA:
         return ["wechat", "alipay"];
       case RegionType.EUROPE:
-        return []; // GDPR合规，禁用支付
+        return [];
       default:
-        return ["stripe"];
+        return ["stripe", "paypal"];
     }
   }
 
@@ -88,5 +87,4 @@ export class PaymentRouter {
   }
 }
 
-// 导出单例实例
 export const paymentRouter = new PaymentRouter();

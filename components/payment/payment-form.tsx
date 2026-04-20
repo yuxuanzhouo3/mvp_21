@@ -19,7 +19,6 @@ import { getAuthClient } from "@/lib/auth/client";
 import { RegionType } from "@/lib/architecture-modules/core/types";
 import { paymentRouter } from "@/lib/architecture-modules/layers/third-party/payment/router";
 import { useTranslations } from "@/lib/i18n";
-import { isChinaRegion } from "@/lib/config/region";
 import { getPricingByMethod, type PaymentMethod } from "@/lib/payment/payment-config";
 import { toast } from "@/hooks/use-toast";
 
@@ -79,13 +78,14 @@ export function PaymentForm({
 
   const paymentRequestRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const isIntlDeployment = !isChinaRegion();
+  const deploymentRegion = region === RegionType.CHINA ? "CN" : "INTL";
 
   const regionMethods = paymentRouter.getAvailableMethods(region);
   const resolvedMethods = paymentConfig?.availableMethods ?? regionMethods;
-  const availableMethods = isIntlDeployment
-    ? resolvedMethods.filter((method) => method === "stripe")
-    : resolvedMethods;
+  const availableMethods =
+    deploymentRegion === "INTL"
+      ? resolvedMethods.filter((method) => method === "stripe" || method === "paypal")
+      : resolvedMethods.filter((method) => method === "wechat" || method === "alipay");
   const unavailableReasons = regionMethods
     .map((method) => ({
       method,
@@ -99,6 +99,11 @@ export function PaymentForm({
       name: t.payment.methods.stripe.name,
       icon: <CreditCard className="h-5 w-5" />,
       description: t.payment.methods.stripe.description,
+    },
+    paypal: {
+      name: "PayPal",
+      icon: <CreditCard className="h-5 w-5" />,
+      description: "Pay with PayPal account",
     },
     wechat: {
       name: t.payment.methods.wechat.name,
@@ -143,7 +148,7 @@ export function PaymentForm({
   }, []);
 
   useEffect(() => {
-    if (selectedMethod && !availableMethods.includes(selectedMethod)) {
+    if (selectedMethod && !availableMethods.some((method) => method === selectedMethod)) {
       setSelectedMethod("");
     }
   }, [availableMethods, selectedMethod]);

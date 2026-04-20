@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
+import { PayPalProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/paypal-provider";
 import { StripeProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/stripe-provider";
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
 import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
@@ -26,6 +27,14 @@ type PaymentConfirmationResult = {
   providerReference?: string;
 };
 
+function resolveEffectivePaymentMethod(payment: any): string {
+  const requested = payment?.metadata?.requestedPaymentMethod;
+  if (requested === "paypal") {
+    return "paypal";
+  }
+  return payment?.payment_method || "";
+}
+
 export async function POST(request: NextRequest) {
   return new Promise<NextResponse>((resolve) => {
     const mockRes = {
@@ -46,10 +55,19 @@ async function confirmPaymentWithProvider(
   payment: any,
   reference: string,
 ): Promise<PaymentConfirmationResult> {
-  const method = payment.payment_method;
+  const method = resolveEffectivePaymentMethod(payment);
 
   if (method === "stripe") {
     const provider = new StripeProvider(process.env);
+    const confirmation = await provider.confirmPayment(reference);
+    return {
+      ...confirmation,
+      providerReference: reference,
+    };
+  }
+
+  if (method === "paypal") {
+    const provider = new PayPalProvider(process.env);
     const confirmation = await provider.confirmPayment(reference);
     return {
       ...confirmation,
@@ -127,6 +145,7 @@ async function handlePaymentConfirm(request: NextRequest) {
 
     const rawReferences = [
       typeof body?.paymentId === "string" ? body.paymentId : "",
+      typeof body?.token === "string" ? body.token : "",
       typeof body?.subscriptionId === "string" ? body.subscriptionId : "",
       typeof body?.outTradeNo === "string" ? body.outTradeNo : "",
       typeof body?.tradeNo === "string" ? body.tradeNo : "",
@@ -305,7 +324,7 @@ async function handlePaymentConfirm(request: NextRequest) {
       providerReference: confirmation.providerReference || reference,
       amount: confirmation.amount || payment.amount,
       currency: confirmation.currency || payment.currency,
-      paymentMethod: payment.payment_method,
+      paymentMethod: resolveEffectivePaymentMethod(payment),
     });
 
     logBusinessEvent("payment_confirm_success", user.id, {

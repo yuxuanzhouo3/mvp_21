@@ -27,7 +27,7 @@ describe("payment schema drift guards", () => {
       expect(schema).toContain(token);
     }
 
-    expect(schema).not.toContain("'paypal'");
+    expect(schema).toContain("'paypal'");
   });
 
   test("migrations include payment alignment artifacts", () => {
@@ -50,7 +50,6 @@ describe("payment schema drift guards", () => {
       expect(merged).toContain(token);
     }
 
-    expect(merged).not.toContain("IN ('stripe', 'paypal'");
-    expect(merged).not.toContain("IN ('stripe', 'paypal', 'alipay', 'wechat')");
+    expect(merged).toContain("IN ('stripe', 'paypal', 'alipay', 'wechat')");
   });
 });

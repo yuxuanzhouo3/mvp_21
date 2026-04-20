@@ -67,6 +67,9 @@ export function performStartupSecurityChecks(): void {
 
     // 检查是否配置了支付提供商
     const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY);
+    const paypalConfigured = Boolean(
+      process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET,
+    );
     const wechatConfigured = Boolean(
       process.env.WECHAT_PAY_MCH_ID &&
         (process.env.WECHAT_PAY_API_V3_KEY || process.env.WECHAT_PAY_API_KEY_V3),
@@ -76,7 +79,7 @@ export function performStartupSecurityChecks(): void {
     );
 
     const paymentConfigured = isInternationalDeployment()
-      ? stripeConfigured
+      ? stripeConfigured || paypalConfigured
       : wechatConfigured || alipayConfigured;
 
     if (!paymentConfigured) {

@@ -26,7 +26,7 @@ export interface DeploymentConfig {
     provider: "cloudbase" | "supabase";
   };
   payment: {
-    providers: Array<"stripe" | "wechat" | "alipay">;
+    providers: Array<"stripe" | "paypal" | "wechat" | "alipay">;
   };
   apis: {
     authCallbackPath: string;
@@ -57,7 +57,7 @@ function generateConfig(region: DeploymentRegion): DeploymentConfig {
       provider: isChinaRegion ? "cloudbase" : "supabase",
     },
     payment: {
-      providers: isChinaRegion ? ["wechat", "alipay"] : ["stripe"],
+      providers: isChinaRegion ? ["wechat", "alipay"] : ["stripe", "paypal"],
     },
     apis: {
       authCallbackPath: "/auth/callback",

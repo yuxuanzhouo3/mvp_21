@@ -245,7 +245,7 @@ export default function DashboardPage() {
                     </div>
                     <div>
                       <p className="text-3xl font-bold">
-                        {formatAmount(paymentStats?.byMethod?.stripe ?? 0)}
+                        {formatAmount((paymentStats?.byMethod?.stripe ?? 0) + (paymentStats?.byMethod?.paypal ?? 0))}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">{tx("总收入", "Revenue")}</p>
                     </div>

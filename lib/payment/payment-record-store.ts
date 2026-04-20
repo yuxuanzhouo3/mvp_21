@@ -51,6 +51,19 @@ function isSupabaseMissingTableError(error: unknown) {
     && (error as { code: string }).code === "PGRST116";
 }
 
+function isSupabasePaymentMethodConstraintError(error: unknown) {
+  const code = String((error as { code?: unknown })?.code || "");
+  const message = String((error as { message?: unknown })?.message || "");
+  const details = String((error as { details?: unknown })?.details || "");
+  return (
+    code === "23514"
+    && (
+      message.includes("payments_payment_method_check")
+      || details.includes("payments_payment_method_check")
+    )
+  );
+}
+
 export async function findRecentPaymentByFingerprint(input: {
   userId: string;
   amount: number;
@@ -150,6 +163,31 @@ export async function createPendingPaymentRecord(input: {
   });
 
   if (error) {
+    if (
+      input.paymentMethod === "paypal"
+      && isSupabasePaymentMethodConstraintError(error)
+    ) {
+      // Compatibility fallback for databases that haven't applied PayPal constraint migration yet.
+      const compatibilityMetadata = {
+        ...(typeof input.paymentFields.metadata === "object" && input.paymentFields.metadata
+          ? (input.paymentFields.metadata as Record<string, unknown>)
+          : {}),
+        requestedPaymentMethod: "paypal",
+        storageCompatibilityMode: "paypal_via_legacy_payment_method_constraint",
+      };
+
+      const retry = await supabaseAdmin.from("payments").insert({
+        ...basePayload,
+        payment_method: "stripe",
+        metadata: compatibilityMetadata,
+        created_at: input.nowIso,
+      });
+
+      if (!retry.error) {
+        return;
+      }
+    }
+
     throw error;
   }
 }

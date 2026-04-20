@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   price NUMERIC(10,2),
   currency TEXT DEFAULT 'USD',
   billing_cycle TEXT CHECK (billing_cycle IN ('monthly', 'yearly', 'annual')),
-  payment_method TEXT CHECK (payment_method IN ('stripe', 'wechat', 'alipay')),
+  payment_method TEXT CHECK (payment_method IN ('stripe', 'paypal', 'wechat', 'alipay')),
   provider_subscription_id TEXT,
   transaction_id TEXT,
   start_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS payments (
   amount NUMERIC(10,2) NOT NULL,
   currency TEXT DEFAULT 'USD',
   status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'failed', 'refunded')),
-  payment_method TEXT NOT NULL CHECK (payment_method IN ('stripe', 'wechat', 'alipay')),
+  payment_method TEXT NOT NULL CHECK (payment_method IN ('stripe', 'paypal', 'wechat', 'alipay')),
   billing_cycle TEXT CHECK (billing_cycle IN ('monthly', 'yearly', 'annual')),
   product_type TEXT,
   product_name TEXT,
@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS payments (
 -- ========================================
 CREATE TABLE IF NOT EXISTS webhook_events (
   id TEXT PRIMARY KEY,
-  provider TEXT NOT NULL CHECK (provider IN ('stripe', 'alipay', 'wechat')),
+  provider TEXT NOT NULL CHECK (provider IN ('stripe', 'paypal', 'alipay', 'wechat')),
   event_type TEXT NOT NULL,
   event_data JSONB DEFAULT '{}'::jsonb,
   processed BOOLEAN NOT NULL DEFAULT false,

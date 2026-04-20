@@ -1,6 +1,6 @@
 import { RegionConfig } from "@/lib/config/region";
 
-export type PaymentMethod = "wechat" | "alipay" | "stripe";
+export type PaymentMethod = "wechat" | "alipay" | "stripe" | "paypal";
 
 export interface PaymentMethodConfig {
   label: string;
@@ -23,6 +23,11 @@ const paymentMethodConfigs: Record<PaymentMethod, PaymentMethodConfig> = {
     label: "Stripe",
     color: "bg-purple-600",
     icon: "ST",
+  },
+  paypal: {
+    label: "PayPal",
+    color: "bg-sky-700",
+    icon: "PP",
   },
 };
 

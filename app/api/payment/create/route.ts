@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
 import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
+import { PayPalProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/paypal-provider";
 import { StripeProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/stripe-provider";
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
 import { getPaymentMethodStatus } from "@/lib/config/third-party-capabilities";
@@ -27,7 +28,7 @@ import { paymentRateLimit } from "@/lib/security/rate-limit";
 
 // Validate payment creation payloads from the client.
 const createPaymentSchema = z.object({
-  method: z.enum(["stripe", "alipay", "wechat"]),
+  method: z.enum(["stripe", "paypal", "alipay", "wechat"]),
   amount: z.number().positive("Amount must be positive"),
   currency: z.string().min(1, "Currency is required").transform((value) => value.toUpperCase()),
   description: z.string().optional(),
@@ -235,6 +236,19 @@ async function handlePaymentCreate(request: NextRequest) {
         paymentUrl: created.paymentUrl,
         transactionId: created.paymentId,
       };
+    } else if (paymentMethod === "paypal") {
+      const provider = new PayPalProvider(process.env);
+      const created = await provider.createPayment(order);
+
+      if (!created.success || !created.paymentId) {
+        throw new Error(created.error || "Failed to create PayPal payment");
+      }
+
+      orderResult = {
+        orderId: created.paymentId,
+        paymentUrl: created.paymentUrl,
+        transactionId: created.paymentId,
+      };
     } else if (paymentMethod === "alipay") {
       const provider = new AlipayProvider(process.env);
       const created = await provider.createPayment(order);
@@ -306,10 +320,32 @@ async function handlePaymentCreate(request: NextRequest) {
       });
     } catch (paymentRecordError) {
       console.error("Error recording payment:", paymentRecordError);
+      const errorCode = String(
+        (paymentRecordError as { code?: unknown })?.code || "",
+      );
+      const errorMessage = String(
+        (paymentRecordError as { message?: unknown })?.message || "",
+      );
+      const errorDetails = String(
+        (paymentRecordError as { details?: unknown })?.details || "",
+      );
+      const paypalConstraintMissing =
+        paymentMethod === "paypal"
+        && errorCode === "23514"
+        && (
+          errorMessage.includes("payments_payment_method_check")
+          || errorDetails.includes("payments_payment_method_check")
+        );
+
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to record payment",
+          error: paypalConstraintMissing
+            ? "PayPal schema is not enabled in Supabase yet. Please apply latest payment migration."
+            : "Failed to record payment",
+          code: paypalConstraintMissing
+            ? "PAYPAL_SCHEMA_NOT_MIGRATED"
+            : "PAYMENT_RECORD_WRITE_FAILED",
         },
         { status: 500 },
       );

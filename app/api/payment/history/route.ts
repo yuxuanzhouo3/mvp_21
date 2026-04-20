@@ -60,6 +60,8 @@ async function handlePaymentHistory(request: NextRequest) {
       const paymentMethod =
         method === "stripe"
           ? "Stripe"
+          : method === "paypal"
+            ? "PayPal"
           : method === "wechat"
               ? "WeChat Pay"
               : method === "alipay"

@@ -120,7 +120,7 @@ const primaryPaymentMethod =
 const aiProvider = isChinaRegion() ? "dashscope" : "openai";
 const paymentMethods = isChinaRegion()
   ? ["wechat", "alipay"]
-  : ["stripe"];
+  : ["stripe", "paypal"];
 const paymentCurrency = isChinaRegion() ? "CNY" : "USD";
 
 function resolveAvailableAiModels(provider: "dashscope" | "openai"): string[] {

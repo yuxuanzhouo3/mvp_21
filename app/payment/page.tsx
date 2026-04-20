@@ -16,7 +16,6 @@ import { useUser } from "@/components/user-context";
 import { useToast } from "@/hooks/use-toast";
 import { RegionType } from "@/lib/architecture-modules/core/types";
 import { useTranslations } from "@/lib/i18n";
-import { isChinaRegion } from "@/lib/config/region";
 import { getAmountByCurrency } from "@/lib/payment/payment-config";
 
 type SelectedPlan = {
@@ -61,7 +60,9 @@ function PaymentPageContent() {
   const [pricing, setPricing] = useState<RuntimePricingData | null>(null);
 
   const currentPlan = user?.subscription_plan || "free";
-  const isCnDeployment = isChinaRegion();
+  const declaredRegion = process.env.NEXT_PUBLIC_DEPLOYMENT_REGION === "INTL" ? "INTL" : "CN";
+  const effectiveRegion = pricing?.region || declaredRegion;
+  const isCnDeployment = effectiveRegion === "CN";
   const region = isCnDeployment ? RegionType.CHINA : RegionType.USA;
   const currency = pricing?.currency || (isCnDeployment ? "CNY" : "USD");
   const requestedPlan = searchParams.get("plan");

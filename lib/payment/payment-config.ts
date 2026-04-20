@@ -4,7 +4,7 @@
  */
 
 export type BillingCycle = "monthly" | "yearly";
-export type PaymentMethod = "stripe" | "alipay" | "wechat";
+export type PaymentMethod = "stripe" | "paypal" | "alipay" | "wechat";
 export type SubscriptionPlanType = "free" | "pro" | "enterprise";
 export type PricingCurrency = "CNY" | "USD";
 

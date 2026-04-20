@@ -27,12 +27,17 @@ export interface AdminSettings {
       wechat: boolean;
       alipay: boolean;
       stripe: boolean;
+      paypal: boolean;
     };
     pricing: {
       proMonthlyCny: number;
       proYearlyCny: number;
       enterpriseMonthlyCny: number;
       enterpriseYearlyCny: number;
+      proMonthlyUsd: number;
+      proYearlyUsd: number;
+      enterpriseMonthlyUsd: number;
+      enterpriseYearlyUsd: number;
     };
   };
   notification: {
@@ -120,12 +125,17 @@ export const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
       wechat: true,
       alipay: true,
       stripe: true,
+      paypal: true,
     },
     pricing: {
       proMonthlyCny: 10,
       proYearlyCny: 199,
       enterpriseMonthlyCny: 99,
       enterpriseYearlyCny: 799,
+      proMonthlyUsd: 9.99,
+      proYearlyUsd: 99.99,
+      enterpriseMonthlyUsd: 29.99,
+      enterpriseYearlyUsd: 299.99,
     },
   },
   notification: {
@@ -190,6 +200,7 @@ export function normalizeAdminSettings(value: unknown): AdminSettings {
         wechat: readBoolean(channels.wechat, DEFAULT_ADMIN_SETTINGS.payment.channels.wechat),
         alipay: readBoolean(channels.alipay, DEFAULT_ADMIN_SETTINGS.payment.channels.alipay),
         stripe: readBoolean(channels.stripe, DEFAULT_ADMIN_SETTINGS.payment.channels.stripe),
+        paypal: readBoolean(channels.paypal, DEFAULT_ADMIN_SETTINGS.payment.channels.paypal),
       },
       pricing: {
         proMonthlyCny: readNumber(pricing.proMonthlyCny, DEFAULT_ADMIN_SETTINGS.payment.pricing.proMonthlyCny),
@@ -201,6 +212,16 @@ export function normalizeAdminSettings(value: unknown): AdminSettings {
         enterpriseYearlyCny: readNumber(
           pricing.enterpriseYearlyCny,
           DEFAULT_ADMIN_SETTINGS.payment.pricing.enterpriseYearlyCny,
+        ),
+        proMonthlyUsd: readNumber(pricing.proMonthlyUsd, DEFAULT_ADMIN_SETTINGS.payment.pricing.proMonthlyUsd),
+        proYearlyUsd: readNumber(pricing.proYearlyUsd, DEFAULT_ADMIN_SETTINGS.payment.pricing.proYearlyUsd),
+        enterpriseMonthlyUsd: readNumber(
+          pricing.enterpriseMonthlyUsd,
+          DEFAULT_ADMIN_SETTINGS.payment.pricing.enterpriseMonthlyUsd,
+        ),
+        enterpriseYearlyUsd: readNumber(
+          pricing.enterpriseYearlyUsd,
+          DEFAULT_ADMIN_SETTINGS.payment.pricing.enterpriseYearlyUsd,
         ),
       },
     },

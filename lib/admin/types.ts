@@ -902,6 +902,7 @@ export interface RevenueStats {
     wechat: number;
     alipay: number;
     stripe: number;
+    paypal: number;
   };
 }
 
@@ -1203,7 +1204,7 @@ export interface UserFilters {
 /**
  * 支付方式
  */
-export type PaymentMethod = "wechat" | "alipay" | "stripe";
+export type PaymentMethod = "wechat" | "alipay" | "stripe" | "paypal";
 
 /**
  * 支付状态

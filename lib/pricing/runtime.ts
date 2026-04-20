@@ -33,6 +33,26 @@ export async function loadRuntimePricingSnapshot(): Promise<RuntimePricingSnapsh
   try {
     const settings = await loadAdminSettings();
     const pricing = settings.payment?.pricing || {};
+    const isCn = region === "CN";
+
+    const proMonthly = isCn
+      ? asFiniteNumber(pricing.proMonthlyCny, defaults.plans.pro.monthly)
+      : asFiniteNumber((pricing as { proMonthlyUsd?: unknown }).proMonthlyUsd, defaults.plans.pro.monthly);
+    const proYearly = isCn
+      ? asFiniteNumber(pricing.proYearlyCny, defaults.plans.pro.yearly)
+      : asFiniteNumber((pricing as { proYearlyUsd?: unknown }).proYearlyUsd, defaults.plans.pro.yearly);
+    const enterpriseMonthly = isCn
+      ? asFiniteNumber(pricing.enterpriseMonthlyCny, defaults.plans.enterprise.monthly)
+      : asFiniteNumber(
+          (pricing as { enterpriseMonthlyUsd?: unknown }).enterpriseMonthlyUsd,
+          defaults.plans.enterprise.monthly,
+        );
+    const enterpriseYearly = isCn
+      ? asFiniteNumber(pricing.enterpriseYearlyCny, defaults.plans.enterprise.yearly)
+      : asFiniteNumber(
+          (pricing as { enterpriseYearlyUsd?: unknown }).enterpriseYearlyUsd,
+          defaults.plans.enterprise.yearly,
+        );
 
     return {
       ...defaults,
@@ -42,12 +62,12 @@ export async function loadRuntimePricingSnapshot(): Promise<RuntimePricingSnapsh
           yearly: defaults.plans.free.yearly,
         },
         pro: {
-          monthly: asFiniteNumber(pricing.proMonthlyCny, defaults.plans.pro.monthly),
-          yearly: asFiniteNumber(pricing.proYearlyCny, defaults.plans.pro.yearly),
+          monthly: proMonthly,
+          yearly: proYearly,
         },
         enterprise: {
-          monthly: asFiniteNumber(pricing.enterpriseMonthlyCny, defaults.plans.enterprise.monthly),
-          yearly: asFiniteNumber(pricing.enterpriseYearlyCny, defaults.plans.enterprise.yearly),
+          monthly: enterpriseMonthly,
+          yearly: enterpriseYearly,
         },
       },
       updatedAt: settings.updatedAt,
@@ -62,6 +82,7 @@ export async function saveRuntimePricingSnapshot(input: {
   enterprise: Record<BillingCycle, number>;
 }): Promise<RuntimePricingSnapshot> {
   const current = await loadAdminSettings();
+  const isCn = isChinaRegion();
 
   const nextSettings = {
     ...current,
@@ -69,10 +90,19 @@ export async function saveRuntimePricingSnapshot(input: {
       ...current.payment,
       pricing: {
         ...current.payment.pricing,
-        proMonthlyCny: input.pro.monthly,
-        proYearlyCny: input.pro.yearly,
-        enterpriseMonthlyCny: input.enterprise.monthly,
-        enterpriseYearlyCny: input.enterprise.yearly,
+        ...(isCn
+          ? {
+              proMonthlyCny: input.pro.monthly,
+              proYearlyCny: input.pro.yearly,
+              enterpriseMonthlyCny: input.enterprise.monthly,
+              enterpriseYearlyCny: input.enterprise.yearly,
+            }
+          : {
+              proMonthlyUsd: input.pro.monthly,
+              proYearlyUsd: input.pro.yearly,
+              enterpriseMonthlyUsd: input.enterprise.monthly,
+              enterpriseYearlyUsd: input.enterprise.yearly,
+            }),
       },
     },
   };

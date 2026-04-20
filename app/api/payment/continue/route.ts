@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
+import { PayPalProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/paypal-provider";
 import { StripeProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/stripe-provider";
 import { WechatProviderV3 } from "@/lib/architecture-modules/layers/third-party/payment/providers/wechat-provider-v3";
 import { requireAuth, createAuthErrorResponse } from "@/lib/auth/auth";
@@ -17,6 +18,14 @@ import {
 } from "@/lib/payment/subscription-payment-sync";
 import { paymentRateLimit } from "@/lib/security/rate-limit";
 import { logBusinessEvent, logError, logSecurityEvent } from "@/lib/utils/logger";
+
+function resolveEffectivePaymentMethod(payment: any): string {
+  const requested = payment?.metadata?.requestedPaymentMethod;
+  if (requested === "paypal") {
+    return "paypal";
+  }
+  return payment?.payment_method || "";
+}
 
 export async function POST(request: NextRequest) {
   return new Promise<NextResponse>((resolve) => {
@@ -37,6 +46,7 @@ export async function POST(request: NextRequest) {
 async function createFreshPaymentSession(payment: any) {
   const metadata = extractSubscriptionOrderMetadata(payment);
   const recordId = payment.id || payment._id || payment.transaction_id;
+  const effectiveMethod = resolveEffectivePaymentMethod(payment);
   const order = {
     amount: payment.amount,
     currency: payment.currency || (isChinaRegion() ? "CNY" : "USD"),
@@ -47,17 +57,22 @@ async function createFreshPaymentSession(payment: any) {
     billingCycle: metadata.billingCycle,
   };
 
-  if (payment.payment_method === "stripe") {
+  if (effectiveMethod === "stripe") {
     const provider = new StripeProvider(process.env);
     return provider.createPayment(order);
   }
 
-  if (payment.payment_method === "alipay") {
+  if (effectiveMethod === "paypal") {
+    const provider = new PayPalProvider(process.env);
+    return provider.createPayment(order);
+  }
+
+  if (effectiveMethod === "alipay") {
     const provider = new AlipayProvider(process.env);
     return provider.createPayment(order);
   }
 
-  if (payment.payment_method === "wechat") {
+  if (effectiveMethod === "wechat") {
     const outTradeNo =
       payment.out_trade_no ||
       payment.transaction_id ||
@@ -177,11 +192,13 @@ async function handlePaymentContinue(request: NextRequest) {
 
     const createdAt = new Date(payment.created_at || Date.now());
     const minutesDiff = (Date.now() - createdAt.getTime()) / (1000 * 60);
+    const effectiveMethod = resolveEffectivePaymentMethod(payment);
     const shouldRefreshSession =
       minutesDiff > 30 ||
-      payment.payment_method === "stripe" ||
-      payment.payment_method === "alipay" ||
-      (payment.payment_method === "wechat" && !payment.code_url);
+      effectiveMethod === "stripe" ||
+      effectiveMethod === "paypal" ||
+      effectiveMethod === "alipay" ||
+      (effectiveMethod === "wechat" && !payment.code_url);
 
     logBusinessEvent("payment_continue_requested", user.id, {
       operationId,
@@ -193,7 +210,7 @@ async function handlePaymentContinue(request: NextRequest) {
       planType: metadata.planType,
     });
 
-    if (!shouldRefreshSession && payment.payment_method === "wechat") {
+    if (!shouldRefreshSession && effectiveMethod === "wechat") {
       return NextResponse.json({
         success: true,
         paymentUrl: payment.code_url,
@@ -220,7 +237,7 @@ async function handlePaymentContinue(request: NextRequest) {
       },
     };
 
-    if (payment.payment_method === "alipay" || payment.payment_method === "wechat") {
+    if (effectiveMethod === "alipay" || effectiveMethod === "wechat") {
       updatePayload.out_trade_no = nextTransactionId;
     }
 
