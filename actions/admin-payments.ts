@@ -22,6 +22,14 @@ function isSuccessfulPaymentStatus(status: string | null | undefined): boolean {
   return status === "paid" || status === "completed";
 }
 
+function isUsdPaymentMethod(method: string | null | undefined): boolean {
+  return method === "stripe" || method === "paypal";
+}
+
+function isCnyPaymentMethod(method: string | null | undefined): boolean {
+  return method === "wechat" || method === "alipay";
+}
+
 /**
  * 获取支付记录列表
  */
@@ -145,7 +153,7 @@ export async function getPaymentStats(): Promise<ApiResponse<{
 
     // 按币种统计（国际版 USD，国内版 CNY）
     const totalRevenueByCurrency = {
-      USD: byMethod.stripe ?? 0,
+      USD: (byMethod.stripe ?? 0) + (byMethod.paypal ?? 0),
       CNY: (byMethod.wechat ?? 0) + (byMethod.alipay ?? 0),
     };
 
@@ -228,9 +236,9 @@ export async function getPaymentTrends(
           data.orders++;
 
           // 按币种统计每日收入
-          if (payment.method === "stripe") {
+          if (isUsdPaymentMethod(payment.method)) {
             data.revenueUSD += payment.amount || 0;
-          } else if (payment.method === "wechat" || payment.method === "alipay") {
+          } else if (isCnyPaymentMethod(payment.method)) {
             data.revenueCNY += payment.amount || 0;
           }
         }
@@ -241,9 +249,9 @@ export async function getPaymentTrends(
           todayOrders++;
 
           // 按币种统计今日收入
-          if (payment.method === "stripe") {
+          if (isUsdPaymentMethod(payment.method)) {
             todayRevenueUSD += payment.amount || 0;
-          } else if (payment.method === "wechat" || payment.method === "alipay") {
+          } else if (isCnyPaymentMethod(payment.method)) {
             todayRevenueCNY += payment.amount || 0;
           }
         }

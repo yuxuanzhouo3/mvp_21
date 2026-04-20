@@ -998,11 +998,21 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
    * 根据 ID 获取支付记录
    */
   async getPaymentById(id: string): Promise<Payment | null> {
-    const result = await this.supabase
-      .from("orders")
+    // Primary source for INTL payments is `payments`.
+    // Keep a backward-compatible fallback to `orders` for legacy datasets.
+    let result = await this.supabase
+      .from("payments")
       .select("*")
       .eq("id", id)
       .single();
+
+    if (result.error?.code === "42P01") {
+      result = await this.supabase
+        .from("orders")
+        .select("*")
+        .eq("id", id)
+        .single();
+    }
 
     if (result.error || !result.data) {
       return null;
@@ -1015,7 +1025,7 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
    * 列出支付记录
    */
   async listPayments(filters?: PaymentFilters): Promise<Payment[]> {
-    let query = this.supabase.from("orders").select("*");
+    let query = this.supabase.from("payments").select("*");
 
     // 国际版只查询 stripe 和 paypal
     query = query.in("payment_method", ["stripe", "paypal"]);
@@ -1052,7 +1062,49 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
       query = query.range(filters.offset, filters.offset + (filters.limit || 10) - 1);
     }
 
-    const result = await query;
+    let result = await query;
+
+    if (result.error?.code === "42P01") {
+      let fallbackQuery = this.supabase.from("orders").select("*");
+      fallbackQuery = fallbackQuery.in("payment_method", ["stripe", "paypal"]);
+
+      if (filters?.user_id) {
+        fallbackQuery = fallbackQuery.eq("user_id", filters.user_id);
+      }
+
+      if (filters?.status) {
+        fallbackQuery = fallbackQuery.eq("status", filters.status);
+      }
+
+      if (filters?.method) {
+        fallbackQuery = fallbackQuery.eq("payment_method", filters.method);
+      }
+
+      if (filters?.type) {
+        fallbackQuery = fallbackQuery.eq("product_type", filters.type);
+      }
+
+      if (filters?.start_date) {
+        fallbackQuery = fallbackQuery.gte("created_at", filters.start_date);
+      }
+      if (filters?.end_date) {
+        fallbackQuery = fallbackQuery.lte("created_at", filters.end_date);
+      }
+
+      fallbackQuery = fallbackQuery.order("created_at", { ascending: false });
+
+      if (filters?.limit) {
+        fallbackQuery = fallbackQuery.limit(filters.limit);
+      }
+      if (filters?.offset) {
+        fallbackQuery = fallbackQuery.range(
+          filters.offset,
+          filters.offset + (filters.limit || 10) - 1,
+        );
+      }
+
+      result = await fallbackQuery;
+    }
 
     if (result.error) {
       throw handleDatabaseError(result.error);
@@ -1065,7 +1117,9 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
    * 统计支付记录数量
    */
   async countPayments(filters?: PaymentFilters): Promise<number> {
-    let query = this.supabase.from("orders").select("*", { count: "exact", head: true });
+    let query = this.supabase
+      .from("payments")
+      .select("*", { count: "exact", head: true });
 
     // 国际版只查询 stripe 和 paypal
     query = query.in("payment_method", ["stripe", "paypal"]);
@@ -1093,7 +1147,40 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
       query = query.lte("created_at", filters.end_date);
     }
 
-    const result = await query;
+    let result = await query;
+
+    if (result.error?.code === "42P01") {
+      let fallbackQuery = this.supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true });
+
+      fallbackQuery = fallbackQuery.in("payment_method", ["stripe", "paypal"]);
+
+      if (filters?.user_id) {
+        fallbackQuery = fallbackQuery.eq("user_id", filters.user_id);
+      }
+
+      if (filters?.status) {
+        fallbackQuery = fallbackQuery.eq("status", filters.status);
+      }
+
+      if (filters?.method) {
+        fallbackQuery = fallbackQuery.eq("payment_method", filters.method);
+      }
+
+      if (filters?.type) {
+        fallbackQuery = fallbackQuery.eq("product_type", filters.type);
+      }
+
+      if (filters?.start_date) {
+        fallbackQuery = fallbackQuery.gte("created_at", filters.start_date);
+      }
+      if (filters?.end_date) {
+        fallbackQuery = fallbackQuery.lte("created_at", filters.end_date);
+      }
+
+      result = await fallbackQuery;
+    }
 
     if (result.error) {
       throw handleDatabaseError(result.error);
@@ -1108,6 +1195,7 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
   private dbToPayment(doc: any): Payment {
     return {
       id: doc.id,
+      order_id: doc.order_id || doc.out_trade_no,
       user_id: doc.user_id,
       user_email: doc.user_email,
       amount: doc.amount || 0,

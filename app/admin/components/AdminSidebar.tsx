@@ -1,25 +1,26 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+
 import { adminLogoutAction } from "@/actions/admin-auth";
 import { Button } from "@/components/ui/button";
-import {
-  LayoutDashboard,
-  CreditCard,
-  Image,
-  FolderOpen,
-  Settings,
-  LogOut,
-  User,
-  Package,
-  Link as LinkIcon,
-  AlertTriangle,
-  Sparkles,
-  Tags,
-} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isChinaRegion } from "@/lib/config/region";
+import {
+  AlertTriangle,
+  CreditCard,
+  FolderOpen,
+  Image,
+  LayoutDashboard,
+  Link as LinkIcon,
+  LogOut,
+  Package,
+  Settings,
+  Sparkles,
+  Tags,
+  User,
+} from "lucide-react";
 
 interface AdminSidebarProps {
   username: string;
@@ -68,7 +69,7 @@ export default function AdminSidebar({ username, role }: AdminSidebarProps) {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed left-0 top-0 h-full w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col">
+    <aside className="fixed left-0 top-0 h-full w-64 border-r border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 flex flex-col">
       <div className="p-6 border-b border-slate-200 dark:border-slate-700">
         <Link href="/admin/dashboard" className="flex items-center gap-2">
           <LayoutDashboard className="h-6 w-6 text-primary" />
@@ -84,7 +85,7 @@ export default function AdminSidebar({ username, role }: AdminSidebarProps) {
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
           return (
             <Link
@@ -131,4 +132,3 @@ export default function AdminSidebar({ username, role }: AdminSidebarProps) {
     </aside>
   );
 }
-
