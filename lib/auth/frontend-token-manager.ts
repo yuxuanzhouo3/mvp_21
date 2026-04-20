@@ -3,6 +3,7 @@ import {
   getStoredAuthState,
   getValidAccessToken,
 } from "@/lib/auth/auth-state-manager";
+import { clearSupabaseUserCache } from "@/lib/auth/auth-state-manager-intl";
 import { isChinaRegion } from "@/lib/config/region";
 import { supabase } from "@/lib/integrations/supabase";
 
@@ -54,7 +55,19 @@ class TokenManager {
         return null;
       }
 
-      return token;
+      const isValid = await this.validateSupabaseAccessToken(token);
+      if (isValid) {
+        return token;
+      }
+
+      const refreshedToken = await this.tryRefreshSupabaseToken();
+      if (refreshedToken) {
+        return refreshedToken;
+      }
+
+      console.warn("[TokenManager] Supabase token is invalid and refresh failed");
+      this.clearIntlAuthState();
+      return null;
     } catch (error) {
       console.error("[TokenManager] Failed to get valid token:", error);
       return null;
@@ -254,6 +267,57 @@ class TokenManager {
         // Ignore timer errors to avoid breaking the app shell.
       }
     }, 30000);
+  }
+
+  private async validateSupabaseAccessToken(token: string): Promise<boolean> {
+    try {
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser(token);
+
+      if (error || !user) {
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.warn("[TokenManager] Failed to validate Supabase token:", error);
+      return false;
+    }
+  }
+
+  private async tryRefreshSupabaseToken(): Promise<string | null> {
+    try {
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error) {
+        console.warn("[TokenManager] Failed to refresh Supabase session:", error);
+        return null;
+      }
+
+      const refreshedToken = data?.session?.access_token;
+      if (!refreshedToken) {
+        return null;
+      }
+
+      const isRefreshedTokenValid = await this.validateSupabaseAccessToken(refreshedToken);
+      return isRefreshedTokenValid ? refreshedToken : null;
+    } catch (error) {
+      console.warn("[TokenManager] Supabase session refresh threw:", error);
+      return null;
+    }
+  }
+
+  private clearIntlAuthState() {
+    try {
+      const authKey = this.getSupabaseStorageKey();
+      if (authKey && typeof window !== "undefined") {
+        localStorage.removeItem(authKey);
+      }
+      clearSupabaseUserCache();
+    } catch (error) {
+      console.warn("[TokenManager] Failed to clear intl auth state:", error);
+    }
   }
 }
 

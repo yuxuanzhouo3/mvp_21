@@ -146,6 +146,23 @@ function isTimeoutLikeAiError(error: ContractAIError) {
   );
 }
 
+function shouldUseIntlDegradedFallback(error: ContractAIError) {
+  if (isChinaRegion()) {
+    return false;
+  }
+
+  // Keep production strict by default. Local/dev can keep flowing with a safe fallback.
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+
+  return (
+    error.code === "AI_TIMEOUT" ||
+    error.code === "AI_PROVIDER_TIMEOUT" ||
+    isTimeoutLikeAiError(error)
+  );
+}
+
 export async function POST(request: NextRequest) {
   let fallbackContent = "";
   try {
@@ -213,15 +230,20 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof ContractAIError) {
       const shouldUseTimeoutFallback =
-        isTimeoutLikeAiError(error) && Boolean(fallbackContent.trim());
+        shouldUseIntlDegradedFallback(error) && Boolean(fallbackContent.trim());
 
       if (shouldUseTimeoutFallback) {
+        const fallbackReason = isTimeoutLikeAiError(error)
+          ? "openai_timeout_fallback"
+          : "openai_unavailable_fallback";
         return NextResponse.json({
           success: true,
           data: buildIntlTimeoutFallbackAnalysis(fallbackContent),
           meta: {
             degraded: true,
-            reason: "openai_timeout_fallback",
+            reason: fallbackReason,
+            provider: error.provider,
+            code: error.code,
           },
         });
       }
