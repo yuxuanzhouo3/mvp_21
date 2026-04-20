@@ -1192,6 +1192,33 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
   /**
    * 辅助方法：从数据库格式转换为 Payment
    */
+  private resolvePaymentMethod(doc: any): Payment["method"] {
+    const metadata =
+      doc && typeof doc.metadata === "object" && doc.metadata
+        ? doc.metadata
+        : {};
+    const requestedPaymentMethod =
+      typeof metadata.requestedPaymentMethod === "string"
+        ? metadata.requestedPaymentMethod
+        : "";
+
+    if (requestedPaymentMethod === "paypal") {
+      return "paypal";
+    }
+
+    const rawMethod = doc.payment_method || doc.provider || doc.method;
+    if (
+      rawMethod === "wechat" ||
+      rawMethod === "alipay" ||
+      rawMethod === "stripe" ||
+      rawMethod === "paypal"
+    ) {
+      return rawMethod;
+    }
+
+    return "stripe";
+  }
+
   private dbToPayment(doc: any): Payment {
     return {
       id: doc.id,
@@ -1200,7 +1227,7 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
       user_email: doc.user_email,
       amount: doc.amount || 0,
       currency: doc.currency || "USD",
-      method: doc.payment_method || doc.provider || doc.method || "stripe", // 优先从 payment_method 字段读取
+      method: this.resolvePaymentMethod(doc),
       status: doc.status || "pending",
       type: doc.product_type || "subscription",
       product_id: doc.product_id,

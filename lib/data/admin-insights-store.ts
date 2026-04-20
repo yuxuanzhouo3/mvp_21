@@ -453,7 +453,7 @@ async function loadChinaPaymentsSince(startDate?: Date) {
 async function loadIntlPaymentsSince(startDate?: Date) {
   const payments = await safeSupabaseSelect<Record<string, any>>(() => {
     let query = getIntlTable('payments')
-      .select('id,user_id,amount,status,payment_method,currency,created_at');
+      .select('id,user_id,amount,status,payment_method,currency,created_at,metadata');
 
     if (startDate) {
       query = query.gte('created_at', startDate.toISOString());
@@ -468,7 +468,7 @@ async function loadIntlPaymentsSince(startDate?: Date) {
 
   const orders = await safeSupabaseSelect<Record<string, any>>(() => {
     let query = getIntlTable('orders')
-      .select('id,user_id,amount,status,payment_method,currency,created_at');
+      .select('id,user_id,amount,status,payment_method,currency,created_at,metadata');
 
     if (startDate) {
       query = query.gte('created_at', startDate.toISOString());
@@ -596,8 +596,25 @@ function deriveContractTypeDistribution(contracts: Record<string, any>[]) {
 }
 
 function derivePaymentMethodDistribution(payments: Record<string, any>[]) {
+  const resolveMethod = (payment: Record<string, any>) => {
+    const metadata =
+      payment && typeof payment.metadata === "object" && payment.metadata
+        ? payment.metadata
+        : {};
+    const requestedPaymentMethod =
+      typeof metadata.requestedPaymentMethod === "string"
+        ? metadata.requestedPaymentMethod
+        : "";
+
+    if (requestedPaymentMethod === "paypal") {
+      return "paypal";
+    }
+
+    return toSafeString(payment.payment_method, 'unknown');
+  };
+
   return countByName(
-    payments.map((payment) => toSafeString(payment.payment_method, 'unknown')),
+    payments.map(resolveMethod),
   );
 }
 

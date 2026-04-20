@@ -157,6 +157,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function resolvePaymentMethodFromRecord(record: Record<string, any>): string {
+  const metadata = ensureObject(record.metadata);
+  const requestedPaymentMethod = metadata.requestedPaymentMethod;
+
+  if (requestedPaymentMethod === "paypal") {
+    return "paypal";
+  }
+
+  return (
+    record.payment_method ||
+    record.method ||
+    record.paymentMethod ||
+    ""
+  );
+}
+
 export function ensureObject(
   value: unknown,
   fallback: Record<string, unknown> = {},
@@ -425,11 +441,7 @@ export function normalizePaymentRecord(
         : Number(record.amount || 0),
     currency: record.currency || "USD",
     status: normalizePaymentStatus(record.status),
-    paymentMethod:
-      record.payment_method ||
-      record.method ||
-      record.paymentMethod ||
-      "",
+    paymentMethod: resolvePaymentMethodFromRecord(record),
     transactionId:
       record.transaction_id ||
       record.transactionId ||
