@@ -100,25 +100,10 @@ function AuthPageContent() {
     if (typeof window === "undefined") return "";
 
     const currentOrigin = window.location.origin;
-    if (region === RegionType.CHINA) {
-      return currentOrigin;
-    }
-
-    const host = window.location.hostname.toLowerCase();
-    if (host === "localhost" || host === "127.0.0.1") {
-      return currentOrigin;
-    }
-
-    if (config.appUrl) {
-      try {
-        return new URL(config.appUrl).origin;
-      } catch {
-        return currentOrigin;
-      }
-    }
-
+    // Keep OAuth callback host aligned with the current runtime origin to avoid
+    // cross-host 308 canonical redirects breaking Supabase PKCE/session exchange.
     return currentOrigin;
-  }, [config.appUrl, region]);
+  }, []);
 
   useEffect(() => {
     if (!configLoading) {
