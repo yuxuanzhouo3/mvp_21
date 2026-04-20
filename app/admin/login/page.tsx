@@ -15,16 +15,10 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Lock, User } from "lucide-react";
+import { isChinaRegion } from "@/lib/config/region";
 
 function getRegion(): "CN" | "INTL" {
-  const region =
-    (process.env.NEXT_PUBLIC_DEPLOYMENT_REGION ||
-      process.env.NEXT_PUBLIC_APP_REGION ||
-      "CN")
-      .trim()
-      .toUpperCase();
-
-  return region === "INTL" ? "INTL" : "CN";
+  return isChinaRegion() ? "CN" : "INTL";
 }
 
 const isIntlRegion = getRegion() === "INTL";

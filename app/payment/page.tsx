@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useState } from "react";
 import { Suspense } from "react";
@@ -16,6 +16,7 @@ import { useUser } from "@/components/user-context";
 import { useToast } from "@/hooks/use-toast";
 import { RegionType } from "@/lib/architecture-modules/core/types";
 import { useTranslations } from "@/lib/i18n";
+import { isChinaRegion } from "@/lib/config/region";
 import { getAmountByCurrency } from "@/lib/payment/payment-config";
 
 type SelectedPlan = {
@@ -24,6 +25,15 @@ type SelectedPlan = {
   amount: number;
   currency: string;
   description: string;
+};
+
+type RuntimePricingData = {
+  region: "CN" | "INTL";
+  currency: "CNY" | "USD";
+  plans: {
+    pro: { monthly: number; yearly: number };
+    enterprise: { monthly: number; yearly: number };
+  };
 };
 
 function encodeBase64Utf8(input: string): string {
@@ -48,13 +58,12 @@ function PaymentPageContent() {
   const [selectedPlan, setSelectedPlan] = useState<SelectedPlan | null>(null);
   const [paymentResult, setPaymentResult] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("plans");
+  const [pricing, setPricing] = useState<RuntimePricingData | null>(null);
 
   const currentPlan = user?.subscription_plan || "free";
-  const deploymentRegion =
-    process.env.NEXT_PUBLIC_DEPLOYMENT_REGION === "INTL" ? "INTL" : "CN";
-  const isCnDeployment = deploymentRegion === "CN";
+  const isCnDeployment = isChinaRegion();
   const region = isCnDeployment ? RegionType.CHINA : RegionType.USA;
-  const currency = isCnDeployment ? "CNY" : "USD";
+  const currency = pricing?.currency || (isCnDeployment ? "CNY" : "USD");
   const requestedPlan = searchParams.get("plan");
   const requestedCycle = searchParams.get("cycle");
   const requestedTab = searchParams.get("tab");
@@ -76,12 +85,34 @@ function PaymentPageContent() {
     return `/auth?${authParams.toString()}`;
   }, []);
 
-  const convertPrice = useCallback((usdPrice: number, targetCurrency: string) => {
-    if (targetCurrency === "CNY") {
-      return Math.round(usdPrice * 7.2 * 100) / 100;
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchPricing() {
+      try {
+        const response = await fetch("/api/pricing", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as { data?: RuntimePricingData };
+        if (!cancelled && payload?.data) {
+          setPricing(payload.data);
+        }
+      } catch (error) {
+        console.warn("[PaymentPage] Failed to load runtime pricing:", error);
+      }
     }
 
-    return usdPrice;
+    void fetchPricing();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const buildPlanDescription = useCallback(
@@ -147,7 +178,12 @@ function PaymentPageContent() {
 
   const handleSelectPlan = useCallback(
     (planId: string, billingCycle: "monthly" | "yearly") => {
-      const amount = getAmountByCurrency(currency, billingCycle);
+      const amount =
+        pricing?.currency === currency && planId === "enterprise"
+          ? pricing.plans.enterprise[billingCycle]
+          : pricing?.currency === currency
+            ? pricing.plans.pro[billingCycle]
+            : getAmountByCurrency(currency, billingCycle, planId);
       const description = buildPlanDescription(billingCycle);
 
       setSelectedPlan({
@@ -159,7 +195,7 @@ function PaymentPageContent() {
       });
       setPaymentResult(null);
     },
-    [buildPlanDescription, currency],
+    [buildPlanDescription, currency, pricing],
   );
 
   useEffect(() => {
@@ -172,7 +208,10 @@ function PaymentPageContent() {
       return;
     }
 
-    const amount = getAmountByCurrency(currency, billingCycle);
+    const amount =
+      pricing?.currency === currency
+        ? pricing.plans.pro[billingCycle]
+        : getAmountByCurrency(currency, billingCycle, "pro");
     const description = buildPlanDescription(billingCycle);
 
     setSelectedPlan({
@@ -184,7 +223,7 @@ function PaymentPageContent() {
     });
     setActiveTab("payment");
     setPaymentResult(null);
-  }, [buildPlanDescription, currency, requestedCycle, requestedPlan, selectedPlan]);
+  }, [buildPlanDescription, currency, pricing, requestedCycle, requestedPlan, selectedPlan]);
 
   const handlePaymentSuccess = useCallback(
     (result: any) => {
@@ -246,7 +285,7 @@ function PaymentPageContent() {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-muted-foreground">
-                {isZh ? "正在跳转到登录页..." : "Redirecting to the login page..."}
+                {isZh ? "濮濓絽婀捄瀹犳祮閸掓壆娅ヨぐ鏇€?.." : "Redirecting to the login page..."}
               </p>
             </div>
           </CardContent>
@@ -293,11 +332,11 @@ function PaymentPageContent() {
                 <CheckCircle className="h-6 w-6 text-green-600" />
                 <div>
                   <h3 className="font-medium text-green-800">
-                    {isZh ? "支付单已创建" : "Payment order created"}
+                    {isZh ? "支付订单已创建" : "Payment order created"}
                   </h3>
                   <p className="mt-1 text-sm text-green-700">
                     {isZh
-                      ? "请按照页面提示继续完成支付流程。"
+                      ? "请按页面提示继续完成支付流程。"
                       : "Follow the next step on screen to finish the payment flow."}
                   </p>
                 </div>
@@ -324,7 +363,7 @@ function PaymentPageContent() {
               onSelectPlan={handleSelectPlan}
               currentPlan={currentPlan}
               currency={currency}
-              convertPrice={convertPrice}
+              pricing={pricing ? { currency: pricing.currency, plans: { pro: pricing.plans.pro } } : undefined}
               onSwitchToPayment={() => setActiveTab("payment")}
             />
           </TabsContent>
@@ -342,6 +381,7 @@ function PaymentPageContent() {
                   region={region}
                   onSuccess={handlePaymentSuccess}
                   onError={handlePaymentError}
+                  pricing={pricing || undefined}
                 />
               </div>
             ) : (

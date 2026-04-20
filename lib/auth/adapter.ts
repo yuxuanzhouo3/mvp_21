@@ -198,8 +198,14 @@ class SupabaseAuthAdapter implements AuthAdapter {
 /**
  * 创建认证适配器
  */
-function createAuthAdapter(): AuthAdapter {
-  if (isChinaRegion()) {
+type RuntimeRegion = "CN" | "INTL";
+
+function resolveRuntimeRegion(): RuntimeRegion {
+  return isChinaRegion() ? "CN" : "INTL";
+}
+
+function createAuthAdapter(region: RuntimeRegion): AuthAdapter {
+  if (region === "CN") {
     console.log("🔐 使用 CloudBase 认证（中国版）");
     return new CloudBaseAuthAdapter();
   } else {
@@ -211,16 +217,21 @@ function createAuthAdapter(): AuthAdapter {
 /**
  * 全局认证实例（单例模式）
  */
-let authInstance: AuthAdapter | null = null;
+const authInstances: Partial<Record<RuntimeRegion, AuthAdapter>> = {};
 
 /**
  * 获取认证实例
  */
 export function getAuth(): AuthAdapter {
-  if (!authInstance) {
-    authInstance = createAuthAdapter();
+  const runtimeRegion = resolveRuntimeRegion();
+  const cached = authInstances[runtimeRegion];
+  if (cached) {
+    return cached;
   }
-  return authInstance;
+
+  const instance = createAuthAdapter(runtimeRegion);
+  authInstances[runtimeRegion] = instance;
+  return instance;
 }
 
 /**

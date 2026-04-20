@@ -1,7 +1,6 @@
 "use client";
 
 import { tokenManager } from "@/lib/auth/frontend-token-manager";
-import { isInternationalRegion } from "@/lib/config/region";
 import type {
   DashboardBillingSummary,
   DashboardDocumentVerificationData,
@@ -17,19 +16,56 @@ import type {
 } from "@/lib/dashboard/types";
 import { supabase } from "@/lib/integrations/supabase";
 
-async function getAuthHeaders() {
-  const headers = await tokenManager.getAuthHeaderAsync();
-  if (!headers) {
-    throw new Error("UNAUTHORIZED");
+async function readIntlSessionHeaders() {
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      console.warn("[dashboard/client] Failed to read Supabase session:", error);
+      return null;
+    }
+
+    const token = data?.session?.access_token;
+    if (!token) {
+      return null;
+    }
+
+    return {
+      Authorization: `Bearer ${token}`,
+    };
+  } catch (error) {
+    console.warn("[dashboard/client] Supabase getSession threw:", error);
+    return null;
   }
-  return headers;
+}
+
+async function getAuthHeaders() {
+  const directHeaders = await tokenManager.getAuthHeaderAsync();
+  if (directHeaders) {
+    return directHeaders;
+  }
+
+  // INTL fallback: a freshly signed-in session may not be immediately visible
+  // through the token manager during hydration. Probe Supabase session directly.
+  const sessionHeaders = await readIntlSessionHeaders();
+  if (sessionHeaders) {
+    return sessionHeaders;
+  }
+
+  const refreshedHeaders = await refreshIntlAuthHeaders();
+  if (refreshedHeaders) {
+    return refreshedHeaders;
+  }
+
+  // Final retry in case the first read raced with auth-state persistence.
+  const retryHeaders = await tokenManager.getAuthHeaderAsync();
+  if (retryHeaders) {
+    return retryHeaders;
+  }
+
+  throw new Error("UNAUTHORIZED");
 }
 
 async function refreshIntlAuthHeaders() {
-  if (!isInternationalRegion()) {
-    return null;
-  }
-
   try {
     const { data, error } = await supabase.auth.refreshSession();
     if (error) {
@@ -66,7 +102,7 @@ async function fetchWithAuthRetry(
   };
 
   const response = await fetch(path, requestInit);
-  if (response.status !== 401 || !isInternationalRegion()) {
+  if (response.status !== 401) {
     return response;
   }
 

@@ -1,63 +1,93 @@
 /**
- * 统一的支付配置
- * 所有关于价格、货币的定义都在这里，只定义一次，避免重复
+ * Unified payment pricing config.
+ * Defaults are kept as a safe fallback when dynamic settings are unavailable.
  */
 
 export type BillingCycle = "monthly" | "yearly";
 export type PaymentMethod = "stripe" | "alipay" | "wechat";
+export type SubscriptionPlanType = "free" | "pro" | "enterprise";
+export type PricingCurrency = "CNY" | "USD";
 
-/**
- * 定价表（唯一的价格定义来源）
- */
 const PRICING_DATA = {
   CNY: {
-    monthly: 0.01,
-    yearly: 0.01,
+    free: { monthly: 0, yearly: 0 },
+    pro: { monthly: 10, yearly: 199 },
+    enterprise: { monthly: 99, yearly: 799 },
   },
   USD: {
-    monthly: 9.99,
-    yearly: 99.99,
+    free: { monthly: 0, yearly: 0 },
+    pro: { monthly: 9.99, yearly: 99.99 },
+    enterprise: { monthly: 29.99, yearly: 299.99 },
   },
 } as const;
 
-/**
- * 导出定价表供前端显示
- */
 export const PRICING_TABLE = PRICING_DATA;
+export const DEFAULT_PRICING_TABLE = PRICING_DATA;
 
-/**
- * 根据支付方式获取定价信息
- * @param method 支付方式
- * @returns 定价配置（货币和金额）
- */
-export function getPricingByMethod(method: PaymentMethod) {
-  // 支付宝和微信使用人民币，其他使用美元
+export interface RuntimePricingSnapshot {
+  region: "CN" | "INTL";
+  currency: PricingCurrency;
+  plans: {
+    free: Record<BillingCycle, number>;
+    pro: Record<BillingCycle, number>;
+    enterprise: Record<BillingCycle, number>;
+  };
+  updatedAt?: string;
+}
+
+export function normalizePlanType(planType?: string | null): SubscriptionPlanType {
+  const normalized = (planType || "").trim().toLowerCase();
+  if (normalized === "enterprise") {
+    return "enterprise";
+  }
+  if (normalized === "free") {
+    return "free";
+  }
+  return "pro";
+}
+
+export function resolvePricingFromSnapshot(
+  snapshot: RuntimePricingSnapshot,
+  method: PaymentMethod,
+  planType?: string | null,
+) {
+  const resolvedPlan = normalizePlanType(planType);
+  const currency: PricingCurrency = method === "alipay" || method === "wechat" ? "CNY" : "USD";
+
+  const fallback = DEFAULT_PRICING_TABLE[currency][resolvedPlan];
+  const selected = snapshot.currency === currency ? snapshot.plans[resolvedPlan] : fallback;
+
+  return {
+    currency,
+    monthly: selected.monthly,
+    yearly: selected.yearly,
+    planType: resolvedPlan,
+  };
+}
+
+export function getPricingByMethod(method: PaymentMethod, planType?: string | null) {
+  const resolvedPlan = normalizePlanType(planType);
   const currency = method === "alipay" || method === "wechat" ? "CNY" : "USD";
 
   return {
     currency,
-    monthly: PRICING_DATA[currency].monthly,
-    yearly: PRICING_DATA[currency].yearly,
+    monthly: PRICING_DATA[currency][resolvedPlan].monthly,
+    yearly: PRICING_DATA[currency][resolvedPlan].yearly,
+    planType: resolvedPlan,
   };
 }
 
-/**
- * 根据货币类型和账单周期获取金额
- * @param currency 货币类型
- * @param billingCycle 账单周期
- * @returns 金额
- */
 export function getAmountByCurrency(
   currency: string,
-  billingCycle: BillingCycle
+  billingCycle: BillingCycle,
+  planType?: string | null,
 ): number {
-  const prices = PRICING_DATA[currency as keyof typeof PRICING_DATA];
-  return prices ? prices[billingCycle] : 0;
+  const key = currency === "CNY" ? "CNY" : "USD";
+  const resolvedPlan = normalizePlanType(planType);
+  return PRICING_DATA[key][resolvedPlan][billingCycle];
 }
 
-/**
- * 定义会员天数
- */
 export function getDaysByBillingCycle(billingCycle: BillingCycle): number {
   return billingCycle === "monthly" ? 30 : 365;
 }
+

@@ -35,11 +35,19 @@ interface SubscriptionPlansProps {
   onSelectPlan: (planId: string, billingCycle: "monthly" | "yearly") => void;
   currentPlan?: string;
   currency?: string;
-  convertPrice?: (usdPrice: number, targetCurrency: string) => number;
   onSwitchToPayment?: () => void;
+  pricing?: {
+    currency: "CNY" | "USD";
+    plans: {
+      pro: {
+        monthly: number;
+        yearly: number;
+      };
+    };
+  };
 }
 
-// 订阅计划层级定义（从低到高）
+// 璁㈤槄璁″垝灞傜骇瀹氫箟锛堜粠浣庡埌楂橈級
 const PLAN_HIERARCHY = {
   free: 0,
   pro: 1,
@@ -62,26 +70,26 @@ export function SubscriptionPlans({
   onSelectPlan,
   currentPlan,
   currency = "USD",
-  convertPrice = (price: number) => price,
   onSwitchToPayment,
+  pricing,
 }: SubscriptionPlansProps) {
   const { user } = useUser();
   const { language } = useLanguage();
   const t = useTranslations(language);
 
-  // 获取用户当前订阅计划
+  // 鑾峰彇鐢ㄦ埛褰撳墠璁㈤槄璁″垝
   const userCurrentPlan = normalizePlanId(user?.subscription_plan || currentPlan);
   const userCurrentLevel =
     PLAN_HIERARCHY[userCurrentPlan as keyof typeof PLAN_HIERARCHY] ?? 0;
 
-  // 检查计划是否可以选择
+  // 妫€鏌ヨ鍒掓槸鍚﹀彲浠ラ€夋嫨
   const canSelectPlan = (planId: string): boolean => {
-    if (planId === "free") return true; // 免费计划总是可以选择
+    if (planId === "free") return true; // 鍏嶈垂璁″垝鎬绘槸鍙互閫夋嫨
 
     const planLevel =
       PLAN_HIERARCHY[planId as keyof typeof PLAN_HIERARCHY] ?? 0;
 
-    // 如果用户已有活跃订阅，只能选择相同或更高等级的计划
+    // 濡傛灉鐢ㄦ埛宸叉湁娲昏穬璁㈤槄锛屽彧鑳介€夋嫨鐩稿悓鎴栨洿楂樼瓑绾х殑璁″垝
     if (user?.subscription_status === "active" && userCurrentPlan !== "free") {
       return planLevel >= userCurrentLevel;
     }
@@ -89,7 +97,7 @@ export function SubscriptionPlans({
     return true;
   };
 
-  // 获取计划状态文本
+  // 鑾峰彇璁″垝鐘舵€佹枃鏈?
   const getPlanStatus = (planId: string) => {
     if (planId === userCurrentPlan && user?.subscription_status === "active") {
       return t.payment.currentPlan;
@@ -102,17 +110,20 @@ export function SubscriptionPlans({
     return null;
   };
 
-  // 根据货币确定价格
-  const getPrice = (usdPrice: number) => {
-    if (currency === "CNY") {
-      if (usdPrice === 9.99) return getAmountByCurrency("CNY", "monthly");
-      if (usdPrice === 99.99) return getAmountByCurrency("CNY", "yearly");
+  // 鏍规嵁璐у竵纭畾浠锋牸
+  const getPrice = (billingCycle: "monthly" | "yearly", usdFallback: number) => {
+    if (pricing && pricing.currency === currency) {
+      return pricing.plans.pro[billingCycle];
     }
 
-    return convertPrice(usdPrice, currency);
+    if (currency === "CNY") {
+      return getAmountByCurrency("CNY", billingCycle, "pro");
+    }
+
+    return usdFallback;
   };
 
-  // 展开所有计划选项（免费、月付、年付）
+  // 灞曞紑鎵€鏈夎鍒掗€夐」锛堝厤璐广€佹湀浠樸€佸勾浠橈級
   const allPlans = [
     {
       id: "free",
@@ -129,7 +140,7 @@ export function SubscriptionPlans({
       planId: "pro",
       name: t.payment.proMonthly,
       description: t.payment.monthlyDesc,
-      price: getPrice(9.99),
+      price: getPrice("monthly", 9.99),
       billingCycle: "monthly" as const,
       currency: currency,
       features: t.payment.plans.pro.features as unknown as string[],
@@ -140,7 +151,7 @@ export function SubscriptionPlans({
       planId: "pro",
       name: t.payment.proYearly,
       description: t.payment.yearlyDesc,
-      price: getPrice(99.99),
+      price: getPrice("yearly", 99.99),
       billingCycle: "yearly" as const,
       currency: currency,
       features: t.payment.plans.pro.features as unknown as string[],
@@ -160,7 +171,7 @@ export function SubscriptionPlans({
 
   return (
     <div className="space-y-6">
-      {/* 当前会员到期时间显示 */}
+      {/* 褰撳墠浼氬憳鍒版湡鏃堕棿鏄剧ず */}
       {user && user.membership_expires_at && (
         <Card className="border-blue-200 bg-blue-50">
           <CardContent className="pt-4">
@@ -183,7 +194,7 @@ export function SubscriptionPlans({
         </Card>
       )}
 
-      {/* 订阅计划卡片 - 全部显示在一页 */}
+      {/* 璁㈤槄璁″垝鍗＄墖 - 鍏ㄩ儴鏄剧ず鍦ㄤ竴椤?*/}
       <div className="mx-auto grid max-w-6xl gap-4 sm:gap-6 md:grid-cols-3">
         {allPlans.map((plan) => {
           const actualPlanId =
@@ -264,7 +275,7 @@ export function SubscriptionPlans({
                   variant={plan.popular ? "default" : "outline"}
                   onClick={() => {
                     onSelectPlan(actualPlanId, plan.billingCycle);
-                    // 选择计划后自动跳转到支付标签页
+                    // 閫夋嫨璁″垝鍚庤嚜鍔ㄨ烦杞埌鏀粯鏍囩椤?
                     if (onSwitchToPayment && plan.price > 0) {
                       setTimeout(() => onSwitchToPayment(), 100);
                     }

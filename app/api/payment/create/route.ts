@@ -16,12 +16,13 @@ import {
   getWechatPaySerialNo,
 } from "@/lib/config/runtime-env";
 import { captureException } from "@/lib/integrations/sentry";
-import { getPricingByMethod, type PaymentMethod } from "@/lib/payment/payment-config";
+import { type PaymentMethod } from "@/lib/payment/payment-config";
 import {
   createPendingPaymentRecord,
   findRecentPaymentByFingerprint,
 } from "@/lib/payment/payment-record-store";
 import { buildSubscriptionPaymentFields } from "@/lib/payment/subscription-payment-sync";
+import { getRuntimePricingByMethod } from "@/lib/pricing/runtime";
 import { paymentRateLimit } from "@/lib/security/rate-limit";
 
 // Validate payment creation payloads from the client.
@@ -93,7 +94,7 @@ async function handlePaymentCreate(request: NextRequest) {
     const paymentMethod = method as PaymentMethod;
     const resolvedBillingCycle = billingCycle || "monthly";
 
-    const pricing = getPricingByMethod(paymentMethod);
+    const pricing = await getRuntimePricingByMethod(paymentMethod, planType);
     const expectedAmount = pricing[resolvedBillingCycle];
     const expectedCurrency = pricing.currency;
 

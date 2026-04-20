@@ -1,4 +1,4 @@
-﻿// app/api/payment/onetime/create/route.ts - 涓€娆℃€ф敮浠樺垱寤篈PI
+// app/api/payment/onetime/create/route.ts - 涓€娆℃€ф敮浠樺垱寤篈PI
 import { NextRequest, NextResponse } from "next/server";
 import { StripeProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/stripe-provider";
 import { AlipayProvider } from "@/lib/architecture-modules/layers/third-party/payment/providers/alipay-provider";
@@ -17,10 +17,10 @@ import { paymentRateLimit } from "@/lib/security/rate-limit";
 import { captureException } from "@/lib/integrations/sentry";
 import { logInfo, logError, logWarn } from "@/lib/utils/logger";
 import {
-  getPricingByMethod,
   getDaysByBillingCycle,
 } from "@/lib/payment/payment-config";
 import type { PaymentMethod, BillingCycle } from "@/lib/payment/payment-config";
+import { getRuntimePricingByMethod } from "@/lib/pricing/runtime";
 import {
   createPendingPaymentRecord,
   findRecentPaymentByFingerprint,
@@ -127,7 +127,7 @@ async function handleOnetimePaymentCreate(request: NextRequest) {
     }
 
     // 浣跨敤缁熶竴鐨勬敮浠橀厤缃幏鍙栬揣甯佸拰閲戦
-    const pricing = getPricingByMethod(method);
+    const pricing = await getRuntimePricingByMethod(method, "pro");
     const currency = pricing.currency;
     const amount = pricing[billingCycle];
     const days = getDaysByBillingCycle(billingCycle);

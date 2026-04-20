@@ -1,7 +1,6 @@
 "use client";
 
 import { tokenManager } from "@/lib/auth/frontend-token-manager";
-import { isInternationalRegion } from "@/lib/config/region";
 import { normalizeContractEnhancementMeta } from "@/lib/contracts/enhancements";
 import {
   normalizeContractRecord,
@@ -158,19 +157,53 @@ function normalizeContractDetail(raw: Record<string, any>): ContractDetail {
   return normalizeContractRecord(raw);
 }
 
-async function getAuthHeaders() {
-  const headers = await tokenManager.getAuthHeaderAsync();
-  if (!headers) {
-    throw new Error("UNAUTHORIZED");
+async function readIntlSessionHeaders() {
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      console.warn("[contracts/client] Failed to read Supabase session:", error);
+      return null;
+    }
+
+    const token = data?.session?.access_token;
+    if (!token) {
+      return null;
+    }
+
+    return {
+      Authorization: `Bearer ${token}`,
+    };
+  } catch (error) {
+    console.warn("[contracts/client] Supabase getSession threw:", error);
+    return null;
   }
-  return headers;
+}
+
+async function getAuthHeaders() {
+  const directHeaders = await tokenManager.getAuthHeaderAsync();
+  if (directHeaders) {
+    return directHeaders;
+  }
+
+  const sessionHeaders = await readIntlSessionHeaders();
+  if (sessionHeaders) {
+    return sessionHeaders;
+  }
+
+  const refreshedHeaders = await refreshIntlAuthHeaders();
+  if (refreshedHeaders) {
+    return refreshedHeaders;
+  }
+
+  const retryHeaders = await tokenManager.getAuthHeaderAsync();
+  if (retryHeaders) {
+    return retryHeaders;
+  }
+
+  throw new Error("UNAUTHORIZED");
 }
 
 async function refreshIntlAuthHeaders() {
-  if (!isInternationalRegion()) {
-    return null;
-  }
-
   try {
     const { data, error } = await supabase.auth.refreshSession();
     if (error) {
@@ -206,7 +239,7 @@ async function fetchWithAuthRetry(
   };
 
   const response = await fetch(input, requestInit);
-  if (response.status !== 401 || !isInternationalRegion()) {
+  if (response.status !== 401) {
     return response;
   }
 

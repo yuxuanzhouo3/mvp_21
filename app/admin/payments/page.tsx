@@ -18,7 +18,7 @@ import {
 } from "@/actions/admin-payments";
 import type { Payment } from "@/lib/admin/types";
 import { getAvailablePaymentMethods, getPaymentMethodConfig } from "@/lib/utils/payment-methods";
-import { RegionConfig } from "@/lib/config/region";
+import { RegionConfig, isChinaRegion } from "@/lib/config/region";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -64,13 +64,7 @@ import {
 } from "lucide-react";
 
 function getRegion(): "CN" | "INTL" {
-  const region =
-    (process.env.NEXT_PUBLIC_DEPLOYMENT_REGION ||
-      process.env.NEXT_PUBLIC_APP_REGION ||
-      "CN")
-      .trim()
-      .toUpperCase();
-  return region === "INTL" ? "INTL" : "CN";
+  return isChinaRegion() ? "CN" : "INTL";
 }
 
 const isIntlRegion = getRegion() === "INTL";

@@ -31,17 +31,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { isChinaRegion } from "@/lib/config/region"
 
 type DeploymentRegion = "CN" | "INTL"
 
 function getRegion(): DeploymentRegion {
-  const region =
-    (process.env.NEXT_PUBLIC_DEPLOYMENT_REGION ||
-      process.env.NEXT_PUBLIC_APP_REGION ||
-      "CN")
-      .trim()
-      .toUpperCase()
-  return region === "INTL" ? "INTL" : "CN"
+  return isChinaRegion() ? "CN" : "INTL"
 }
 
 const isIntlRegion = getRegion() === "INTL"

@@ -263,8 +263,12 @@ function AuthPageContent() {
       clearFeedback();
       setLoading(true);
       try {
-        const { error: err } = await authClient.signInWithPassword({ email, password });
+        const { data, error: err } = await authClient.signInWithPassword({ email, password });
         if (err) throw err;
+        if (region !== RegionType.CHINA && !data?.session?.access_token) {
+          throw new Error("No active session was established. Please sign in again.");
+        }
+        redirectingRef.current = false;
         goSignedIn();
       } catch (err) {
         setError(msg(err) || t.auth.loginFailed);
@@ -301,6 +305,7 @@ function AuthPageContent() {
         } else {
           const { error: err } = await authClient.verifyOtp({ email, token: otp, type: region === RegionType.CHINA ? "sms" : "email" });
           if (err) throw err;
+          redirectingRef.current = false;
           goSignedIn();
         }
       } catch (err) {

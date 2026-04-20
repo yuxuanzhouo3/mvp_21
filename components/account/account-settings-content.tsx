@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
@@ -69,6 +69,34 @@ export function AccountSettingsContent({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  const resolveAuthHeaders = useCallback(async () => {
+    const { tokenManager } = await import("@/lib/auth/frontend-token-manager");
+    const directHeaders = await tokenManager.getAuthHeaderAsync();
+    if (directHeaders) {
+      return directHeaders;
+    }
+
+    if (isChinaRegion()) {
+      return null;
+    }
+
+    const { supabase } = await import("@/lib/integrations/supabase");
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (session?.access_token) {
+      return { Authorization: `Bearer ${session.access_token}` };
+    }
+
+    const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+    if (!refreshError && refreshed.session?.access_token) {
+      return { Authorization: `Bearer ${refreshed.session.access_token}` };
+    }
+
+    return null;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -85,8 +113,7 @@ export function AccountSettingsContent({
         setLoading(true);
         setError("");
 
-        const { tokenManager } = await import("@/lib/auth/frontend-token-manager");
-        const headers = await tokenManager.getAuthHeaderAsync();
+        const headers = await resolveAuthHeaders();
 
         if (!headers) {
           router.push("/auth");
@@ -122,7 +149,7 @@ export function AccountSettingsContent({
     return () => {
       cancelled = true;
     };
-  }, [content.loadFailed, currentUser, router, setTheme, userLoading]);
+  }, [content.loadFailed, currentUser, resolveAuthHeaders, router, setTheme, userLoading]);
 
   const profileInitial = useMemo(() => {
     const source = profile?.name || profile?.email || currentUser?.email || "U";
@@ -170,8 +197,7 @@ export function AccountSettingsContent({
       setError("");
       setSuccess("");
 
-      const { tokenManager } = await import("@/lib/auth/frontend-token-manager");
-      const headers = await tokenManager.getAuthHeaderAsync();
+      const headers = await resolveAuthHeaders();
 
       if (!headers) {
         router.push("/auth");
@@ -221,8 +247,7 @@ export function AccountSettingsContent({
       setError("");
       setSuccess("");
 
-      const { tokenManager } = await import("@/lib/auth/frontend-token-manager");
-      const headers = await tokenManager.getAuthHeaderAsync();
+      const headers = await resolveAuthHeaders();
 
       if (!headers) {
         router.push("/auth");

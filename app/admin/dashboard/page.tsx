@@ -13,14 +13,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
 
 function getRegion(): "CN" | "INTL" {
-  const region =
-    (process.env.NEXT_PUBLIC_DEPLOYMENT_REGION ||
-      process.env.NEXT_PUBLIC_APP_REGION ||
-      "CN")
-      .trim()
-      .toUpperCase();
-
-  return region === "INTL" ? "INTL" : "CN";
+  return isChinaRegion() ? "CN" : "INTL";
 }
 
 const isIntlRegion = getRegion() === "INTL";

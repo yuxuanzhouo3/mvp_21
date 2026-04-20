@@ -26,9 +26,7 @@ function AuthCallbackContent() {
   const { language, deploymentRegion } = useLanguage();
   const t = useTranslations(language);
   const text = t.authCallbackPage;
-  const envRegion =
-    process.env.NEXT_PUBLIC_DEPLOYMENT_REGION === "INTL" ? "INTL" : "CN";
-  const isIntlRegion = deploymentRegion === "INTL" || envRegion === "INTL";
+  const isIntlRegion = deploymentRegion === "INTL";
 
   const requestedRedirect = searchParams.get("redirect");
   const normalizedRedirect = requestedRedirect?.split("?")[0] || "";

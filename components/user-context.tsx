@@ -117,15 +117,56 @@ export function UserProvider({ children }: { children: ReactNode }) {
     try {
       console.log("[UserContext] Refreshing user profile");
       const { tokenManager } = await import("@/lib/auth/frontend-token-manager");
-      const headers = await tokenManager.getAuthHeaderAsync();
+
+      const fetchProfile = async (headers: Record<string, string>) =>
+        fetch("/api/profile", { headers });
+
+      let headers = await tokenManager.getAuthHeaderAsync();
+
+      // INTL fallback: read latest Supabase session token directly if token manager has no header.
+      if (!headers && !isChinaRegion()) {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          headers = { Authorization: `Bearer ${session.access_token}` };
+        }
+      }
 
       if (!headers) {
         console.warn("[UserContext] Missing auth header, skipped refresh");
         return;
       }
 
-      const response = await fetch("/api/profile", { headers });
+      let response = await fetchProfile(headers);
+
+      // INTL fallback: if token expired, refresh session and retry once.
+      if (!response.ok && response.status === 401 && !isChinaRegion()) {
+        const {
+          data: refreshedData,
+          error: refreshError,
+        } = await supabase.auth.refreshSession();
+
+        if (!refreshError && refreshedData.session?.access_token) {
+          const retryHeaders = {
+            Authorization: `Bearer ${refreshedData.session.access_token}`,
+          };
+          response = await fetchProfile(retryHeaders);
+        }
+      }
+
       if (!response.ok) {
+        if (response.status === 401) {
+          console.warn("[UserContext] Profile refresh unauthorized, clearing cached user");
+          if (!isChinaRegion()) {
+            const { clearSupabaseUserCache } = await import(
+              "@/lib/auth/auth-state-manager-intl"
+            );
+            clearSupabaseUserCache();
+          }
+          setUser(null);
+          return;
+        }
         throw new Error(`Failed to refresh profile: ${response.status}`);
       }
 

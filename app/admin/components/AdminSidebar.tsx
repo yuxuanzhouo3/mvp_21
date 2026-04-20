@@ -16,8 +16,10 @@ import {
   Link as LinkIcon,
   AlertTriangle,
   Sparkles,
+  Tags,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isChinaRegion } from "@/lib/config/region";
 
 interface AdminSidebarProps {
   username: string;
@@ -25,14 +27,7 @@ interface AdminSidebarProps {
 }
 
 function getRegion(): "CN" | "INTL" {
-  const region =
-    (process.env.NEXT_PUBLIC_DEPLOYMENT_REGION ||
-      process.env.NEXT_PUBLIC_APP_REGION ||
-      "CN")
-      .trim()
-      .toUpperCase();
-
-  return region === "INTL" ? "INTL" : "CN";
+  return isChinaRegion() ? "CN" : "INTL";
 }
 
 const isIntlRegion = getRegion() === "INTL";
@@ -44,6 +39,7 @@ const copy = {
   logout: isIntlRegion ? "Sign out" : "退出登录",
   nav: {
     dashboard: isIntlRegion ? "Analytics" : "数据统计",
+    pricing: isIntlRegion ? "Pricing" : "定价管理",
     payments: isIntlRegion ? "Payments" : "支付记录",
     reports: isIntlRegion ? "Reports" : "举报管理",
     ads: isIntlRegion ? "Ads" : "广告管理",
@@ -57,6 +53,7 @@ const copy = {
 
 const navItems = [
   { href: "/admin/dashboard", label: copy.nav.dashboard, icon: LayoutDashboard },
+  { href: "/admin/pricing", label: copy.nav.pricing, icon: Tags },
   { href: "/admin/payments", label: copy.nav.payments, icon: CreditCard },
   { href: "/admin/reports", label: copy.nav.reports, icon: AlertTriangle },
   { href: "/admin/ads", label: copy.nav.ads, icon: Image },
@@ -134,3 +131,4 @@ export default function AdminSidebar({ username, role }: AdminSidebarProps) {
     </aside>
   );
 }
+

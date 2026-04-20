@@ -1,5 +1,6 @@
 import { getAuth } from "@/lib/auth/adapter";
 import { resolveUserRole } from "@/lib/auth/user-role";
+import { isChinaRegion } from "@/lib/config/region";
 
 export interface AuthUser {
   id: string;
@@ -869,14 +870,14 @@ class CloudBaseAuthClient implements AuthClient {
   }
 }
 
-function createAuthClient(): AuthClient {
-  const envRegion =
-    process.env.NEXT_PUBLIC_DEPLOYMENT_REGION?.toUpperCase() === "INTL"
-      ? "INTL"
-      : "CN";
-  const useChinaAuth = envRegion === "CN";
+type RuntimeRegion = "CN" | "INTL";
 
-  if (useChinaAuth) {
+function resolveRuntimeRegion(): RuntimeRegion {
+  return isChinaRegion() ? "CN" : "INTL";
+}
+
+function createAuthClient(region: RuntimeRegion): AuthClient {
+  if (region === "CN") {
     console.log("[Auth Client] Using CloudBase auth client");
     return new CloudBaseAuthClient();
   }
@@ -885,14 +886,18 @@ function createAuthClient(): AuthClient {
   return new SupabaseAuthClient();
 }
 
-let authClientInstance: AuthClient | null = null;
+const authClientInstances: Partial<Record<RuntimeRegion, AuthClient>> = {};
 
 export function getAuthClient(): AuthClient {
-  if (!authClientInstance) {
-    authClientInstance = createAuthClient();
+  const runtimeRegion = resolveRuntimeRegion();
+  const cached = authClientInstances[runtimeRegion];
+  if (cached) {
+    return cached;
   }
 
-  return authClientInstance;
+  const client = createAuthClient(runtimeRegion);
+  authClientInstances[runtimeRegion] = client;
+  return client;
 }
 
 export const auth = {

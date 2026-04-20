@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, CreditCard, Loader2, Smartphone } from "lucide-react";
@@ -19,6 +19,7 @@ import { getAuthClient } from "@/lib/auth/client";
 import { RegionType } from "@/lib/architecture-modules/core/types";
 import { paymentRouter } from "@/lib/architecture-modules/layers/third-party/payment/router";
 import { useTranslations } from "@/lib/i18n";
+import { isChinaRegion } from "@/lib/config/region";
 import { getPricingByMethod, type PaymentMethod } from "@/lib/payment/payment-config";
 import { toast } from "@/hooks/use-toast";
 
@@ -35,6 +36,19 @@ interface PaymentFormProps {
   currentSubscription?: {
     planId: string;
     status: string;
+  };
+  pricing?: {
+    currency: "CNY" | "USD";
+    plans: {
+      pro: {
+        monthly: number;
+        yearly: number;
+      };
+      enterprise: {
+        monthly: number;
+        yearly: number;
+      };
+    };
   };
 }
 
@@ -54,6 +68,7 @@ export function PaymentForm({
   onSuccess,
   onError,
   currentSubscription,
+  pricing,
 }: PaymentFormProps) {
   const [selectedMethod, setSelectedMethod] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -64,9 +79,7 @@ export function PaymentForm({
 
   const paymentRequestRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const deploymentRegion =
-    process.env.NEXT_PUBLIC_DEPLOYMENT_REGION === "INTL" ? "INTL" : "CN";
-  const isIntlDeployment = deploymentRegion === "INTL";
+  const isIntlDeployment = !isChinaRegion();
 
   const regionMethods = paymentRouter.getAvailableMethods(region);
   const resolvedMethods = paymentConfig?.availableMethods ?? regionMethods;
@@ -166,7 +179,21 @@ export function PaymentForm({
     setIsProcessing(true);
 
     try {
-      const canonicalPricing = getPricingByMethod(selectedMethod as PaymentMethod);
+      const canonicalPricing =
+        pricing && pricing.currency === currency
+          ? {
+              currency: pricing.currency,
+              monthly:
+                planId === "enterprise"
+                  ? pricing.plans.enterprise.monthly
+                  : pricing.plans.pro.monthly,
+              yearly:
+                planId === "enterprise"
+                  ? pricing.plans.enterprise.yearly
+                  : pricing.plans.pro.yearly,
+              planType: planId === "enterprise" ? "enterprise" : "pro",
+            }
+          : getPricingByMethod(selectedMethod as PaymentMethod, planId);
       const canonicalAmount = canonicalPricing[billingCycle];
       const canonicalCurrency = canonicalPricing.currency;
 
@@ -415,7 +442,7 @@ export function PaymentForm({
           {isProcessing ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {isEn ? "Processing..." : "处理中..."}
+              {isEn ? "Processing..." : "婢跺嫮鎮婃稉?.."}
             </>
           ) : (
             <>

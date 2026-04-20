@@ -122,7 +122,7 @@ export const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
       stripe: true,
     },
     pricing: {
-      proMonthlyCny: 29,
+      proMonthlyCny: 10,
       proYearlyCny: 199,
       enterpriseMonthlyCny: 99,
       enterpriseYearlyCny: 799,

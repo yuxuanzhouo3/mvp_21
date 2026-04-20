@@ -40,6 +40,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
+import { isChinaRegion } from "@/lib/config/region";
 import {
   Loader2,
   Search,
@@ -56,13 +57,7 @@ import {
 } from "lucide-react";
 
 function getRegion(): "CN" | "INTL" {
-  const region =
-    (process.env.NEXT_PUBLIC_DEPLOYMENT_REGION ||
-      process.env.NEXT_PUBLIC_APP_REGION ||
-      "CN")
-      .trim()
-      .toUpperCase();
-  return region === "INTL" ? "INTL" : "CN";
+  return isChinaRegion() ? "CN" : "INTL";
 }
 
 const isIntlRegion = getRegion() === "INTL";
