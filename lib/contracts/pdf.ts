@@ -265,6 +265,8 @@ function tryReadFile(filePath: string) {
 function getChineseFontCandidates() {
   return [
     process.env.CONTRACT_PDF_FONT_PATH,
+    path.join(process.cwd(), "public", "fonts", "simhei.ttf"),
+    path.join(process.cwd(), "public", "fonts", "SimHei.ttf"),
     path.join(process.cwd(), "public", "fonts", "NotoSansCJK-Regular.ttc"),
     path.join(process.cwd(), "public", "fonts", "NotoSansCJKsc-Regular.otf"),
     path.join(process.cwd(), "public", "fonts", "NotoSansSC-Regular.ttf"),

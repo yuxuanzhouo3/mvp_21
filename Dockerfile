@@ -13,6 +13,7 @@ ARG NODE_ENV=production
 
 # 将 ARG 转换为 ENV，使构建过程能访问这些变量
 ENV NODE_ENV=$NODE_ENV
+ENV CONTRACT_PDF_FONT_PATH=/app/public/fonts/simhei.ttf
 
 # ⚠️ 重要：移除所有其他 ARG 和 ENV 声明
 # 所有与应用配置相关的变量（数据库、API密钥、认证等）
@@ -72,6 +73,7 @@ WORKDIR /app
 ARG PORT=80
 ENV PORT=$PORT
 ENV HOSTNAME=0.0.0.0
+ENV CONTRACT_PDF_FONT_PATH=/app/public/fonts/simhei.ttf
 
 # 从构建阶段复制必要的文件
 COPY --from=base /app/package.json /app/pnpm-lock.yaml ./
