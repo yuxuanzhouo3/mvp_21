@@ -194,6 +194,15 @@ export const translationOverrides = {
       customers: "客户案例",
       openConsole: "进入控制台",
     },
+    demoVideo: {
+      button: "操作演示",
+      title: "操作演示",
+      description: "直接在网页内查看和播放产品演示视频，不会打断你当前的浏览流程。",
+      fallbackTitle: "演示视频尚未配置",
+      fallbackDescription:
+        "请将视频文件放到 public/videos/home-demo.mp4，或通过 NEXT_PUBLIC_HOME_DEMO_VIDEO_URL 配置线上视频地址。",
+      close: "关闭操作演示",
+    },
     footer: {
       description: "MornContract 为团队提供统一控制台，覆盖合同起草、签署、归档与计费全流程。",
       columns: {
@@ -625,6 +634,15 @@ export const translationOverrides = {
       pricing: "Pricing",
       customers: "Customers",
       openConsole: "Open Console",
+    },
+    demoVideo: {
+      button: "Product Demo",
+      title: "Product Demo",
+      description: "Watch the walkthrough video directly on the page without interrupting the rest of the experience.",
+      fallbackTitle: "Demo video is not configured yet",
+      fallbackDescription:
+        "Add your file at public/videos/home-demo.mp4, or set NEXT_PUBLIC_HOME_DEMO_VIDEO_URL to a hosted video URL.",
+      close: "Close product demo",
     },
     footer: {
       description:

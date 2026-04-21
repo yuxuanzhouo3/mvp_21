@@ -7,6 +7,7 @@ import { FileText, Menu, X } from "lucide-react";
 
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { useLanguage } from "@/components/language-provider";
+import { DemoVideoButton } from "@/components/home/demo-video-button";
 import { UserMenu } from "@/components/user-menu";
 import { Button } from "@/components/ui/button";
 import {
@@ -139,22 +140,26 @@ export function Header() {
               onLocaleChange={(locale) => setLanguage(locale)}
             />
           ) : null}
+          <DemoVideoButton />
           <Button asChild>
             <Link href="/dashboard">{labels.openConsole}</Link>
           </Button>
           <UserMenu />
         </div>
 
-        <button
-          type="button"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border/70 bg-card text-foreground md:hidden"
-          onClick={() => setMobileMenuOpen((open) => !open)}
-          aria-label="Toggle menu"
-          aria-expanded={mobileMenuOpen}
-          aria-controls="mobile-nav-panel"
-        >
-          {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </button>
+        <div className="flex items-center gap-2 md:hidden">
+          <DemoVideoButton />
+          <button
+            type="button"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border/70 bg-card text-foreground"
+            onClick={() => setMobileMenuOpen((open) => !open)}
+            aria-label="Toggle menu"
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-nav-panel"
+          >
+            {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
+        </div>
       </nav>
 
       {mobileMenuOpen ? (
