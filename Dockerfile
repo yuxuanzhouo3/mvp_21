@@ -83,7 +83,7 @@ COPY --from=base /app/next.config.mjs ./
 RUN pnpm install --frozen-lockfile --prod
 
 # 允许非 root 用户绑定 80 端口，兼容 CloudBase 默认健康检查
-RUN apk add --no-cache libcap \
+RUN apk add --no-cache font-noto-cjk libcap \
   && setcap 'cap_net_bind_service=+ep' /usr/local/bin/node \
   && apk del libcap
 

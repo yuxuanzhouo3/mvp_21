@@ -1,6 +1,7 @@
 ﻿import "server-only";
 
 import fs from "node:fs";
+import path from "node:path";
 
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage } from "pdf-lib";
@@ -261,25 +262,37 @@ function tryReadFile(filePath: string) {
   return null;
 }
 
-function loadChineseFontBuffer() {
-  const candidates = [
+function getChineseFontCandidates() {
+  return [
     process.env.CONTRACT_PDF_FONT_PATH,
+    path.join(process.cwd(), "public", "fonts", "NotoSansCJK-Regular.ttc"),
+    path.join(process.cwd(), "public", "fonts", "NotoSansCJKsc-Regular.otf"),
+    path.join(process.cwd(), "public", "fonts", "NotoSansSC-Regular.ttf"),
     "C:\\Windows\\Fonts\\simhei.ttf",
     "C:\\Windows\\Fonts\\simsun.ttf",
     "C:\\Windows\\Fonts\\NotoSansSC-VF.ttf",
     "C:\\Windows\\Fonts\\msyh.ttf",
     "C:\\Windows\\Fonts\\msyh.ttc",
     "C:\\Windows\\Fonts\\simsunb.ttf",
+    "/usr/share/fonts/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/noto/NotoSerifCJK-Regular.ttc",
     "/usr/share/fonts/truetype/noto/NotoSansCJKsc-Regular.otf",
     "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/System/Library/Fonts/STHeiti Light.ttc",
   ].filter((item): item is string => Boolean(item && item.trim()));
+}
+
+function loadChineseFontBuffer() {
+  const candidates = getChineseFontCandidates();
 
   for (const filePath of candidates) {
     const buffer = tryReadFile(filePath);
     if (buffer) {
-      return buffer;
+      return {
+        buffer,
+        filePath,
+      };
     }
   }
 
@@ -515,9 +528,15 @@ export async function buildContractPdfBuffer(
   },
 ) {
   const language = resolvePreferredLanguage(contract, options?.language);
-  const chineseFontBuffer = language === "zh" ? loadChineseFontBuffer() : null;
+  const chineseFont = language === "zh" ? loadChineseFontBuffer() : null;
 
-  if (language === "zh" && !chineseFontBuffer) {
+  if (language === "zh" && !chineseFont) {
+    console.warn(
+      "[contracts/pdf] No Chinese font found in runtime environment, falling back to legacy PDF writer.",
+      {
+        candidates: getChineseFontCandidates(),
+      },
+    );
     // Avoid rendering Chinese with Helvetica (which lacks CJK glyphs).
     // Fall back to the legacy PDF writer that uses STSong-Light.
     return buildLegacyContractPdfBuffer(contract, {
@@ -527,10 +546,14 @@ export async function buildContractPdfBuffer(
   }
 
   try {
+    if (language === "zh" && chineseFont?.filePath) {
+      console.info("[contracts/pdf] Using Chinese font for PDF export:", chineseFont.filePath);
+    }
+
     return await buildModernPdfBuffer(
       contract,
       language,
-      chineseFontBuffer,
+      chineseFont?.buffer,
       options?.signatures,
     );
   } catch (error) {
