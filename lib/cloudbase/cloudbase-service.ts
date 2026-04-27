@@ -491,6 +491,230 @@ export async function loginOrCreatePhoneUser(
   }
 }
 
+function normalizeWechatDisplayName(
+  nickName: string | undefined,
+  openid: string,
+) {
+  const normalized = String(nickName || "").trim();
+  if (normalized) {
+    return normalized.slice(0, 50);
+  }
+  return `微信用户${openid.slice(-6)}`;
+}
+
+export async function loginOrCreateWechatMiniUser(
+  openid: string,
+  options?: {
+    unionid?: string;
+    nickName?: string;
+    avatarUrl?: string;
+    deviceInfo?: string;
+    ipAddress?: string;
+    userAgent?: string;
+  },
+): Promise<{
+  success: boolean;
+  userId?: string;
+  email?: string;
+  phone?: string;
+  name?: string;
+  avatarUrl?: string;
+  openid?: string;
+  unionid?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  tokenMeta?: { accessTokenExpiresIn: number; refreshTokenExpiresIn: number };
+  error?: string;
+}> {
+  try {
+    const normalizedOpenId = normalizeLoginIdentifier(openid);
+    const normalizedUnionId = normalizeLoginIdentifier(options?.unionid || "");
+
+    if (!normalizedOpenId) {
+      return {
+        success: false,
+        error: "微信登录凭证无效",
+      };
+    }
+
+    const app = initCloudBase();
+    const db = app.database();
+    const usersCollection = db.collection("web_users");
+    const now = new Date().toISOString();
+    const syntheticEmail = `wechat_${normalizedOpenId}@local.wechat`;
+    const normalizedName = normalizeWechatDisplayName(
+      options?.nickName,
+      normalizedOpenId,
+    );
+    const normalizedAvatar = String(options?.avatarUrl || "").trim();
+
+    let user: any | undefined;
+
+    if (normalizedUnionId) {
+      const byUnionId = await usersCollection
+        .where({ wechat_unionid: normalizedUnionId })
+        .limit(1)
+        .get();
+      user = byUnionId.data?.[0];
+    }
+
+    if (!user) {
+      const byOpenId = await usersCollection
+        .where({ wechat_openid: normalizedOpenId })
+        .limit(1)
+        .get();
+      user = byOpenId.data?.[0];
+    }
+
+    if (!user) {
+      const bySyntheticEmail = await usersCollection
+        .where({ email: syntheticEmail })
+        .limit(1)
+        .get();
+      user = bySyntheticEmail.data?.[0];
+    }
+
+    if (!user) {
+      const created = await usersCollection.add({
+        email: syntheticEmail,
+        password: await bcrypt.hash(crypto.randomUUID(), 10),
+        name: normalizedName,
+        avatar: normalizedAvatar || "",
+        avatar_url: normalizedAvatar || "",
+        provider: "wechat",
+        provider_id: normalizedOpenId,
+        wechat_openid: normalizedOpenId,
+        wechat_unionid: normalizedUnionId || null,
+        status: "active",
+        pro: false,
+        subscription_plan: "free",
+        subscription_status: "inactive",
+        region: "china",
+        login_count: 1,
+        last_login_at: now,
+        last_login_ip: options?.ipAddress,
+        createdAt: now,
+        updatedAt: now,
+        created_at: now,
+        updated_at: now,
+      });
+
+      const createdUserResult = await usersCollection.doc(created.id).get();
+      user = createdUserResult.data?.[0] || {
+        _id: created.id,
+        email: syntheticEmail,
+        name: normalizedName,
+        avatar: normalizedAvatar || "",
+        avatar_url: normalizedAvatar || "",
+        provider: "wechat",
+        provider_id: normalizedOpenId,
+        wechat_openid: normalizedOpenId,
+        wechat_unionid: normalizedUnionId || null,
+      };
+    } else {
+      if (user.status && user.status !== "active") {
+        return {
+          success: false,
+          error: "账号已被禁用",
+        };
+      }
+
+      const nextName =
+        String(options?.nickName || "").trim() ||
+        String(user.name || user.full_name || "").trim() ||
+        normalizedName;
+      const nextAvatar =
+        normalizedAvatar ||
+        String(user.avatar || user.avatar_url || "").trim();
+
+      await usersCollection.doc(user._id).update({
+        email: user.email || syntheticEmail,
+        name: nextName,
+        avatar: nextAvatar,
+        avatar_url: nextAvatar,
+        provider: user.provider || "wechat",
+        provider_id: user.provider_id || normalizedOpenId,
+        wechat_openid: normalizedOpenId,
+        wechat_unionid: normalizedUnionId || user.wechat_unionid || null,
+        last_login_at: now,
+        last_login_ip: options?.ipAddress,
+        login_count: (user.login_count || 0) + 1,
+        updatedAt: now,
+        updated_at: now,
+      });
+
+      const refreshedUserResult = await usersCollection.doc(user._id).get();
+      user = refreshedUserResult.data?.[0] || {
+        ...user,
+        email: user.email || syntheticEmail,
+        name: nextName,
+        avatar: nextAvatar,
+        avatar_url: nextAvatar,
+        provider: user.provider || "wechat",
+        provider_id: user.provider_id || normalizedOpenId,
+        wechat_openid: normalizedOpenId,
+        wechat_unionid: normalizedUnionId || user.wechat_unionid || null,
+        last_login_at: now,
+        last_login_ip: options?.ipAddress,
+        login_count: (user.login_count || 0) + 1,
+        updatedAt: now,
+        updated_at: now,
+      };
+    }
+
+    const userId = user._id;
+    const email = user.email || syntheticEmail;
+    const accessToken = signJwt(
+      {
+        userId,
+        email,
+        openid: normalizedOpenId,
+        unionid: normalizedUnionId || undefined,
+        provider: "wechat-mini",
+        region: "CN",
+      },
+      { expiresIn: "1h" },
+    );
+
+    const refreshTokenRecord = await createRefreshToken({
+      userId,
+      email,
+      deviceInfo: options?.deviceInfo || "wechat-mini-login",
+      ipAddress: options?.ipAddress,
+      userAgent: options?.userAgent,
+    });
+
+    if (!refreshTokenRecord) {
+      return {
+        success: false,
+        error: "无法生成 refresh token",
+      };
+    }
+
+    return {
+      success: true,
+      userId,
+      email,
+      name: user.name || normalizedName,
+      avatarUrl: user.avatar || user.avatar_url || normalizedAvatar,
+      openid: normalizedOpenId,
+      unionid: normalizedUnionId || user.wechat_unionid || undefined,
+      accessToken,
+      refreshToken: refreshTokenRecord.refreshToken,
+      tokenMeta: {
+        accessTokenExpiresIn: 3600,
+        refreshTokenExpiresIn: 604800,
+      },
+    };
+  } catch (error: any) {
+    console.error(" [CloudBase Service] 微信小程序登录失败:", error);
+    return {
+      success: false,
+      error: error.message || "微信小程序登录失败",
+    };
+  }
+}
+
 export function getCloudBaseApp() {
   return initCloudBase();
 }

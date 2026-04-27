@@ -25,6 +25,21 @@ export function getWechatPayAppId(): string {
   );
 }
 
+export function getWechatMiniAppId(): string {
+  return pickFirstNonEmpty(
+    process.env.WECHAT_MINI_APP_ID,
+    process.env.WECHAT_APP_ID,
+    process.env.NEXT_PUBLIC_WECHAT_APP_ID,
+  );
+}
+
+export function getWechatMiniAppSecret(): string {
+  return pickFirstNonEmpty(
+    process.env.WECHAT_MINI_APP_SECRET,
+    process.env.WECHAT_APP_SECRET,
+  );
+}
+
 export function getWechatPayApiV3Key(): string {
   return pickFirstNonEmpty(
     process.env.WECHAT_PAY_API_V3_KEY,

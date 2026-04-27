@@ -20,6 +20,8 @@ const envSchema = z.object({
   NEXT_PUBLIC_WECHAT_APP_ID: z.string().min(1).optional(),
   WECHAT_APP_ID: z.string().min(1).optional(),
   WECHAT_APP_SECRET: z.string().min(1).optional(),
+  WECHAT_MINI_APP_ID: z.string().optional(),
+  WECHAT_MINI_APP_SECRET: z.string().optional(),
   TENCENT_SMS_APP_ID: z.string().min(1).optional(),
   TENCENT_SMS_SIGN_NAME: z.string().min(1).optional(),
   TENCENT_SMS_TEMPLATE_ID: z.string().min(1).optional(),
@@ -320,6 +322,18 @@ export function validateEnvironment():
       if (!envData.DASHSCOPE_API_KEY?.trim()) {
         conditionalErrors.push(
           "DASHSCOPE_API_KEY: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to CN"
+        );
+      }
+
+      if (envData.WECHAT_MINI_APP_ID && !envData.WECHAT_MINI_APP_SECRET) {
+        conditionalErrors.push(
+          "WECHAT_MINI_APP_SECRET: Required when WECHAT_MINI_APP_ID is provided",
+        );
+      }
+
+      if (envData.WECHAT_MINI_APP_SECRET && !envData.WECHAT_MINI_APP_ID) {
+        conditionalErrors.push(
+          "WECHAT_MINI_APP_ID: Required when WECHAT_MINI_APP_SECRET is provided",
         );
       }
     }
