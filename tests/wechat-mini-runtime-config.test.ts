@@ -24,6 +24,7 @@ describe("wechat mini runtime config", () => {
   test("public auth config exposes mini program wechat readiness in CN", async () => {
     process.env.WECHAT_MINIPROGRAM_APPID = "mini-app-id";
     process.env.WECHAT_MINIPROGRAM_SECRET = "mini-app-secret";
+    process.env.NEXT_PUBLIC_WECHAT_MINI_LOGIN_PAGE = "/pages/webshell/login";
     delete process.env.WECHAT_MINI_APP_ID;
     delete process.env.WECHAT_MINI_APP_SECRET;
     process.env.TENCENT_SMS_APP_ID = "sms-app-id";
@@ -51,6 +52,7 @@ describe("wechat mini runtime config", () => {
     delete process.env.WECHAT_MINI_APP_SECRET;
     delete process.env.WECHAT_MINIPROGRAM_APPID;
     delete process.env.WECHAT_MINIPROGRAM_SECRET;
+    delete process.env.NEXT_PUBLIC_WECHAT_MINI_LOGIN_PAGE;
 
     jest.doMock("@/lib/config/deployment.config", () => ({
       currentRegion: "CN",
@@ -82,6 +84,7 @@ describe("wechat mini runtime config", () => {
     delete process.env.WECHAT_MINI_APP_SECRET;
     process.env.WECHAT_MINIPROGRAM_APPID = "mvp25-mini-app-id";
     process.env.WECHAT_MINIPROGRAM_SECRET = "mvp25-mini-secret";
+    process.env.NEXT_PUBLIC_WECHAT_MINI_LOGIN_PAGE = "/pages/webshell/login";
 
     const { validateEnvironment } = await import("@/lib/validation/env-validation");
     const result = validateEnvironment();

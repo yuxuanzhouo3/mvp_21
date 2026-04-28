@@ -2,6 +2,7 @@ import { currentRegion, getPaymentProviders, isAuthFeatureSupported } from "@/li
 import {
   getAppUrl,
   getWechatMiniAppId,
+  getWechatMiniLoginPagePath,
   getWechatPayApiV3Key,
   getWechatPayAppId,
   getWechatMiniAppSecret,
@@ -175,6 +176,13 @@ function getMiniProgramWechatStatus(region: Region): CapabilityStatus {
     return createStatus(
       false,
       "WECHAT_MINIPROGRAM_SECRET is missing.",
+    );
+  }
+
+  if (!isPresent(getWechatMiniLoginPagePath())) {
+    return createStatus(
+      false,
+      "NEXT_PUBLIC_WECHAT_MINI_LOGIN_PAGE is missing.",
     );
   }
 

@@ -43,6 +43,12 @@ export function getWechatMiniAppSecret(): string {
   );
 }
 
+export function getWechatMiniLoginPagePath(): string {
+  return pickFirstNonEmpty(
+    process.env.NEXT_PUBLIC_WECHAT_MINI_LOGIN_PAGE,
+  );
+}
+
 export function getWechatPayApiV3Key(): string {
   return pickFirstNonEmpty(
     process.env.WECHAT_PAY_API_V3_KEY,

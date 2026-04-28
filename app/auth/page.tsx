@@ -382,7 +382,13 @@ function AuthPageContent() {
     setOtpSent(false);
   };
 
+  // Legacy no-op bridge kept only so the old mini-program login branch remains
+  // type-safe while the real entrypoint delegates to requestMiniProgramWxLoginV2.
+  const postMessageRequested = () => false;
+
   const requestMiniProgramWxLogin = () => {
+    return requestMiniProgramWxLoginV2();
+
     if (loading || miniLoginLoading) {
       return;
     }
@@ -429,36 +435,6 @@ function AuthPageContent() {
       });
     }, 15000);
 
-    const requestPayload = {
-      type: "REQUEST_WX_LOGIN",
-      requestId,
-      returnUrl,
-      loginPage: MINI_PROGRAM_LOGIN_PAGE,
-    };
-
-    const postMessageRequested = () => {
-      if (!wx?.miniProgram?.postMessage) {
-        return false;
-      }
-
-      try {
-        wx.miniProgram.postMessage({
-          data: requestPayload,
-        });
-        console.info("[auth] mini-program login requested", {
-          requestId,
-          returnUrl,
-          loginPage: MINI_PROGRAM_LOGIN_PAGE,
-          requestMode: "postMessage",
-          hasNavigateTo: Boolean(wx?.miniProgram?.navigateTo),
-        });
-        return true;
-      } catch (postMessageError) {
-        console.error("[auth] miniProgram.postMessage failed", postMessageError);
-        return false;
-      }
-    };
-
     if (wx?.miniProgram?.navigateTo) {
       const connector = MINI_PROGRAM_LOGIN_PAGE.includes("?") ? "&" : "?";
       const loginPageUrl =
@@ -476,7 +452,7 @@ function AuthPageContent() {
             requestMode: "navigateTo",
           });
         },
-        fail: (navigationError: unknown) => {
+        fail: (navigationError: { errMsg?: string } | unknown) => {
           console.warn("[auth] miniProgram.navigateTo failed", navigationError);
           if (!postMessageRequested()) {
             clearMiniLoginTimeout();
@@ -523,6 +499,102 @@ function AuthPageContent() {
     setMiniLoginLoading(false);
     setNotice("");
     setError("当前环境未注入小程序通信能力，无法拉起微信登录。");
+  };
+
+  const requestMiniProgramWxLoginV2 = () => {
+    if (loading || miniLoginLoading) {
+      return;
+    }
+
+    if (!requirePrivacy()) {
+      return;
+    }
+
+    if (!miniProgramWechatEnabledInCn) {
+      setError(
+        miniProgramWechatAvailability?.reason ||
+          "微信小程序登录配置不完整，请先检查小程序登录页路径、AppID 和 Secret。",
+      );
+      return;
+    }
+
+    if (!MINI_PROGRAM_LOGIN_PAGE) {
+      setError("未配置 NEXT_PUBLIC_WECHAT_MINI_LOGIN_PAGE，无法拉起小程序登录页。");
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const wx = (window as any).wx;
+    if (!wx?.miniProgram?.navigateTo) {
+      setError("当前环境未注入可用的小程序跳转能力，无法拉起微信登录页。");
+      return;
+    }
+
+    clearFeedback();
+
+    const callbackCleanUrl = new URL(window.location.href);
+    MINI_PROGRAM_CALLBACK_QUERY_KEYS.forEach((key) =>
+      callbackCleanUrl.searchParams.delete(key),
+    );
+
+    const returnUrl = callbackCleanUrl.toString();
+    const requestId = `wx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    miniLoginRequestIdRef.current = requestId;
+
+    clearMiniLoginTimeout();
+    setMiniLoginLoading(true);
+    setNotice("正在拉起微信登录，请在小程序中完成授权...");
+
+    miniLoginTimeoutRef.current = window.setTimeout(() => {
+      setMiniLoginLoading(false);
+      setNotice("");
+      setError("未收到小程序回传登录凭证（mpCode/token）。请检查小程序宿主登录页是否已完成微信登录并回传到当前页面。");
+      console.warn("[auth] mini-program login callback timeout", {
+        requestId,
+        returnUrl,
+        loginPage: MINI_PROGRAM_LOGIN_PAGE,
+      });
+    }, 15000);
+
+    const connector = MINI_PROGRAM_LOGIN_PAGE.includes("?") ? "&" : "?";
+    const loginPageUrl =
+      `${MINI_PROGRAM_LOGIN_PAGE}${connector}` +
+      `requestId=${encodeURIComponent(requestId)}` +
+      `&returnUrl=${encodeURIComponent(returnUrl)}`;
+
+    wx.miniProgram.navigateTo({
+      url: loginPageUrl,
+      success: () => {
+        console.info("[auth] mini-program login requested", {
+          requestId,
+          returnUrl,
+          loginPage: loginPageUrl,
+          requestMode: "navigateTo",
+        });
+      },
+      fail: (navigationError: { errMsg?: string } | unknown) => {
+        clearMiniLoginTimeout();
+        setMiniLoginLoading(false);
+        setNotice("");
+        const details =
+          typeof navigationError === "object" &&
+          navigationError &&
+          "errMsg" in navigationError &&
+          typeof navigationError.errMsg === "string"
+            ? ` (${navigationError.errMsg})`
+            : "";
+        setError(`微信登录页拉起失败，请检查小程序页面路径配置${details}`);
+        console.warn("[auth] miniProgram.navigateTo failed", {
+          requestId,
+          returnUrl,
+          loginPage: loginPageUrl,
+          navigationError,
+        });
+      },
+    });
   };
 
   const goSignedIn = useCallback(() => {
@@ -761,8 +833,6 @@ function AuthPageContent() {
   );
 
   useEffect(() => {
-    return;
-
     if (region !== RegionType.CHINA || typeof window === "undefined") {
       return;
     }
