@@ -27,9 +27,9 @@ export function getWechatPayAppId(): string {
 
 export function getWechatMiniAppId(): string {
   return pickFirstNonEmpty(
-    process.env.NEXT_PUBLIC_WECHAT_MINI_APP_ID,
-    process.env.WECHAT_MINI_APP_ID,
     process.env.WECHAT_MINIPROGRAM_APPID,
+    process.env.WECHAT_MINI_APP_ID,
+    process.env.NEXT_PUBLIC_WECHAT_MINI_APP_ID,
     process.env.WECHAT_APP_ID,
     process.env.NEXT_PUBLIC_WECHAT_APP_ID,
   );
@@ -37,8 +37,8 @@ export function getWechatMiniAppId(): string {
 
 export function getWechatMiniAppSecret(): string {
   return pickFirstNonEmpty(
-    process.env.WECHAT_MINI_APP_SECRET,
     process.env.WECHAT_MINIPROGRAM_SECRET,
+    process.env.WECHAT_MINI_APP_SECRET,
     process.env.WECHAT_APP_SECRET,
   );
 }

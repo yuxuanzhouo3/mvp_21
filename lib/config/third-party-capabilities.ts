@@ -167,14 +167,14 @@ function getMiniProgramWechatStatus(region: Region): CapabilityStatus {
   if (!isPresent(getWechatMiniAppId())) {
     return createStatus(
       false,
-      "WECHAT_MINI_APP_ID is missing.",
+      "WECHAT_MINIPROGRAM_APPID is missing.",
     );
   }
 
   if (!isPresent(getWechatMiniAppSecret())) {
     return createStatus(
       false,
-      "WECHAT_MINI_APP_SECRET is missing.",
+      "WECHAT_MINIPROGRAM_SECRET is missing.",
     );
   }
 

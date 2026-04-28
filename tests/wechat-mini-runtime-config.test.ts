@@ -9,21 +9,23 @@ afterEach(() => {
 });
 
 describe("wechat mini runtime config", () => {
-  test("runtime env supports legacy mini program alias keys", async () => {
+  test("runtime env supports mvp_25 mini program env names", async () => {
     delete process.env.WECHAT_MINI_APP_ID;
     delete process.env.WECHAT_MINI_APP_SECRET;
-    process.env.WECHAT_MINIPROGRAM_APPID = "legacy-mini-app-id";
-    process.env.WECHAT_MINIPROGRAM_SECRET = "legacy-mini-secret";
+    process.env.WECHAT_MINIPROGRAM_APPID = "mvp25-mini-app-id";
+    process.env.WECHAT_MINIPROGRAM_SECRET = "mvp25-mini-secret";
 
     const runtimeEnv = await import("@/lib/config/runtime-env");
 
-    expect(runtimeEnv.getWechatMiniAppId()).toBe("legacy-mini-app-id");
-    expect(runtimeEnv.getWechatMiniAppSecret()).toBe("legacy-mini-secret");
+    expect(runtimeEnv.getWechatMiniAppId()).toBe("mvp25-mini-app-id");
+    expect(runtimeEnv.getWechatMiniAppSecret()).toBe("mvp25-mini-secret");
   });
 
   test("public auth config exposes mini program wechat readiness in CN", async () => {
-    process.env.WECHAT_MINI_APP_ID = "mini-app-id";
-    process.env.WECHAT_MINI_APP_SECRET = "mini-app-secret";
+    process.env.WECHAT_MINIPROGRAM_APPID = "mini-app-id";
+    process.env.WECHAT_MINIPROGRAM_SECRET = "mini-app-secret";
+    delete process.env.WECHAT_MINI_APP_ID;
+    delete process.env.WECHAT_MINI_APP_SECRET;
     process.env.TENCENT_SMS_APP_ID = "sms-app-id";
     process.env.TENCENT_SMS_SIGN_NAME = "sms-sign";
     process.env.TENCENT_SMS_TEMPLATE_ID = "sms-template";
@@ -61,11 +63,11 @@ describe("wechat mini runtime config", () => {
 
     expect(authConfig.availability.miniProgramWechat.enabled).toBe(false);
     expect(authConfig.availability.miniProgramWechat.reason).toMatch(
-      /WECHAT_MINI_APP_ID/i,
+      /WECHAT_MINIPROGRAM_APPID/i,
     );
   });
 
-  test("env validation accepts compatibility alias pair for CN mini program config", async () => {
+  test("env validation accepts mvp_25 mini program env names", async () => {
     process.env.NEXT_PUBLIC_DEPLOYMENT_REGION = "CN";
     process.env.NEXT_PUBLIC_WECHAT_CLOUDBASE_ID = "cloudbase-env-id";
     process.env.CLOUDBASE_SECRET_ID = "cloudbase-secret-id";
@@ -78,8 +80,8 @@ describe("wechat mini runtime config", () => {
     process.env.DASHSCOPE_API_KEY = "dashscope-key";
     delete process.env.WECHAT_MINI_APP_ID;
     delete process.env.WECHAT_MINI_APP_SECRET;
-    process.env.WECHAT_MINIPROGRAM_APPID = "legacy-mini-app-id";
-    process.env.WECHAT_MINIPROGRAM_SECRET = "legacy-mini-secret";
+    process.env.WECHAT_MINIPROGRAM_APPID = "mvp25-mini-app-id";
+    process.env.WECHAT_MINIPROGRAM_SECRET = "mvp25-mini-secret";
 
     const { validateEnvironment } = await import("@/lib/validation/env-validation");
     const result = validateEnvironment();

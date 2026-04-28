@@ -334,13 +334,13 @@ export function validateEnvironment():
 
       if (hasMiniAppId && !hasMiniAppSecret) {
         conditionalErrors.push(
-          "WECHAT_MINI_APP_SECRET: Required when WECHAT_MINI_APP_ID (or compatibility alias) is provided",
+          "WECHAT_MINIPROGRAM_SECRET: Required when WECHAT_MINIPROGRAM_APPID (or compatibility alias) is provided",
         );
       }
 
       if (hasMiniAppSecret && !hasMiniAppId) {
         conditionalErrors.push(
-          "WECHAT_MINI_APP_ID: Required when WECHAT_MINI_APP_SECRET (or compatibility alias) is provided",
+          "WECHAT_MINIPROGRAM_APPID: Required when WECHAT_MINIPROGRAM_SECRET (or compatibility alias) is provided",
         );
       }
     }

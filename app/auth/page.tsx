@@ -983,7 +983,7 @@ function AuthPageContent() {
             <AlertDescription>
               微信小程序登录暂不可用：
               {miniProgramWechatAvailability?.reason ||
-                "请配置 WECHAT_MINI_APP_ID 和 WECHAT_MINI_APP_SECRET。"}
+                "请配置 WECHAT_MINIPROGRAM_APPID 和 WECHAT_MINIPROGRAM_SECRET。"}
             </AlertDescription>
           </Alert>
         ) : null}
