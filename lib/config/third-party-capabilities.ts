@@ -1,13 +1,15 @@
 import { currentRegion, getPaymentProviders, isAuthFeatureSupported } from "@/lib/config/deployment.config";
 import {
   getAppUrl,
+  getWechatMiniAppId,
   getWechatPayApiV3Key,
   getWechatPayAppId,
+  getWechatMiniAppSecret,
 } from "@/lib/config/runtime-env";
 
 type Region = "CN" | "INTL";
 type PaymentMethod = "stripe" | "paypal" | "wechat" | "alipay";
-type AuthMethod = "sms" | "google";
+type AuthMethod = "sms" | "google" | "miniProgramWechat";
 
 export interface CapabilityStatus {
   enabled: boolean;
@@ -154,10 +156,36 @@ function getGoogleAuthStatus(region: Region): CapabilityStatus {
   return createStatus(true);
 }
 
+function getMiniProgramWechatStatus(region: Region): CapabilityStatus {
+  if (region !== "CN") {
+    return createStatus(
+      false,
+      "WeChat mini program sign-in is only supported in CN deployments.",
+    );
+  }
+
+  if (!isPresent(getWechatMiniAppId())) {
+    return createStatus(
+      false,
+      "WECHAT_MINI_APP_ID is missing.",
+    );
+  }
+
+  if (!isPresent(getWechatMiniAppSecret())) {
+    return createStatus(
+      false,
+      "WECHAT_MINI_APP_SECRET is missing.",
+    );
+  }
+
+  return createStatus(true);
+}
+
 export function getPublicAuthConfig(): PublicAuthConfig {
   const region = currentRegion;
   const sms = getSmsAuthStatus(region);
   const google = getGoogleAuthStatus(region);
+  const miniProgramWechat = getMiniProgramWechatStatus(region);
 
   return {
     region,
@@ -170,6 +198,7 @@ export function getPublicAuthConfig(): PublicAuthConfig {
     availability: {
       sms,
       google,
+      miniProgramWechat,
     },
   };
 }

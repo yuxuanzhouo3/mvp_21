@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error:
-            "未配置微信小程序登录环境变量，请设置 WECHAT_MINI_APP_ID 和 WECHAT_MINI_APP_SECRET",
+            "未配置微信小程序登录环境变量，请设置 WECHAT_MINI_APP_ID / WECHAT_MINI_APP_SECRET（兼容 WECHAT_MINIPROGRAM_APPID / WECHAT_MINIPROGRAM_SECRET）",
         },
         { status: 500 },
       );

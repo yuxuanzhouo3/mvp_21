@@ -18,10 +18,13 @@ const envSchema = z.object({
   CLOUDBASE_SECRET_ID: z.string().min(1).optional(),
   CLOUDBASE_SECRET_KEY: z.string().min(1).optional(),
   NEXT_PUBLIC_WECHAT_APP_ID: z.string().min(1).optional(),
+  NEXT_PUBLIC_WECHAT_MINI_APP_ID: z.string().min(1).optional(),
   WECHAT_APP_ID: z.string().min(1).optional(),
   WECHAT_APP_SECRET: z.string().min(1).optional(),
   WECHAT_MINI_APP_ID: z.string().optional(),
   WECHAT_MINI_APP_SECRET: z.string().optional(),
+  WECHAT_MINIPROGRAM_APPID: z.string().optional(),
+  WECHAT_MINIPROGRAM_SECRET: z.string().optional(),
   TENCENT_SMS_APP_ID: z.string().min(1).optional(),
   TENCENT_SMS_SIGN_NAME: z.string().min(1).optional(),
   TENCENT_SMS_TEMPLATE_ID: z.string().min(1).optional(),
@@ -319,15 +322,25 @@ export function validateEnvironment():
         );
       }
 
-      if (envData.WECHAT_MINI_APP_ID && !envData.WECHAT_MINI_APP_SECRET) {
+      const hasMiniAppId = Boolean(
+        envData.NEXT_PUBLIC_WECHAT_MINI_APP_ID ||
+        envData.WECHAT_MINI_APP_ID ||
+        envData.WECHAT_MINIPROGRAM_APPID,
+      );
+      const hasMiniAppSecret = Boolean(
+        envData.WECHAT_MINI_APP_SECRET ||
+        envData.WECHAT_MINIPROGRAM_SECRET,
+      );
+
+      if (hasMiniAppId && !hasMiniAppSecret) {
         conditionalErrors.push(
-          "WECHAT_MINI_APP_SECRET: Required when WECHAT_MINI_APP_ID is provided",
+          "WECHAT_MINI_APP_SECRET: Required when WECHAT_MINI_APP_ID (or compatibility alias) is provided",
         );
       }
 
-      if (envData.WECHAT_MINI_APP_SECRET && !envData.WECHAT_MINI_APP_ID) {
+      if (hasMiniAppSecret && !hasMiniAppId) {
         conditionalErrors.push(
-          "WECHAT_MINI_APP_ID: Required when WECHAT_MINI_APP_SECRET is provided",
+          "WECHAT_MINI_APP_ID: Required when WECHAT_MINI_APP_SECRET (or compatibility alias) is provided",
         );
       }
     }

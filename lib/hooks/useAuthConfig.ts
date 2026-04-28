@@ -14,6 +14,7 @@ export interface AuthConfig {
   availability?: {
     sms?: { enabled: boolean; reason?: string };
     google?: { enabled: boolean; reason?: string };
+    miniProgramWechat?: { enabled: boolean; reason?: string };
   };
   oauthReadiness?: {
     region: "CN" | "INTL";
