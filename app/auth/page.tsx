@@ -1544,7 +1544,7 @@ function AuthPageContent() {
             onClick={requestMiniProgramWxLogin}
             disabled={loading || miniLoginLoading || !miniProgramWechatEnabledInCn}
           >
-            {miniLoginLoading ? "姝ｅ湪鎷夎捣寰俊鐧诲綍..." : "寰俊鐧诲綍"}
+            {miniLoginLoading ? "正在拉起微信登录..." : "微信登录"}
           </Button>
         ) : null}
         {region === RegionType.CHINA && cnPhoneLoginExpanded ? (

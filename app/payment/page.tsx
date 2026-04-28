@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useState } from "react";
 import { Suspense } from "react";
@@ -286,7 +286,7 @@ function PaymentPageContent() {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-muted-foreground">
-                {isZh ? "濮濓絽婀捄瀹犳祮閸掓壆娅ヨぐ鏇€?.." : "Redirecting to the login page..."}
+                {isZh ? "正在跳转到登录页面..." : "Redirecting to the login page..."}
               </p>
             </div>
           </CardContent>

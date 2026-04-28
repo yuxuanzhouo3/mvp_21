@@ -62,7 +62,7 @@ export function WeChatMiniProgram() {
               </div>
               <div className="text-center">
                 <p className="mb-1 text-2xl font-bold">48</p>
-                <p className="text-xs text-muted-foreground">{isEn ? "Total" : "总合同"}</p>
+                <p className="text-xs text-muted-foreground">{isEn ? "Total" : "合同总数"}</p>
               </div>
             </div>
           </CardContent>
