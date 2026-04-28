@@ -1,19 +1,8 @@
 export type CNLoginRuntime = "mini_program" | "web";
 
-function hasMiniProgramCallbackPayload(search: string): boolean {
-  const query = new URLSearchParams(search);
-  return Boolean(
-    query.get("token") || query.get("mpCode") || query.get("openid"),
-  );
-}
-
 export function isWechatMiniProgramEnvironment(): boolean {
   if (typeof window === "undefined") {
     return false;
-  }
-
-  if (hasMiniProgramCallbackPayload(window.location.search || "")) {
-    return true;
   }
 
   const ua = window.navigator.userAgent || "";
@@ -28,8 +17,7 @@ export function isWechatMiniProgramEnvironment(): boolean {
     return true;
   }
 
-  const wx = (window as unknown as { wx?: { miniProgram?: unknown } }).wx;
-  return Boolean(wx?.miniProgram);
+  return false;
 }
 
 export function detectCNLoginRuntime(): CNLoginRuntime {

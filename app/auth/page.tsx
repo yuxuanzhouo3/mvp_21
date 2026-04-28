@@ -77,11 +77,10 @@ function AuthPageContent() {
     deploymentRegion === "CN" ? RegionType.CHINA : RegionType.USA,
   );
   const [isMiniProgramEnv, setIsMiniProgramEnv] = useState(false);
-  const [miniEnvResolved, setMiniEnvResolved] = useState(false);
+  const [miniEnvResolved, setMiniEnvResolved] = useState(true);
   const [miniLoginLoading, setMiniLoginLoading] = useState(false);
   const authActionLockRef = useRef(false);
   const redirectingRef = useRef(false);
-  const cnManualSignInChoiceRef = useRef(false);
   const miniLoginTimeoutRef = useRef<number | null>(null);
   const miniLoginRequestIdRef = useRef("");
   const handledMiniLoginCallbackKeysRef = useRef<Set<string>>(new Set());
@@ -97,10 +96,11 @@ function AuthPageContent() {
   const googleReadiness = config.oauthReadiness?.providers.google;
   const isCnPhoneOtpView = region === RegionType.CHINA && cnPhoneLoginExpanded;
   const useOtpLogin = region === RegionType.CHINA ? isCnPhoneOtpView : loginMethod === "otp";
-  const useMiniWechatLogin =
+  const useMiniWechatLogin = false;
+  const showMiniWechatLoginButton =
     region === RegionType.CHINA &&
-    isMiniProgramEnv &&
-    !cnMiniProgramEmailLogin;
+    forgotStep === "off" &&
+    isMiniProgramEnv;
   const thirdPartyUnavailable =
     region !== RegionType.CHINA &&
     (
@@ -236,54 +236,6 @@ function AuthPageContent() {
     };
   }, [region]);
 
-  useEffect(() => {
-    if (mode !== "signin") {
-      cnManualSignInChoiceRef.current = false;
-      return;
-    }
-
-    if (
-      region !== RegionType.CHINA ||
-      !miniEnvResolved ||
-      cnManualSignInChoiceRef.current
-    ) {
-      return;
-    }
-
-    if (isMiniProgramEnv) {
-      if (
-        cnPhoneLoginExpanded ||
-        loginMethod !== "password" ||
-        cnMiniProgramEmailLogin
-      ) {
-        setCnPhoneLoginExpanded(false);
-        setCnMiniProgramEmailLogin(false);
-        setLoginMethod("password");
-      }
-      return;
-    }
-
-    if (
-      !cnPhoneLoginExpanded ||
-      loginMethod !== "otp" ||
-      cnMiniProgramEmailLogin
-    ) {
-      setOtp("");
-      setOtpSent(false);
-      setCnPhoneLoginExpanded(true);
-      setCnMiniProgramEmailLogin(false);
-      setLoginMethod("otp");
-    }
-  }, [
-    cnMiniProgramEmailLogin,
-    cnPhoneLoginExpanded,
-    isMiniProgramEnv,
-    loginMethod,
-    miniEnvResolved,
-    mode,
-    region,
-  ]);
-
   const clearFeedback = useCallback(() => {
     setNotice("");
     setError("");
@@ -339,29 +291,24 @@ function AuthPageContent() {
   }, []);
 
   const switchToCnEmailLogin = () => {
-    cnManualSignInChoiceRef.current = true;
     clearFeedback();
     resetForgot();
     setCnPhoneLoginExpanded(false);
-    setCnMiniProgramEmailLogin(false);
     setLoginMethod("password");
     setOtp("");
     setOtpSent(false);
   };
 
   const switchToCnPhoneLogin = () => {
-    cnManualSignInChoiceRef.current = true;
     clearFeedback();
     resetForgot();
     setCnPhoneLoginExpanded(true);
-    setCnMiniProgramEmailLogin(false);
     setLoginMethod("otp");
     setOtp("");
     setOtpSent(false);
   };
 
   const switchToCnMiniProgramEmailLogin = () => {
-    cnManualSignInChoiceRef.current = true;
     clearFeedback();
     resetForgot();
     setCnPhoneLoginExpanded(false);
@@ -372,7 +319,6 @@ function AuthPageContent() {
   };
 
   const switchToCnMiniProgramWechatLogin = () => {
-    cnManualSignInChoiceRef.current = true;
     clearFeedback();
     resetForgot();
     setCnPhoneLoginExpanded(false);
@@ -1451,7 +1397,7 @@ function AuthPageContent() {
 
         <Alert>
           <AlertDescription>
-            当前检测到微信小程序环境，请使用微信授权登录。
+            微信登录可作为当前页面的快捷登录方式。
           </AlertDescription>
         </Alert>
 
@@ -1508,7 +1454,7 @@ function AuthPageContent() {
           </Alert>
         ) : null}
 
-        {useMiniWechatLogin && miniLoginLoading ? (
+        {showMiniWechatLoginButton && miniLoginLoading ? (
           <Alert>
             <AlertDescription>正在同步微信登录状态，请稍候...</AlertDescription>
           </Alert>
@@ -1590,6 +1536,17 @@ function AuthPageContent() {
         >
           {signInButton}
         </Button>
+        {showMiniWechatLoginButton ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 w-full"
+            onClick={requestMiniProgramWxLogin}
+            disabled={loading || miniLoginLoading || !miniProgramWechatEnabledInCn}
+          >
+            {miniLoginLoading ? "姝ｅ湪鎷夎捣寰俊鐧诲綍..." : "寰俊鐧诲綍"}
+          </Button>
+        ) : null}
         {region === RegionType.CHINA && cnPhoneLoginExpanded ? (
           <div className="space-y-3 pt-1">
             <Button type="button" variant="outline" className="h-11 w-full" onClick={switchToCnEmailLogin}>
@@ -1629,9 +1586,9 @@ function AuthPageContent() {
                       onClick={switchToCnPhoneLogin}
                       variant="outline"
                       className="h-12 w-full"
-                      disabled={loading || miniLoginLoading || !miniEnvResolved}
+                      disabled={loading || miniLoginLoading}
                     >
-                      {!miniEnvResolved ? "检测登录环境中..." : useMiniWechatLogin ? "微信登录" : "手机号登录"}
+                      手机号登录
                     </Button>
                   </div>
                 ) : null}
