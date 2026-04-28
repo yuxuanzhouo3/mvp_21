@@ -5,6 +5,7 @@ import { GeistSans } from "geist/font/sans";
 import { Toaster } from "sonner";
 
 import { AppProvider } from "@/components/app-context";
+import { WechatMiniGlobalCallback } from "@/components/auth/wechat-mini-global-callback";
 import { LanguageProvider } from "@/components/language-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { UserProvider } from "@/components/user-context";
@@ -71,7 +72,10 @@ export default function RootLayout({
               initialLanguage={defaultLanguage}
               deploymentRegion={currentRegion}
             >
-              <AppProvider>{children}</AppProvider>
+              <AppProvider>
+                <WechatMiniGlobalCallback />
+                {children}
+              </AppProvider>
             </LanguageProvider>
           </UserProvider>
         </ThemeProvider>

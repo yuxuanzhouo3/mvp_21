@@ -736,6 +736,7 @@ function AuthPageContent() {
         if (!accessToken && callbackCode) {
           const wxLoginResponse = await fetch("/api/wxlogin", {
             method: "POST",
+            credentials: "same-origin",
             headers: {
               "Content-Type": "application/json",
             },
@@ -763,6 +764,7 @@ function AuthPageContent() {
 
         const mpCallbackResponse = await fetch("/api/auth/mp-callback", {
           method: "POST",
+          credentials: "same-origin",
           headers: {
             "Content-Type": "application/json",
           },
