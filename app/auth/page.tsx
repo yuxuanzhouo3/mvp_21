@@ -14,9 +14,33 @@ import { useUser } from "@/components/user-context";
 import { useLanguage } from "@/components/language-provider";
 import { getAuthClient } from "@/lib/auth/client";
 import { detectCNLoginRuntime } from "@/lib/auth/client-runtime";
+import {
+  buildMiniProgramLoginCallbackKey,
+  hasMiniProgramLoginCredential,
+  normalizeMiniProgramLoginPayload,
+  readMiniProgramLoginPayloadFromSearch,
+} from "@/lib/auth/wechat-mini-bridge";
 import { useTranslations } from "@/lib/i18n";
 import { RegionType } from "@/lib/architecture-modules/core/types";
 import { useAuthConfig } from "@/lib/hooks/useAuthConfig";
+
+const MINI_PROGRAM_CALLBACK_QUERY_KEYS = [
+  "token",
+  "openid",
+  "unionid",
+  "expiresIn",
+  "mpCode",
+  "code",
+  "mpNickName",
+  "nickName",
+  "mpAvatarUrl",
+  "avatarUrl",
+  "mpProfileTs",
+  "requestId",
+] as const;
+
+const MINI_PROGRAM_LOGIN_PAGE =
+  process.env.NEXT_PUBLIC_WECHAT_MINI_LOGIN_PAGE || "/pages/webshell/login";
 
 function AuthPageContent() {
   const authClient = useMemo(() => getAuthClient(), []);
@@ -47,6 +71,7 @@ function AuthPageContent() {
   const [otpSent, setOtpSent] = useState(false);
   const [loginMethod, setLoginMethod] = useState<"password" | "otp">("password");
   const [cnPhoneLoginExpanded, setCnPhoneLoginExpanded] = useState(false);
+  const [cnMiniProgramEmailLogin, setCnMiniProgramEmailLogin] = useState(false);
   const [forgotStep, setForgotStep] = useState<"off" | "request" | "verify" | "reset">("off");
   const [region, setRegion] = useState<RegionType>(
     deploymentRegion === "CN" ? RegionType.CHINA : RegionType.USA,
@@ -59,6 +84,7 @@ function AuthPageContent() {
   const cnManualSignInChoiceRef = useRef(false);
   const miniLoginTimeoutRef = useRef<number | null>(null);
   const miniLoginRequestIdRef = useRef("");
+  const handledMiniLoginCallbackKeysRef = useRef<Set<string>>(new Set());
   const smsAvailability = config.availability?.sms;
   const miniProgramWechatAvailability = config.availability?.miniProgramWechat;
   const phoneOtpEnabledInCn =
@@ -71,7 +97,10 @@ function AuthPageContent() {
   const googleReadiness = config.oauthReadiness?.providers.google;
   const isCnPhoneOtpView = region === RegionType.CHINA && cnPhoneLoginExpanded;
   const useOtpLogin = region === RegionType.CHINA ? isCnPhoneOtpView : loginMethod === "otp";
-  const useMiniWechatLogin = region === RegionType.CHINA && isMiniProgramEnv;
+  const useMiniWechatLogin =
+    region === RegionType.CHINA &&
+    isMiniProgramEnv &&
+    !cnMiniProgramEmailLogin;
   const thirdPartyUnavailable =
     region !== RegionType.CHINA &&
     (
@@ -222,20 +251,38 @@ function AuthPageContent() {
     }
 
     if (isMiniProgramEnv) {
-      if (cnPhoneLoginExpanded || loginMethod !== "password") {
+      if (
+        cnPhoneLoginExpanded ||
+        loginMethod !== "password" ||
+        cnMiniProgramEmailLogin
+      ) {
         setCnPhoneLoginExpanded(false);
+        setCnMiniProgramEmailLogin(false);
         setLoginMethod("password");
       }
       return;
     }
 
-    if (!cnPhoneLoginExpanded || loginMethod !== "otp") {
+    if (
+      !cnPhoneLoginExpanded ||
+      loginMethod !== "otp" ||
+      cnMiniProgramEmailLogin
+    ) {
       setOtp("");
       setOtpSent(false);
       setCnPhoneLoginExpanded(true);
+      setCnMiniProgramEmailLogin(false);
       setLoginMethod("otp");
     }
-  }, [cnPhoneLoginExpanded, isMiniProgramEnv, loginMethod, miniEnvResolved, mode, region]);
+  }, [
+    cnMiniProgramEmailLogin,
+    cnPhoneLoginExpanded,
+    isMiniProgramEnv,
+    loginMethod,
+    miniEnvResolved,
+    mode,
+    region,
+  ]);
 
   const clearFeedback = useCallback(() => {
     setNotice("");
@@ -250,6 +297,18 @@ function AuthPageContent() {
       window.clearTimeout(miniLoginTimeoutRef.current);
       miniLoginTimeoutRef.current = null;
     }
+  }, []);
+
+  const clearMiniLoginQuery = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const cleanedUrl = new URL(window.location.href);
+    MINI_PROGRAM_CALLBACK_QUERY_KEYS.forEach((key) =>
+      cleanedUrl.searchParams.delete(key),
+    );
+    window.history.replaceState({}, "", cleanedUrl.toString());
   }, []);
 
   const msg = useCallback((raw: unknown) => {
@@ -284,6 +343,7 @@ function AuthPageContent() {
     clearFeedback();
     resetForgot();
     setCnPhoneLoginExpanded(false);
+    setCnMiniProgramEmailLogin(false);
     setLoginMethod("password");
     setOtp("");
     setOtpSent(false);
@@ -294,7 +354,30 @@ function AuthPageContent() {
     clearFeedback();
     resetForgot();
     setCnPhoneLoginExpanded(true);
+    setCnMiniProgramEmailLogin(false);
     setLoginMethod("otp");
+    setOtp("");
+    setOtpSent(false);
+  };
+
+  const switchToCnMiniProgramEmailLogin = () => {
+    cnManualSignInChoiceRef.current = true;
+    clearFeedback();
+    resetForgot();
+    setCnPhoneLoginExpanded(false);
+    setCnMiniProgramEmailLogin(true);
+    setLoginMethod("password");
+    setOtp("");
+    setOtpSent(false);
+  };
+
+  const switchToCnMiniProgramWechatLogin = () => {
+    cnManualSignInChoiceRef.current = true;
+    clearFeedback();
+    resetForgot();
+    setCnPhoneLoginExpanded(false);
+    setCnMiniProgramEmailLogin(false);
+    setLoginMethod("password");
     setOtp("");
     setOtpSent(false);
   };
@@ -323,8 +406,8 @@ function AuthPageContent() {
     clearFeedback();
     const wx = (window as any).wx;
     const callbackCleanUrl = new URL(window.location.href);
-    ["token", "openid", "expiresIn", "mpCode", "mpNickName", "mpAvatarUrl", "mpProfileTs"].forEach(
-      (key) => callbackCleanUrl.searchParams.delete(key),
+    MINI_PROGRAM_CALLBACK_QUERY_KEYS.forEach((key) =>
+      callbackCleanUrl.searchParams.delete(key),
     );
     const returnUrl = callbackCleanUrl.toString();
     const requestId = `wx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -346,7 +429,73 @@ function AuthPageContent() {
       });
     }, 15000);
 
-    if (wx?.miniProgram?.postMessage) {
+    const requestPayload = {
+      type: "REQUEST_WX_LOGIN",
+      requestId,
+      returnUrl,
+      loginPage: MINI_PROGRAM_LOGIN_PAGE,
+    };
+
+    const postMessageRequested = () => {
+      if (!wx?.miniProgram?.postMessage) {
+        return false;
+      }
+
+      try {
+        wx.miniProgram.postMessage({
+          data: requestPayload,
+        });
+        console.info("[auth] mini-program login requested", {
+          requestId,
+          returnUrl,
+          loginPage: MINI_PROGRAM_LOGIN_PAGE,
+          requestMode: "postMessage",
+          hasNavigateTo: Boolean(wx?.miniProgram?.navigateTo),
+        });
+        return true;
+      } catch (postMessageError) {
+        console.error("[auth] miniProgram.postMessage failed", postMessageError);
+        return false;
+      }
+    };
+
+    if (wx?.miniProgram?.navigateTo) {
+      const connector = MINI_PROGRAM_LOGIN_PAGE.includes("?") ? "&" : "?";
+      const loginPageUrl =
+        `${MINI_PROGRAM_LOGIN_PAGE}${connector}` +
+        `requestId=${encodeURIComponent(requestId)}` +
+        `&returnUrl=${encodeURIComponent(returnUrl)}`;
+
+      wx.miniProgram.navigateTo({
+        url: loginPageUrl,
+        success: () => {
+          console.info("[auth] mini-program login requested", {
+            requestId,
+            returnUrl,
+            loginPage: loginPageUrl,
+            requestMode: "navigateTo",
+          });
+        },
+        fail: (navigationError: unknown) => {
+          console.warn("[auth] miniProgram.navigateTo failed", navigationError);
+          if (!postMessageRequested()) {
+            clearMiniLoginTimeout();
+            setMiniLoginLoading(false);
+            setNotice("");
+            setError("微信登录拉起失败，请检查小程序登录页配置。");
+          }
+        },
+      });
+
+      postMessageRequested();
+      return;
+    }
+
+    if (postMessageRequested()) {
+      return;
+    }
+
+    if (false && wx?.miniProgram?.postMessage) {
       try {
         wx.miniProgram.postMessage({
           data: {
@@ -442,7 +591,243 @@ function AuthPageContent() {
     return () => window.removeEventListener("pageshow", handlePageShow);
   }, []);
 
+  const consumeMiniLoginCallback = useCallback(
+    async (rawPayload: unknown, source: string) => {
+      if (region !== RegionType.CHINA || typeof window === "undefined") {
+        return false;
+      }
+
+      const payload =
+        typeof rawPayload === "string"
+          ? readMiniProgramLoginPayloadFromSearch(rawPayload)
+          : normalizeMiniProgramLoginPayload(rawPayload);
+
+      if (!payload) {
+        return false;
+      }
+
+      if (
+        payload.requestId &&
+        miniLoginRequestIdRef.current &&
+        payload.requestId !== miniLoginRequestIdRef.current
+      ) {
+        console.info("[auth] ignored stale mini-program login callback", {
+          source,
+          requestId: payload.requestId,
+          expectedRequestId: miniLoginRequestIdRef.current,
+        });
+        return false;
+      }
+
+      if (payload.error && !hasMiniProgramLoginCredential(payload)) {
+        clearMiniLoginTimeout();
+        setMiniLoginLoading(false);
+        setNotice("");
+        setError(payload.error);
+        return true;
+      }
+
+      if (!hasMiniProgramLoginCredential(payload)) {
+        return false;
+      }
+
+      const callbackKey = buildMiniProgramLoginCallbackKey(payload);
+      if (handledMiniLoginCallbackKeysRef.current.has(callbackKey)) {
+        return true;
+      }
+      handledMiniLoginCallbackKeysRef.current.add(callbackKey);
+
+      clearMiniLoginTimeout();
+      setMiniLoginLoading(true);
+      setNotice("");
+      setError("");
+      setNotice("正在处理微信登录结果...");
+      console.info("[auth] mini-program login callback received", {
+        source,
+        requestId: payload.requestId || miniLoginRequestIdRef.current || "unknown",
+        hasToken: Boolean(payload.token || payload.accessToken),
+        hasCode: Boolean(payload.mpCode || payload.code),
+      });
+
+      try {
+        let accessToken = payload.token || payload.accessToken;
+        let openid = payload.openid;
+        let refreshToken = "";
+        let tokenMeta:
+          | { accessTokenExpiresIn: number; refreshTokenExpiresIn: number }
+          | undefined;
+        let userPayload: Record<string, unknown> | undefined;
+        const callbackCode = payload.mpCode || payload.code;
+        const callbackNickName = payload.mpNickName || payload.nickName;
+        const callbackAvatarUrl = payload.mpAvatarUrl || payload.avatarUrl;
+
+        if (!accessToken && callbackCode) {
+          const wxLoginResponse = await fetch("/api/wxlogin", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              code: callbackCode,
+              nickName: callbackNickName,
+              avatarUrl: callbackAvatarUrl,
+            }),
+          });
+          const wxLoginResult = await wxLoginResponse.json();
+          if (!wxLoginResponse.ok || !wxLoginResult?.success || !wxLoginResult?.token) {
+            throw new Error(wxLoginResult?.error || "微信登录失败，请重试");
+          }
+
+          accessToken = String(wxLoginResult.token || "");
+          openid = String(wxLoginResult.openid || "");
+          refreshToken = String(wxLoginResult.refreshToken || "");
+          tokenMeta = wxLoginResult.tokenMeta;
+          userPayload = wxLoginResult.user;
+        }
+
+        if (!accessToken) {
+          throw new Error("未获取到有效登录令牌");
+        }
+
+        const mpCallbackResponse = await fetch("/api/auth/mp-callback", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            token: accessToken,
+            openid,
+            unionid: payload.unionid,
+            nickName: callbackNickName,
+            avatarUrl: callbackAvatarUrl,
+          }),
+        });
+        const mpCallbackResult = await mpCallbackResponse.json();
+        if (!mpCallbackResponse.ok || !mpCallbackResult?.success) {
+          throw new Error(mpCallbackResult?.error || "小程序登录回调失败");
+        }
+
+        const finalAccessToken = String(
+          mpCallbackResult.accessToken || accessToken,
+        );
+        const finalRefreshToken = String(
+          mpCallbackResult.refreshToken || refreshToken || finalAccessToken,
+        );
+        const finalTokenMeta =
+          mpCallbackResult.tokenMeta ||
+          tokenMeta || {
+            accessTokenExpiresIn: 3600,
+            refreshTokenExpiresIn: 604800,
+          };
+        const finalUser =
+          mpCallbackResult.user ||
+          userPayload || {
+            id: "",
+            email: "",
+            name: "微信用户",
+            avatar: callbackAvatarUrl,
+          };
+
+        const { saveAuthState } = await import("@/lib/auth/auth-state-manager");
+        saveAuthState(
+          finalAccessToken,
+          finalRefreshToken,
+          finalUser,
+          finalTokenMeta,
+        );
+
+        clearMiniLoginQuery();
+        miniLoginRequestIdRef.current = "";
+        setNotice("");
+        redirectingRef.current = false;
+        goSignedIn();
+      } catch (callbackError) {
+        handledMiniLoginCallbackKeysRef.current.delete(callbackKey);
+        setNotice("");
+        setError(msg(callbackError) || "微信登录失败，请稍后重试");
+      } finally {
+        setMiniLoginLoading(false);
+      }
+
+      return true;
+    },
+    [
+      clearMiniLoginQuery,
+      clearMiniLoginTimeout,
+      goSignedIn,
+      msg,
+      region,
+    ],
+  );
+
   useEffect(() => {
+    return;
+
+    if (region !== RegionType.CHINA || typeof window === "undefined") {
+      return;
+    }
+
+    void consumeMiniLoginCallback(window.location.search, "query");
+  }, [consumeMiniLoginCallback, region, searchParams]);
+
+  useEffect(() => {
+    if (region !== RegionType.CHINA || typeof window === "undefined") {
+      return;
+    }
+
+    const handleWindowMessage = (event: MessageEvent) => {
+      void consumeMiniLoginCallback(event.data, "window-message");
+    };
+
+    const handleBridgeSuccess = (payload: unknown) => {
+      if (typeof payload === "string") {
+        void consumeMiniLoginCallback({ mpCode: payload }, "global-callback");
+        return;
+      }
+      void consumeMiniLoginCallback(payload, "global-callback");
+    };
+
+    const handleBridgeError = (payload: unknown) => {
+      const normalized =
+        typeof payload === "string"
+          ? null
+          : normalizeMiniProgramLoginPayload(payload);
+      const errorMessage =
+        normalized?.error ||
+        (payload instanceof Error
+          ? payload.message
+          : String(payload || "微信登录失败，请稍后重试"));
+
+      clearMiniLoginTimeout();
+      setMiniLoginLoading(false);
+      setNotice("");
+      setError(errorMessage);
+    };
+
+    const windowRef = window as any;
+    const previousMiniSuccess = windowRef.onMiniProgramWechatLoginSuccess;
+    const previousWechatSuccess = windowRef.onWeChatLoginSuccess;
+    const previousWechatMiniSuccess = windowRef.onWechatMiniProgramLoginSuccess;
+    const previousMiniError = windowRef.onMiniProgramWechatLoginError;
+
+    window.addEventListener("message", handleWindowMessage);
+    windowRef.onMiniProgramWechatLoginSuccess = handleBridgeSuccess;
+    windowRef.onWeChatLoginSuccess = handleBridgeSuccess;
+    windowRef.onWechatMiniProgramLoginSuccess = handleBridgeSuccess;
+    windowRef.onMiniProgramWechatLoginError = handleBridgeError;
+
+    return () => {
+      window.removeEventListener("message", handleWindowMessage);
+      windowRef.onMiniProgramWechatLoginSuccess = previousMiniSuccess;
+      windowRef.onWeChatLoginSuccess = previousWechatSuccess;
+      windowRef.onWechatMiniProgramLoginSuccess = previousWechatMiniSuccess;
+      windowRef.onMiniProgramWechatLoginError = previousMiniError;
+    };
+  }, [clearMiniLoginTimeout, consumeMiniLoginCallback, region]);
+
+  useEffect(() => {
+    return;
+
     if (region !== RegionType.CHINA || typeof window === "undefined") {
       return;
     }
@@ -606,7 +991,11 @@ function AuthPageContent() {
       const identifier = email.trim();
       const isPhone = /^1[3-9]\d{9}$/.test(identifier);
       const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
-      if (!isPhone && !isEmail) {
+      if (isMiniProgramEnv && !isEmail) {
+        setError("请输入正确的邮箱");
+        return;
+      }
+      if (!isMiniProgramEnv && !isPhone && !isEmail) {
         setError("请输入正确的手机号或邮箱");
         return;
       }
@@ -1014,6 +1403,27 @@ function AuthPageContent() {
         >
           {miniLoginLoading ? "正在拉起微信登录..." : "微信登录"}
         </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 w-full"
+          onClick={switchToCnMiniProgramEmailLogin}
+          disabled={loading || miniLoginLoading}
+        >
+          邮箱登录
+        </Button>
+        {region === RegionType.CHINA && isMiniProgramEnv && !useMiniWechatLogin ? (
+          <div className="space-y-3 pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-full"
+              onClick={switchToCnMiniProgramWechatLogin}
+            >
+              微信登录
+            </Button>
+          </div>
+        ) : null}
       </form>
     ) : forgotStep !== "off" ? forgotForm : (
       <form onSubmit={useOtpLogin ? onOtp : onSignIn} className="space-y-4">
@@ -1140,7 +1550,7 @@ function AuthPageContent() {
               </TabsList>
               <TabsContent value="signin" className="space-y-6">
                 {signInFormEnhanced}
-                {region === RegionType.CHINA && !useMiniWechatLogin && !cnPhoneLoginExpanded && forgotStep === "off" ? (
+                {region === RegionType.CHINA && !isMiniProgramEnv && !cnPhoneLoginExpanded && forgotStep === "off" ? (
                   <div className="pt-1">
                     <Button
                       type="button"
