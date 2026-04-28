@@ -9,7 +9,8 @@ export type ContractActionType =
   | "sender_confirmed"
   | "counterparty_confirmed"
   | "reminder_sent"
-  | "final_copy_ready";
+  | "final_copy_ready"
+  | "sealed";
 
 export interface ContractOperationLog {
   id: string;
@@ -38,7 +39,8 @@ export interface ContractEvidenceRecord {
     | "archive"
     | "final_copy"
     | "update"
-    | "signature";
+    | "signature"
+    | "seal";
 }
 
 export interface ContractSigningParticipant {
@@ -63,11 +65,45 @@ export interface ContractSignFlow {
   };
 }
 
+export interface ContractSealStamp {
+  imageDataUrl: string;
+  imageMimeType?: string;
+  fileName?: string;
+  source?: string;
+}
+
+export interface ContractSealPlacement {
+  page?: number;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  opacity?: number;
+}
+
+export interface ContractSealFlow {
+  status: "not_started" | "sealed" | "failed";
+  stampedAt?: string;
+  stampedBy?: string;
+  note?: string;
+  version: number;
+  stamp?: ContractSealStamp;
+  placement?: ContractSealPlacement;
+  outputs?: {
+    filename: string;
+    formats: Array<"pdf" | "word" | "html">;
+    variant: "sealed";
+    createdAt: string;
+  };
+  evidence: ContractEvidenceRecord[];
+}
+
 export interface ContractEnhancementMeta {
   archivedAt?: string;
   archivedReason?: string;
   operationLogs: ContractOperationLog[];
   signFlow: ContractSignFlow;
+  sealFlow: ContractSealFlow;
 }
 
 export type ContractWorkflowAction =
@@ -114,7 +150,8 @@ function normalizeActionType(value: unknown): ContractActionType {
     value === "sender_confirmed" ||
     value === "counterparty_confirmed" ||
     value === "reminder_sent" ||
-    value === "final_copy_ready"
+    value === "final_copy_ready" ||
+    value === "sealed"
   ) {
     return value;
   }
@@ -129,7 +166,8 @@ function normalizeEvidenceType(value: unknown): ContractEvidenceRecord["type"] {
     value === "archive" ||
     value === "final_copy" ||
     value === "update" ||
-    value === "signature"
+    value === "signature" ||
+    value === "seal"
   ) {
     return value;
   }
@@ -205,12 +243,37 @@ function buildParticipants(contract?: UnifiedContractRecord): ContractSigningPar
   ];
 }
 
+function toOptionalPositiveNumber(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+
+  return value;
+}
+
+function toOptionalNumberInRange(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+
+  if (value < minimum || value > maximum) {
+    return undefined;
+  }
+
+  return value;
+}
+
 export function normalizeContractEnhancementMeta(
   metadata: Record<string, unknown> | undefined,
   contract?: UnifiedContractRecord,
 ): ContractEnhancementMeta {
   const source = ensureRecord(metadata);
   const signFlowSource = ensureRecord(source.signFlow);
+  const sealFlowSource = ensureRecord(source.sealFlow);
   const defaultParticipants = buildParticipants(contract);
 
   const participantsSource = ensureArray<unknown>(signFlowSource.participants);
@@ -225,6 +288,45 @@ export function normalizeContractEnhancementMeta(
 
   const finalCopySource = ensureRecord(signFlowSource.finalCopy);
   const hasFinalCopy = Object.keys(finalCopySource).length > 0;
+  const sealStampSource = ensureRecord(sealFlowSource.stamp);
+  const hasSealStamp =
+    typeof sealStampSource.imageDataUrl === "string" &&
+    sealStampSource.imageDataUrl.trim().length > 0;
+  const sealPlacementSource = ensureRecord(sealFlowSource.placement);
+  const hasSealPlacement = Object.keys(sealPlacementSource).length > 0;
+  const sealOutputsSource = ensureRecord(sealFlowSource.outputs);
+  const sealEvidence = ensureArray<Record<string, unknown>>(sealFlowSource.evidence).map(
+    (evidence) => ({
+      id:
+        typeof evidence.id === "string" && evidence.id.trim()
+          ? evidence.id
+          : buildId("seal-evidence"),
+      label:
+        typeof evidence.label === "string" && evidence.label.trim()
+          ? evidence.label
+          : localeText("Seal evidence", "盖章证据"),
+      description:
+        typeof evidence.description === "string" ? evidence.description : "",
+      createdAt:
+        typeof evidence.createdAt === "string"
+          ? evidence.createdAt
+          : new Date().toISOString(),
+      type: normalizeEvidenceType(evidence.type || "seal"),
+    }),
+  );
+  const sealVersion =
+    typeof sealFlowSource.version === "number" &&
+    Number.isFinite(sealFlowSource.version) &&
+    sealFlowSource.version >= 0
+      ? sealFlowSource.version
+      : 0;
+  const sealStatus =
+    sealFlowSource.status === "sealed" || sealFlowSource.status === "failed"
+      ? sealFlowSource.status
+      : "not_started";
+  const hasSealOutputs =
+    typeof sealOutputsSource.filename === "string" &&
+    sealOutputsSource.filename.trim().length > 0;
 
   return {
     archivedAt:
@@ -322,6 +424,62 @@ export function normalizeContractEnhancementMeta(
           }
         : undefined,
     },
+    sealFlow: {
+      status: sealStatus,
+      stampedAt:
+        typeof sealFlowSource.stampedAt === "string"
+          ? sealFlowSource.stampedAt
+          : undefined,
+      stampedBy:
+        typeof sealFlowSource.stampedBy === "string" && sealFlowSource.stampedBy.trim()
+          ? sealFlowSource.stampedBy.trim()
+          : undefined,
+      note:
+        typeof sealFlowSource.note === "string" ? sealFlowSource.note : undefined,
+      version: sealVersion,
+      stamp: hasSealStamp
+        ? {
+            imageDataUrl: sealStampSource.imageDataUrl as string,
+            imageMimeType:
+              typeof sealStampSource.imageMimeType === "string"
+                ? sealStampSource.imageMimeType
+                : undefined,
+            fileName:
+              typeof sealStampSource.fileName === "string"
+                ? sealStampSource.fileName
+                : undefined,
+            source:
+              typeof sealStampSource.source === "string"
+                ? sealStampSource.source
+                : undefined,
+          }
+        : undefined,
+      placement: hasSealPlacement
+        ? {
+            page: toOptionalPositiveNumber(sealPlacementSource.page),
+            x: toOptionalPositiveNumber(sealPlacementSource.x),
+            y: toOptionalPositiveNumber(sealPlacementSource.y),
+            width: toOptionalPositiveNumber(sealPlacementSource.width),
+            height: toOptionalPositiveNumber(sealPlacementSource.height),
+            opacity: toOptionalNumberInRange(sealPlacementSource.opacity, 0, 1),
+          }
+        : undefined,
+      outputs: hasSealOutputs
+        ? {
+            filename: String(sealOutputsSource.filename),
+            formats: ensureArray<unknown>(sealOutputsSource.formats).filter(
+              (item): item is "pdf" | "word" | "html" =>
+                item === "pdf" || item === "word" || item === "html",
+            ),
+            variant: "sealed",
+            createdAt:
+              typeof sealOutputsSource.createdAt === "string"
+                ? sealOutputsSource.createdAt
+                : new Date().toISOString(),
+          }
+        : undefined,
+      evidence: sealEvidence,
+    },
   };
 }
 
@@ -359,6 +517,14 @@ export function getAvailableContractActions(
   }
 
   return actions;
+}
+
+export function canSealContract(contract: UnifiedContractRecord): boolean {
+  const enhancement = normalizeContractEnhancementMeta(contract.metadata, contract);
+  return (
+    enhancement.signFlow.status === "completed" ||
+    Boolean(enhancement.signFlow.finalCopy)
+  );
 }
 
 export function validateContractAction(
@@ -589,6 +755,101 @@ export function applyContractAction(
       archivedReason: next.archivedReason,
       operationLogs: next.operationLogs,
       signFlow: next.signFlow,
+      sealFlow: next.sealFlow,
+    },
+  };
+}
+
+export interface ApplyContractSealInput {
+  actor: string;
+  note?: string;
+  stamp: ContractSealStamp;
+  placement?: ContractSealPlacement;
+}
+
+export function applyContractSeal(
+  contract: UnifiedContractRecord,
+  input: ApplyContractSealInput,
+) {
+  const now = new Date().toISOString();
+  const enhancement = normalizeContractEnhancementMeta(contract.metadata, contract);
+  const next = {
+    ...enhancement,
+    signFlow: {
+      ...enhancement.signFlow,
+      reminders: [...enhancement.signFlow.reminders],
+      evidence: [...enhancement.signFlow.evidence],
+      participants: enhancement.signFlow.participants.map((participant) => ({ ...participant })),
+    },
+    sealFlow: {
+      ...enhancement.sealFlow,
+      evidence: [...enhancement.sealFlow.evidence],
+    },
+  };
+
+  const label = localeText("Contract sealed", "合同已盖章");
+  const description =
+    input.note ||
+    localeText(
+      "Seal image has been applied and sealed export files are now available.",
+      "印章已应用，可下载盖章版本文件。",
+    );
+
+  next.sealFlow.status = "sealed";
+  next.sealFlow.stampedAt = now;
+  next.sealFlow.stampedBy = input.actor;
+  next.sealFlow.note = input.note;
+  next.sealFlow.version = (next.sealFlow.version || 0) + 1;
+  next.sealFlow.stamp = {
+    imageDataUrl: input.stamp.imageDataUrl,
+    imageMimeType: input.stamp.imageMimeType,
+    fileName: input.stamp.fileName,
+    source: input.stamp.source || "contract-management",
+  };
+  next.sealFlow.placement = input.placement
+    ? {
+        page: toOptionalPositiveNumber(input.placement.page),
+        x: toOptionalPositiveNumber(input.placement.x),
+        y: toOptionalPositiveNumber(input.placement.y),
+        width: toOptionalPositiveNumber(input.placement.width),
+        height: toOptionalPositiveNumber(input.placement.height),
+        opacity: toOptionalNumberInRange(input.placement.opacity, 0, 1),
+      }
+    : undefined;
+  next.sealFlow.outputs = {
+    filename: `${contract.title || "contract"}-sealed.pdf`,
+    formats: ["pdf", "word", "html"],
+    variant: "sealed",
+    createdAt: now,
+  };
+
+  const sealEvidence: ContractEvidenceRecord = {
+    id: buildId("seal-evidence"),
+    type: "seal",
+    label,
+    description,
+    createdAt: now,
+  };
+  next.sealFlow.evidence = appendUniqueEvidence(next.sealFlow.evidence, sealEvidence);
+  next.signFlow.evidence = appendUniqueEvidence(next.signFlow.evidence, sealEvidence);
+  next.operationLogs = appendUniqueLog(next.operationLogs, {
+    id: buildId("log"),
+    action: "sealed",
+    label,
+    description,
+    actor: input.actor,
+    createdAt: now,
+  });
+
+  return {
+    status: contract.status,
+    metadata: {
+      ...contract.metadata,
+      archivedAt: next.archivedAt,
+      archivedReason: next.archivedReason,
+      operationLogs: next.operationLogs,
+      signFlow: next.signFlow,
+      sealFlow: next.sealFlow,
     },
   };
 }
@@ -606,6 +867,7 @@ export function appendContractUpdateLog(
     archivedAt: enhancement.archivedAt,
     archivedReason: enhancement.archivedReason,
     signFlow: enhancement.signFlow,
+    sealFlow: enhancement.sealFlow,
     operationLogs: appendUniqueLog(enhancement.operationLogs, {
       id: buildId("log"),
       action: "updated",

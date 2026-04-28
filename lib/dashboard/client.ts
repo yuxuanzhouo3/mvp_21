@@ -1,6 +1,7 @@
 "use client";
 
 import { tokenManager } from "@/lib/auth/frontend-token-manager";
+import { supabase } from "@/lib/integrations/supabase";
 import type {
   DashboardBillingSummary,
   DashboardDocumentVerificationData,
@@ -21,8 +22,46 @@ function sleep(ms: number) {
 
 async function getAuthHeaders() {
   const headers = await tokenManager.getAuthHeaderAsync();
-  if (!headers) throw new Error("UNAUTHORIZED");
-  return headers;
+  if (headers?.Authorization) {
+    return headers;
+  }
+
+  const sessionHeaders = await getSupabaseSessionHeaders();
+  if (sessionHeaders) {
+    return sessionHeaders;
+  }
+
+  if (headers && Object.keys(headers).length > 0) {
+    return headers;
+  }
+
+  throw new Error("UNAUTHORIZED");
+}
+
+function buildBearerHeaders(accessToken: unknown): Record<string, string> | null {
+  if (typeof accessToken !== "string" || !accessToken.trim()) {
+    return null;
+  }
+
+  return { Authorization: `Bearer ${accessToken.trim()}` };
+}
+
+async function getSupabaseSessionHeaders() {
+  try {
+    const sessionResult = await supabase.auth.getSession();
+    return buildBearerHeaders(sessionResult?.data?.session?.access_token);
+  } catch {
+    return null;
+  }
+}
+
+async function refreshSupabaseSessionHeaders() {
+  try {
+    const refreshResult = await supabase.auth.refreshSession();
+    return buildBearerHeaders(refreshResult?.data?.session?.access_token);
+  } catch {
+    return null;
+  }
 }
 
 async function getAuthHeadersWithRetry(
@@ -72,7 +111,14 @@ async function fetchWithAuthRetry(
   }
 
   await sleep(150);
-  const retryHeaders = await tokenManager.getAuthHeaderAsync();
+  let retryHeaders = await tokenManager.getAuthHeaderAsync();
+  if (!retryHeaders?.Authorization) {
+    retryHeaders =
+      (await refreshSupabaseSessionHeaders()) ||
+      (await getSupabaseSessionHeaders()) ||
+      retryHeaders;
+  }
+
   if (!retryHeaders) {
     return response;
   }

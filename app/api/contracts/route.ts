@@ -60,6 +60,21 @@ function parsePositiveInt(value: string | null, fallback: number) {
   return parsed;
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, reason: string) {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(reason)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
 function asPlainRecord(value: unknown): Record<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
@@ -336,28 +351,54 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const contract = await createContractRecord({
-      userId: auth.user.id,
-      title: title.trim(),
-      type: typeof type === "string" && type.trim() ? type.trim() : "custom",
-      status: normalizeContractStatus(status),
-      content: asPlainRecord(content),
-      sourceType:
-        typeof sourceType === "string" && sourceType.trim()
-          ? sourceType.trim()
-          : "text",
-      sourceContent:
-        typeof sourceContent === "string"
-          ? sourceContent
-          : typeof source_text === "string"
-            ? source_text
-            : "",
-      analysisResult: asNullableRecord(analysisResult, analysis_result),
-      parties: Array.isArray(parties) ? parties : [],
-      signatures: Array.isArray(signatures) ? signatures : [],
-      metadata: asPlainRecord(metadata),
-      region: typeof region === "string" && region.trim() ? region.trim() : undefined,
-    });
+    let contract: Awaited<ReturnType<typeof createContractRecord>>;
+    try {
+      const createTimeoutMs = parsePositiveInt(
+        process.env.CONTRACTS_CREATE_TIMEOUT_MS || null,
+        15_000,
+      );
+      contract = await withTimeout(
+        createContractRecord({
+          userId: auth.user.id,
+          title: title.trim(),
+          type: typeof type === "string" && type.trim() ? type.trim() : "custom",
+          status: normalizeContractStatus(status),
+          content: asPlainRecord(content),
+          sourceType:
+            typeof sourceType === "string" && sourceType.trim()
+              ? sourceType.trim()
+              : "text",
+          sourceContent:
+            typeof sourceContent === "string"
+              ? sourceContent
+              : typeof source_text === "string"
+                ? source_text
+                : "",
+          analysisResult: asNullableRecord(analysisResult, analysis_result),
+          parties: Array.isArray(parties) ? parties : [],
+          signatures: Array.isArray(signatures) ? signatures : [],
+          metadata: asPlainRecord(metadata),
+          region:
+            typeof region === "string" && region.trim() ? region.trim() : undefined,
+        }),
+        createTimeoutMs,
+        "CONTRACT_CREATE_TIMEOUT",
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("CONTRACT_CREATE_TIMEOUT")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "CONTRACT_CREATE_TIMEOUT",
+              message: "Contract creation timed out. Please retry.",
+            },
+          },
+          { status: 503 },
+        );
+      }
+      throw error;
+    }
 
     return NextResponse.json({
       success: true,

@@ -11,6 +11,7 @@ import {
   Loader2,
   Plus,
   Search,
+  ShieldCheck,
   Trash2,
 } from "lucide-react";
 
@@ -34,6 +35,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -46,17 +48,38 @@ import {
 } from "@/components/ui/select";
 import {
   applyContractActionForCurrentUser,
+  type ContractExportVariant,
   type ContractExportFormat,
   deleteContractForCurrentUser,
   downloadContractForCurrentUser,
   listContractsForCurrentUser,
+  sealContractForCurrentUser,
   type ContractListItem,
 } from "@/lib/contracts/client";
+import { ContractSealDialog } from "@/components/contracts/contract-seal-dialog";
+import { normalizeContractEnhancementMeta } from "@/lib/contracts/enhancements";
 import { useTranslations } from "@/lib/i18n";
 import { toast } from "sonner";
 
 type ContractFilter = "all" | ContractListItem["status"] | "archived";
 type SortMode = "updated_desc" | "updated_asc" | "title_asc" | "title_desc";
+
+function getSigningStageLabel(
+  signFlowStatus: string | undefined,
+  isEn: boolean,
+) {
+  if (signFlowStatus === "awaiting_sender") {
+    return isEn ? "Signing Started" : "已发起签署";
+  }
+  if (signFlowStatus === "awaiting_counterparty") {
+    return isEn ? "Sender Signed" : "发起方已签名";
+  }
+  if (signFlowStatus === "completed") {
+    return isEn ? "Completed" : "已完成";
+  }
+
+  return isEn ? "Draft" : "草稿";
+}
 
 function formatDate(value?: string, locale = "zh-CN") {
   if (!value) {
@@ -92,7 +115,9 @@ export default function ContractsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [archivingId, setArchivingId] = useState<string | null>(null);
+  const [sealingId, setSealingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ContractListItem | null>(null);
+  const [sealTarget, setSealTarget] = useState<ContractListItem | null>(null);
 
   useEffect(() => {
     if (!userLoading && !user) {
@@ -261,15 +286,65 @@ export default function ContractsPage() {
   const handleDownload = async (
     contract: ContractListItem,
     format: ContractExportFormat,
+    options?: {
+      variant?: ContractExportVariant;
+    },
   ) => {
     try {
       setDownloadingId(contract.id);
-      await downloadContractForCurrentUser(contract.id, format);
+      await downloadContractForCurrentUser(contract.id, format, options);
     } catch (downloadError) {
       console.error("[ContractsPage] Failed to download contract:", downloadError);
       toast.error(isEn ? "Failed to download the contract." : "下载合同失败，请稍后重试。");
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  const handleSeal = async (payload: {
+    stampImageDataUrl: string;
+    stampImageMimeType?: string;
+    fileName?: string;
+    source?: string;
+    note?: string;
+    placement?: {
+      page?: number;
+      x?: number;
+      y?: number;
+      width?: number;
+      height?: number;
+      opacity?: number;
+    };
+  }) => {
+    if (!sealTarget) {
+      return;
+    }
+
+    try {
+      setSealingId(sealTarget.id);
+      const updated = await sealContractForCurrentUser(sealTarget.id, payload);
+      const enhancement = normalizeContractEnhancementMeta(updated.metadata, updated);
+      setContracts((current) =>
+        current.map((item) =>
+          item.id === sealTarget.id
+            ? {
+                ...item,
+                status: updated.status as ContractListItem["status"],
+                updatedAt: updated.updatedAt || item.updatedAt,
+                signFlowStatus: enhancement.signFlow.status,
+                reminderCount: enhancement.signFlow.reminderCount,
+                sealFlowStatus: enhancement.sealFlow.status,
+              }
+            : item,
+        ),
+      );
+      setSealTarget(null);
+      toast.success(isEn ? "Contract sealed successfully." : "合同盖章成功。");
+    } catch (sealError) {
+      console.error("[ContractsPage] Failed to seal contract:", sealError);
+      toast.error(isEn ? "Failed to seal contract." : "合同盖章失败，请稍后重试。");
+    } finally {
+      setSealingId(null);
     }
   };
 
@@ -455,7 +530,12 @@ export default function ContractsPage() {
         ) : null}
 
         <div className="space-y-4">
-          {filteredContracts.map((contract) => (
+          {filteredContracts.map((contract) => {
+            const stageLabel =
+              contract.sealFlowStatus === "sealed"
+                ? null
+                : getSigningStageLabel(contract.signFlowStatus, isEn);
+            return (
             <Card key={contract.id} className="transition-shadow hover:shadow-md">
               <CardContent className="flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
                 <div className="min-w-0 flex-1">
@@ -466,6 +546,7 @@ export default function ContractsPage() {
                     <Badge className={statusMeta[contract.status].className}>
                       {statusMeta[contract.status].label}
                     </Badge>
+                    {stageLabel ? <Badge variant="outline">{stageLabel}</Badge> : null}
                     {contract.region ? (
                       <Badge variant="outline">
                         {content.regionLabel}: {contract.region}
@@ -474,6 +555,11 @@ export default function ContractsPage() {
                     {contract.archivedAt ? (
                       <Badge variant="outline" className="border-slate-300 text-slate-600">
                         {isEn ? "Archived" : "已归档"}
+                      </Badge>
+                    ) : null}
+                    {contract.sealFlowStatus === "sealed" ? (
+                      <Badge variant="outline" className="border-red-300 text-red-700">
+                        {isEn ? "Sealed" : "已盖章"}
                       </Badge>
                     ) : null}
                   </div>
@@ -545,8 +631,55 @@ export default function ContractsPage() {
                         <FileText className="mr-2 h-4 w-4" />
                         {isEn ? "Download HTML" : "下载 HTML"}
                       </DropdownMenuItem>
+                      {contract.sealFlowStatus === "sealed" ? (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            disabled={downloadingId === contract.id}
+                            onClick={() => void handleDownload(contract, "pdf", { variant: "sealed" })}
+                          >
+                            <ShieldCheck className="mr-2 h-4 w-4" />
+                            {isEn ? "Download Sealed PDF" : "下载已盖章 PDF"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={downloadingId === contract.id}
+                            onClick={() => void handleDownload(contract, "word", { variant: "sealed" })}
+                          >
+                            <ShieldCheck className="mr-2 h-4 w-4" />
+                            {isEn ? "Download Sealed Word" : "下载已盖章 Word"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={downloadingId === contract.id}
+                            onClick={() => void handleDownload(contract, "html", { variant: "sealed" })}
+                          >
+                            <ShieldCheck className="mr-2 h-4 w-4" />
+                            {isEn ? "Download Sealed HTML" : "下载已盖章 HTML"}
+                          </DropdownMenuItem>
+                        </>
+                      ) : null}
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  {(contract.signFlowStatus === "completed" || contract.sealFlowStatus === "sealed") ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSealTarget(contract)}
+                      disabled={sealingId === contract.id}
+                    >
+                      {sealingId === contract.id ? (
+                        <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                      ) : (
+                        <ShieldCheck className="mr-1 h-4 w-4" />
+                      )}
+                      {contract.sealFlowStatus === "sealed"
+                        ? isEn
+                          ? "Reseal"
+                          : "重新盖章"
+                        : isEn
+                          ? "Seal"
+                          : "盖章"}
+                    </Button>
+                  ) : null}
                   <Button
                     variant="outline"
                     size="sm"
@@ -579,7 +712,7 @@ export default function ContractsPage() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+          )})}
         </div>
 
         <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => (!open ? setDeleteTarget(null) : null)}>
@@ -596,6 +729,15 @@ export default function ContractsPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        <ContractSealDialog
+          open={Boolean(sealTarget)}
+          onOpenChange={(open) => (!open ? setSealTarget(null) : null)}
+          onSubmit={handleSeal}
+          loading={Boolean(sealTarget && sealingId === sealTarget.id)}
+          isEn={isEn}
+          contractTitle={sealTarget?.title}
+          reseal={sealTarget?.sealFlowStatus === "sealed"}
+        />
       </main>
     </div>
   );

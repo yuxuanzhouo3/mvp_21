@@ -364,7 +364,7 @@ export function ContractSignFlow({
     try {
       setSubmitting(true);
       await downloadContractForCurrentUser(contractId, "pdf");
-      toast.success(isEn ? "Final copy downloaded." : "最终电子版开始下载。");
+      toast.success(isEn ? "Signed file downloaded." : "签署完毕文件已开始下载。");
     } catch (actionError) {
       console.error("[ContractSignFlow] Failed to handle action:", actionError);
       toast.error(isEn ? "Failed to update signing flow." : "更新签署流程失败。");
@@ -482,7 +482,7 @@ export function ContractSignFlow({
         {
           title: "Step 4: Use the primary action button by stage",
           description:
-            "Draft: Launch Signing. Awaiting sender: Confirm Sender Signature. Awaiting counterparty: Confirm Counterparty Signature. Completed: Download Final Copy.",
+            "Draft: Launch Signing. Awaiting sender: Confirm Sender Signature. Awaiting counterparty: Confirm Counterparty Signature. Completed: Download Signed File.",
         },
         {
           title: "Step 5: Optional reminders and evidence",
@@ -506,7 +506,7 @@ export function ContractSignFlow({
         {
           title: "第 4 步：按当前阶段点击主按钮",
           description:
-            "草稿阶段点击“发起签署”；等待发起方时点击“确认发起方签名”；等待对方时点击“确认对方签名”；完成后可下载最终电子版。",
+            "草稿阶段点击“发起签署”；等待发起方时点击“确认发起方签名”；等待对方时点击“确认对方签名”；完成后可下载签署完毕的文件。",
         },
         {
           title: "第 5 步：按需催办并查看证据",
@@ -826,7 +826,7 @@ export function ContractSignFlow({
                         onClick={() => void downloadContractForCurrentUser(contract.id, "pdf")}
                       >
                         <Download className="mr-2 h-4 w-4" />
-                        {isEn ? "Download Copy" : "下载电子版"}
+                        {isEn ? "Download Signed File" : "下载签署完毕的文件"}
                       </Button>
                       <Button
                         size="sm"
@@ -865,8 +865,8 @@ export function ContractSignFlow({
                         ? "Confirm Counterparty Signature"
                         : "确认对方签名"
                       : isEn
-                        ? "Download Final Copy"
-                        : "下载最终电子版"}
+                        ? "Download Signed File"
+                        : "下载签署完毕的文件"}
               </Button>
               {canSendReminder ? (
                 <Button

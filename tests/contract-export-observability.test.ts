@@ -89,7 +89,11 @@ describe("contract export observability", () => {
       userId: "user-1",
       title: "Demo Contract",
       content: { title: "Demo Contract", sections: [] },
-      metadata: {},
+      metadata: {
+        signFlow: {
+          status: "awaiting_counterparty",
+        },
+      },
     });
     mockNormalizeContractContent.mockReturnValue({
       title: "Demo Contract",
@@ -130,7 +134,7 @@ describe("contract export observability", () => {
     );
   });
 
-  test("records failure metrics when pdf generation throws", async () => {
+  test("falls back to signature-derived export stage when signFlow status is inconsistent", async () => {
     mockExtractTokenFromRequest.mockReturnValue({
       token: "token-1",
       error: null,
@@ -146,6 +150,131 @@ describe("contract export observability", () => {
       title: "Demo Contract",
       content: { title: "Demo Contract", sections: [] },
       metadata: {},
+    });
+    mockNormalizeContractContent.mockReturnValue({
+      title: "Demo Contract",
+      sections: [],
+    });
+    mockSanitizeDownloadFileName.mockReturnValue("demo-contract");
+    const signatures = {
+      sender: {
+        role: "sender",
+        signerName: "Alice",
+        createdAt: "2026-04-12T08:00:00.000Z",
+        method: "draw",
+      },
+      counterparty: {
+        role: "counterparty",
+        signerName: "Bob",
+        createdAt: "2026-04-12T09:00:00.000Z",
+        method: "type",
+      },
+    };
+    mockBuildContractExportSignatures.mockReturnValue(signatures);
+    mockBuildContractHtml.mockReturnValue("<main>demo</main>");
+    mockBuildContractDocumentHtml.mockReturnValue("<html><main>demo</main></html>");
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/contracts/ct-1/export?format=html"),
+      { params: Promise.resolve({ id: "ct-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockBuildContractHtml).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Demo Contract", sections: [] }),
+      expect.objectContaining({
+        signatures,
+      }),
+    );
+  });
+
+  test("current export includes seal payload when stamp image exists", async () => {
+    const stampImage =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9pbdmLQAAAAASUVORK5CYII=";
+
+    mockExtractTokenFromRequest.mockReturnValue({
+      token: "token-1",
+      error: null,
+    });
+    mockVerifyAuthToken.mockResolvedValue({
+      success: true,
+      userId: "user-1",
+      user: { role: "user" },
+    });
+    mockGetContractById.mockResolvedValue({
+      id: "ct-1",
+      userId: "user-1",
+      title: "Demo Contract",
+      content: { title: "Demo Contract", sections: [] },
+      metadata: {
+        signFlow: {
+          status: "completed",
+        },
+        sealFlow: {
+          status: "not_started",
+          stamp: {
+            imageDataUrl: stampImage,
+            source: "test",
+          },
+        },
+      },
+    });
+    mockNormalizeContractContent.mockReturnValue({
+      title: "Demo Contract",
+      sections: [],
+    });
+    mockSanitizeDownloadFileName.mockReturnValue("demo-contract");
+    mockBuildContractExportSignatures.mockReturnValue({
+      sender: {
+        role: "sender",
+        signerName: "Alice",
+      },
+      counterparty: {
+        role: "counterparty",
+        signerName: "Bob",
+      },
+    });
+    mockBuildContractHtml.mockReturnValue("<main>demo</main>");
+    mockBuildContractDocumentHtml.mockReturnValue("<html><main>demo</main></html>");
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/contracts/ct-1/export?format=html&variant=current"),
+      { params: Promise.resolve({ id: "ct-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockBuildContractHtml).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        seal: expect.objectContaining({
+          stamp: expect.objectContaining({
+            imageDataUrl: stampImage,
+          }),
+        }),
+      }),
+    );
+  });
+
+  test("records failure metrics when pdf generation throws", async () => {
+    mockExtractTokenFromRequest.mockReturnValue({
+      token: "token-1",
+      error: null,
+    });
+    mockVerifyAuthToken.mockResolvedValue({
+      success: true,
+      userId: "user-1",
+      user: { role: "user" },
+    });
+    mockGetContractById.mockResolvedValue({
+      id: "ct-1",
+      userId: "user-1",
+      title: "Demo Contract",
+      content: { title: "Demo Contract", sections: [] },
+      metadata: {
+        signFlow: {
+          status: "completed",
+        },
+      },
     });
     mockNormalizeContractContent.mockReturnValue({
       title: "Demo Contract",

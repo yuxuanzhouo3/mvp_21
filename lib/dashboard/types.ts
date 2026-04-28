@@ -228,7 +228,7 @@ export interface DashboardDocumentTimelineEvent {
   label: string;
   description: string;
   occurredAt: string;
-  type: "created" | "signing" | "signature" | "reminder" | "final_copy" | "update";
+  type: "created" | "signing" | "signature" | "reminder" | "final_copy" | "seal" | "update";
 }
 
 export interface DashboardDocumentSignatureRecord {

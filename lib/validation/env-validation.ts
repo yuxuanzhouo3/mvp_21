@@ -262,12 +262,6 @@ export function validateEnvironment():
           "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to INTL"
         );
       }
-
-      if (!envData.DASHSCOPE_API_KEY?.trim()) {
-        conditionalErrors.push(
-          "DASHSCOPE_API_KEY: Required when NEXT_PUBLIC_DEPLOYMENT_REGION resolves to INTL"
-        );
-      }
     }
 
     if (region === "CN") {

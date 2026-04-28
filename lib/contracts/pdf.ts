@@ -12,12 +12,19 @@ import type {
   ContractExportSignatureRecord,
   ContractExportSignatures,
 } from "@/lib/contracts/export-signatures";
-import { buildContractPdfBuffer as buildLegacyContractPdfBuffer } from "@/lib/contracts/format";
+import {
+  buildContractPdfBuffer as buildLegacyContractPdfBuffer,
+  type ContractExportSealOptions,
+} from "@/lib/contracts/format";
 
 type SupportedLanguage = "zh" | "en";
 
 function hasCjkCharacters(value: string): boolean {
   return /[\u3400-\u9FFF]/.test(value);
+}
+
+function hasNonLatin1Characters(value: string): boolean {
+  return /[^\u0000-\u00FF]/.test(value);
 }
 
 function collectContractText(contract: ContractContent): string {
@@ -136,6 +143,7 @@ function buildPdfTextLines(
   contract: ContractContent,
   language: SupportedLanguage,
   signatures?: ContractExportSignatures,
+  seal?: ContractExportSealOptions,
 ) {
   const labels = {
     generatedAt: language === "en" ? "Generated At" : "生成时间",
@@ -151,8 +159,12 @@ function buildPdfTextLines(
     source: language === "en" ? "Source" : "来源",
     typed: language === "en" ? "Typed Name" : "输入签名",
     image: language === "en" ? "Image" : "签名图片",
-    unsigned: language === "en" ? "Pending signature" : "待签署",
-    blankDate: language === "en" ? "_______ / _____ / _____" : "_______年___月___日",
+    sealTitle: language === "en" ? "Seal Record" : "盖章记录",
+    stampedAt: language === "en" ? "Stamped At" : "盖章时间",
+    stampedBy: language === "en" ? "Stamped By" : "盖章人",
+    sealSource: language === "en" ? "Seal Source" : "印章来源",
+    sealFile: language === "en" ? "Seal File" : "印章文件",
+    sealNote: language === "en" ? "Seal Note" : "盖章备注",
   };
   const lines: string[] = [];
 
@@ -195,15 +207,13 @@ function buildPdfTextLines(
     title: string,
     signature: ContractExportSignatureRecord | undefined,
   ) => {
-    lines.push(title);
     if (!signature) {
-      lines.push(`${labels.signer}: ${labels.unsigned}`);
-      lines.push(`${labels.signDate}: ${labels.blankDate}`);
-      lines.push("");
       return;
     }
 
-    lines.push(`${labels.signer}: ${normalizePdfText(signature.signerName || labels.unsigned)}`);
+    lines.push(title);
+
+    lines.push(`${labels.signer}: ${normalizePdfText(signature.signerName || "-")}`);
     lines.push(`${labels.signDate}: ${formatSignatureDate(signature.createdAt, language)}`);
     lines.push(`${labels.method}: ${normalizeSignatureMethodLabel(signature.method, language)}`);
     lines.push(`${labels.source}: ${normalizePdfText(signature.source || "-")}`);
@@ -216,9 +226,25 @@ function buildPdfTextLines(
     lines.push("");
   };
 
-  lines.push(labels.signatures);
-  appendParty(labels.partyA, signatures?.sender);
-  appendParty(labels.partyB, signatures?.counterparty);
+  const hasAnySignature = Boolean(signatures?.sender || signatures?.counterparty);
+  if (hasAnySignature) {
+    lines.push(labels.signatures);
+    appendParty(labels.partyA, signatures?.sender);
+    appendParty(labels.partyB, signatures?.counterparty);
+  }
+
+  const sealImageDataUrl = sanitizeSignatureImageDataUrl(seal?.stamp?.imageDataUrl);
+  if (sealImageDataUrl) {
+    lines.push(labels.sealTitle);
+    lines.push(`${labels.stampedAt}: ${formatSignatureDate(seal?.stampedAt, language)}`);
+    lines.push(`${labels.stampedBy}: ${normalizePdfText(seal?.stampedBy || "-")}`);
+    lines.push(`${labels.sealSource}: ${normalizePdfText(seal?.stamp?.source || "-")}`);
+    lines.push(`${labels.sealFile}: ${normalizePdfText(seal?.stamp?.fileName || "-")}`);
+    if (seal?.note) {
+      lines.push(`${labels.sealNote}: ${normalizePdfText(seal.note)}`);
+    }
+    lines.push("");
+  }
 
   return lines;
 }
@@ -458,17 +484,125 @@ async function appendSignatureImagePages(args: {
   }
 }
 
+async function appendSealImagePage(args: {
+  pdfDoc: PDFDocument;
+  language: SupportedLanguage;
+  seal?: ContractExportSealOptions;
+  font: PDFFont;
+}) {
+  const { pdfDoc, language, seal, font } = args;
+  const dataUrl = sanitizeSignatureImageDataUrl(seal?.stamp?.imageDataUrl);
+  if (!dataUrl) {
+    return;
+  }
+
+  const decoded = decodeSignatureImageDataUrl(dataUrl);
+  if (!decoded) {
+    return;
+  }
+
+  let image: PDFImage;
+  try {
+    image =
+      decoded.format === "png"
+        ? await pdfDoc.embedPng(decoded.bytes)
+        : await pdfDoc.embedJpg(decoded.bytes);
+  } catch {
+    return;
+  }
+
+  const labels = {
+    sectionTitle: language === "en" ? "Official Seal Record" : "合同盖章记录",
+    stampedAt: language === "en" ? "Stamped At" : "盖章时间",
+    stampedBy: language === "en" ? "Stamped By" : "盖章人",
+    source: language === "en" ? "Seal Source" : "印章来源",
+    fileName: language === "en" ? "Seal File" : "印章文件",
+    note: language === "en" ? "Note" : "备注",
+  };
+
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const marginX = 50;
+  const marginTop = 56;
+  const textColor = rgb(0.15, 0.15, 0.15);
+  const page = pdfDoc.addPage([pageWidth, pageHeight]);
+  let cursorY = pageHeight - marginTop;
+
+  page.drawText(labels.sectionTitle, {
+    x: marginX,
+    y: cursorY,
+    font,
+    size: 15,
+    color: textColor,
+  });
+  cursorY -= 32;
+
+  const imageOriginal = image.scale(1);
+  const imageMaxWidth = 240;
+  const imageMaxHeight = 240;
+  const scale = Math.min(
+    imageMaxWidth / imageOriginal.width,
+    imageMaxHeight / imageOriginal.height,
+    1,
+  );
+  const imageWidth = imageOriginal.width * scale;
+  const imageHeight = imageOriginal.height * scale;
+  const imageFrameX = marginX;
+  const imageFrameY = cursorY - imageMaxHeight - 12;
+
+  page.drawRectangle({
+    x: imageFrameX,
+    y: imageFrameY,
+    width: imageMaxWidth + 16,
+    height: imageMaxHeight + 16,
+    borderColor: rgb(0.82, 0.82, 0.82),
+    borderWidth: 1,
+    color: rgb(1, 1, 1),
+  });
+  page.drawImage(image, {
+    x: imageFrameX + 8 + (imageMaxWidth - imageWidth) / 2,
+    y: imageFrameY + 8 + (imageMaxHeight - imageHeight) / 2,
+    width: imageWidth,
+    height: imageHeight,
+  });
+
+  const detailsX = imageFrameX + imageMaxWidth + 36;
+  let detailsY = cursorY - 6;
+  const details: string[] = [
+    `${labels.stampedAt}: ${formatSignatureDate(seal?.stampedAt, language)}`,
+    `${labels.stampedBy}: ${normalizePdfText(seal?.stampedBy || "-")}`,
+    `${labels.source}: ${normalizePdfText(seal?.stamp?.source || "-")}`,
+    `${labels.fileName}: ${normalizePdfText(seal?.stamp?.fileName || "-")}`,
+  ];
+
+  if (seal?.note) {
+    details.push(`${labels.note}: ${normalizePdfText(seal.note)}`);
+  }
+
+  details.forEach((line) => {
+    page.drawText(line, {
+      x: detailsX,
+      y: detailsY,
+      font,
+      size: 10,
+      color: textColor,
+    });
+    detailsY -= 18;
+  });
+}
+
 async function buildModernPdfBuffer(
   contract: ContractContent,
   language: SupportedLanguage,
   chineseFontBuffer?: Buffer | null,
   signatures?: ContractExportSignatures,
+  seal?: ContractExportSealOptions,
 ) {
   const pdfDoc = await PDFDocument.create();
   pdfDoc.registerFontkit(fontkit);
 
   const font =
-    chineseFontBuffer && language === "zh"
+    chineseFontBuffer
       ? await pdfDoc.embedFont(chineseFontBuffer, { subset: false })
       : await pdfDoc.embedFont(StandardFonts.Helvetica);
 
@@ -481,7 +615,7 @@ async function buildModernPdfBuffer(
   const marginBottom = 56;
   const maxTextWidth = pageWidth - marginX * 2;
   const maxLinesPerPage = Math.floor((pageHeight - marginTop - marginBottom) / lineHeight);
-  const wrappedLines = buildPdfTextLines(contract, language, signatures).flatMap((line) =>
+  const wrappedLines = buildPdfTextLines(contract, language, signatures, seal).flatMap((line) =>
     splitLineByWidth(line, font, fontSize, maxTextWidth),
   );
 
@@ -517,6 +651,12 @@ async function buildModernPdfBuffer(
     signatures,
     font,
   });
+  await appendSealImagePage({
+    pdfDoc,
+    language,
+    seal,
+    font,
+  });
 
   const bytes = await pdfDoc.save();
   return Buffer.from(bytes);
@@ -527,29 +667,45 @@ export async function buildContractPdfBuffer(
   options?: {
     language?: SupportedLanguage;
     signatures?: ContractExportSignatures;
+    seal?: ContractExportSealOptions;
   },
 ) {
   const language = resolvePreferredLanguage(contract, options?.language);
-  const chineseFont = language === "zh" ? loadChineseFontBuffer() : null;
+  const textLines = buildPdfTextLines(
+    contract,
+    language,
+    options?.signatures,
+    options?.seal,
+  );
+  const requiresUnicodeFont =
+    language === "zh" || hasNonLatin1Characters(textLines.join("\n"));
+  const chineseFont = requiresUnicodeFont ? loadChineseFontBuffer() : null;
 
-  if (language === "zh" && !chineseFont) {
+  if (requiresUnicodeFont && !chineseFont) {
     console.warn(
-      "[contracts/pdf] No Chinese font found in runtime environment, falling back to legacy PDF writer.",
+      "[contracts/pdf] No Unicode-capable font found in runtime environment, falling back to legacy PDF writer.",
       {
         candidates: getChineseFontCandidates(),
+        language,
+        requiresUnicodeFont,
       },
     );
-    // Avoid rendering Chinese with Helvetica (which lacks CJK glyphs).
-    // Fall back to the legacy PDF writer that uses STSong-Light.
+    // Avoid rendering unsupported Unicode glyphs with Helvetica.
+    // Fall back to the legacy PDF writer when no Unicode-capable font is available.
     return buildLegacyContractPdfBuffer(contract, {
       language,
       signatures: options?.signatures,
+      seal: options?.seal,
     });
   }
 
   try {
-    if (language === "zh" && chineseFont?.filePath) {
-      console.info("[contracts/pdf] Using Chinese font for PDF export:", chineseFont.filePath);
+    if (chineseFont?.filePath) {
+      console.info("[contracts/pdf] Using Unicode-capable font for PDF export:", {
+        filePath: chineseFont.filePath,
+        language,
+        requiresUnicodeFont,
+      });
     }
 
     return await buildModernPdfBuffer(
@@ -557,12 +713,14 @@ export async function buildContractPdfBuffer(
       language,
       chineseFont?.buffer,
       options?.signatures,
+      options?.seal,
     );
   } catch (error) {
     console.error("[contracts/pdf] Modern PDF generation failed, fallback to legacy writer:", error);
     return buildLegacyContractPdfBuffer(contract, {
       language,
       signatures: options?.signatures,
+      seal: options?.seal,
     });
   }
 }

@@ -447,6 +447,8 @@ function buildContractTimeline(contract: UnifiedContractRecord): DashboardDocume
       type:
         log.action === "final_copy_ready"
           ? "final_copy"
+          : log.action === "sealed"
+            ? "seal"
           : log.action === "reminder_sent"
             ? "reminder"
             : log.action === "sender_confirmed" || log.action === "counterparty_confirmed"

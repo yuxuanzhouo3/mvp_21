@@ -1,5 +1,6 @@
 import { isChinaRegion } from "@/lib/config/region";
-import { getQwenModel } from "@/lib/config/runtime-env";
+import { getOpenAIModel, getQwenModel } from "@/lib/config/runtime-env";
+import OpenAI from "openai";
 
 export interface ContractChatScreenshotData {
   sourceType: "wechat" | "feishu" | "screenshot";
@@ -8,7 +9,7 @@ export interface ContractChatScreenshotData {
 }
 
 export interface ContractChatScreenshotAnalysisResult {
-  provider: "dashscope";
+  provider: "dashscope" | "openai";
   rawText: string;
   data: ContractChatScreenshotData;
 }
@@ -16,13 +17,13 @@ export interface ContractChatScreenshotAnalysisResult {
 export class ContractChatOcrError extends Error {
   status: number;
   code: string;
-  provider?: "dashscope";
+  provider?: "dashscope" | "openai";
 
   constructor(
     message: string,
     code: string,
     status = 500,
-    provider?: "dashscope",
+    provider?: "dashscope" | "openai",
   ) {
     super(message);
     this.name = "ContractChatOcrError";
@@ -264,9 +265,113 @@ async function callDashScope(imageBase64: string): Promise<string> {
   );
 }
 
+async function callOpenAI(imageBase64: string): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey?.trim()) {
+    throw new ContractChatOcrError(
+      "OPENAI_API_KEY is unavailable",
+      "OCR_KEY_UNAVAILABLE",
+      503,
+      "openai",
+    );
+  }
+
+  const timeoutMs = resolveOcrProviderTimeoutMs();
+  const abortController = new AbortController();
+  const timeoutHandle = setTimeout(() => {
+    abortController.abort("OCR_TIMEOUT");
+  }, timeoutMs);
+
+  let response: any;
+  try {
+    const openai = new OpenAI({
+      apiKey: apiKey.trim(),
+      baseURL: process.env.OPENAI_BASE_URL,
+    });
+
+    response = await openai.chat.completions.create(
+      {
+        model: process.env.OPENAI_OCR_MODEL || getOpenAIModel() || "gpt-4o-mini",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: getOcrPrompt() },
+              { type: "image_url", image_url: { url: imageBase64 } },
+            ],
+          },
+        ],
+        temperature: 0,
+      } as any,
+      {
+        signal: abortController.signal,
+      } as any,
+    );
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.name === "AbortError" ||
+        /timeout|timed out|aborted|abort/i.test(error.message))
+    ) {
+      throw new ContractChatOcrError(
+        `OpenAI OCR timeout after ${timeoutMs}ms`,
+        "OCR_TIMEOUT",
+        504,
+        "openai",
+      );
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    if (/401|403|invalid api key|unauthorized/i.test(message)) {
+      throw new ContractChatOcrError(
+        `OPENAI_API_KEY is unavailable: ${message}`,
+        "OCR_KEY_UNAVAILABLE",
+        503,
+        "openai",
+      );
+    }
+
+    throw new ContractChatOcrError(
+      `OpenAI OCR request failed: ${message}`,
+      "OCR_PROVIDER_FAILED",
+      502,
+      "openai",
+    );
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+
+  const content = response?.choices?.[0]?.message?.content;
+  if (typeof content === "string" && content.trim()) {
+    return content.trim();
+  }
+
+  if (Array.isArray(content)) {
+    const joined = content
+      .map((part) => (typeof part?.text === "string" ? part.text : ""))
+      .join("\n")
+      .trim();
+    if (joined) {
+      return joined;
+    }
+  }
+
+  throw new ContractChatOcrError(
+    "OpenAI OCR returned an empty response",
+    "OCR_EMPTY_RESPONSE",
+    502,
+    "openai",
+  );
+}
+
 async function callOcrProvider(imageBase64: string) {
-  const rawText = await callDashScope(imageBase64);
-  return { provider: "dashscope" as const, rawText };
+  if (isChinaRegion()) {
+    const rawText = await callDashScope(imageBase64);
+    return { provider: "dashscope" as const, rawText };
+  }
+
+  const rawText = await callOpenAI(imageBase64);
+  return { provider: "openai" as const, rawText };
 }
 
 export async function analyzeContractChatScreenshot(
@@ -289,10 +394,14 @@ export async function analyzeContractChatScreenshot(
   };
 }
 
-export function getContractChatOcrProvider(): "dashscope" {
-  return "dashscope";
+export function getContractChatOcrProvider(): "dashscope" | "openai" {
+  return isChinaRegion() ? "dashscope" : "openai";
 }
 
 export function getContractChatOcrModel() {
-  return process.env.DASHSCOPE_OCR_MODEL || getQwenModel();
+  if (isChinaRegion()) {
+    return process.env.DASHSCOPE_OCR_MODEL || getQwenModel();
+  }
+
+  return process.env.OPENAI_OCR_MODEL || getOpenAIModel() || "gpt-4o-mini";
 }

@@ -66,7 +66,7 @@ function validateSourceEnv(targetName, envEntries) {
       "NEXT_PUBLIC_SUPABASE_URL",
       "NEXT_PUBLIC_SUPABASE_ANON_KEY",
       "SUPABASE_SERVICE_ROLE_KEY",
-      "OPENAI_MODEL",
+      "DASHSCOPE_API_KEY",
       "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
     ],
   };
@@ -90,22 +90,6 @@ function validateSourceEnv(targetName, envEntries) {
   for (const key of requiredByTarget[targetName]) {
     if (!hasValue(envEntries, key)) {
       errors.push(`${key} is required for ${expectedRegion} deployment`);
-    }
-  }
-
-  if (targetName === "intl") {
-    if (!hasValue(envEntries, "OPENAI_API_KEY")) {
-      errors.push("OPENAI_API_KEY is required for INTL deployment");
-    }
-
-    const openaiBaseUrl = (envEntries.get("OPENAI_BASE_URL") || "").trim().toLowerCase();
-    if (
-      openaiBaseUrl &&
-      (openaiBaseUrl.includes("dashscope") || openaiBaseUrl.includes("aliyuncs.com"))
-    ) {
-      errors.push(
-        "OPENAI_BASE_URL points to DashScope. Use https://api.openai.com/v1 (or a compatible OpenAI proxy endpoint) for INTL deployment.",
-      );
     }
   }
 

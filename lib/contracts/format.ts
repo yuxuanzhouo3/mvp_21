@@ -18,6 +18,26 @@ export interface ContractVersionEntry {
   summary?: string;
 }
 
+export interface ContractExportSealOptions {
+  stampedAt?: string;
+  stampedBy?: string;
+  note?: string;
+  stamp?: {
+    imageDataUrl: string;
+    imageMimeType?: string;
+    fileName?: string;
+    source?: string;
+  };
+  placement?: {
+    page?: number;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    opacity?: number;
+  };
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -93,7 +113,7 @@ function normalizeSignatureMethodLabel(
 function buildPartySignatureHtml(args: {
   language: SupportedLanguage;
   title: string;
-  signature?: ContractExportSignatureRecord;
+  signature: ContractExportSignatureRecord;
 }) {
   const { language, title, signature } = args;
   const labels = {
@@ -101,35 +121,27 @@ function buildPartySignatureHtml(args: {
     date: language === "en" ? "Signed At" : "签署时间",
     method: language === "en" ? "Method" : "签署方式",
     source: language === "en" ? "Source" : "来源",
-    unsigned: language === "en" ? "Pending signature" : "待签署",
-    dateBlank: language === "en" ? "_______ / _____ / _____" : "_______年___月___日",
   };
   const imageDataUrl = sanitizeSignatureImageDataUrl(signature?.imageDataUrl);
   const signerName = signature?.signerName || (language === "en" ? "-" : "未签署");
 
-  let html = `<div style="width:48%;border:1px solid #d1d5db;border-radius:10px;padding:14px 16px;">`;
+  let html = `<div style="flex:1;min-width:260px;border:1px solid #d1d5db;border-radius:10px;padding:14px 16px;">`;
   html += `<p style="margin:0 0 8px 0;"><strong>${escapeHtml(title)}</strong></p>`;
 
-  if (signature) {
-    html += `<p style="margin:0 0 6px 0;"><strong>${labels.signer}:</strong> ${escapeHtml(signerName)}</p>`;
-    if (imageDataUrl) {
-      html += `<div style="margin:8px 0 10px 0;border:1px solid #e5e7eb;background:#fff;padding:8px;border-radius:8px;">`;
-      html += `<img src="${imageDataUrl}" alt="${escapeHtml(title)} signature" style="max-width:100%;max-height:88px;object-fit:contain;" />`;
-      html += `</div>`;
-    } else if (signature.typedName) {
-      html += `<p style="margin:8px 0 10px 0;font-size:24px;font-family:serif;">${escapeHtml(signature.typedName)}</p>`;
-    } else {
-      html += `<p style="margin:8px 0 10px 0;border-bottom:1px solid #111827;width:220px;"></p>`;
-    }
-
-    html += `<p style="margin:0 0 4px 0;"><strong>${labels.date}:</strong> ${escapeHtml(formatSignatureDate(signature.createdAt, language))}</p>`;
-    html += `<p style="margin:0 0 4px 0;"><strong>${labels.method}:</strong> ${escapeHtml(normalizeSignatureMethodLabel(signature.method, language))}</p>`;
-    html += `<p style="margin:0;"><strong>${labels.source}:</strong> ${escapeHtml(signature.source || "-")}</p>`;
+  html += `<p style="margin:0 0 6px 0;"><strong>${labels.signer}:</strong> ${escapeHtml(signerName)}</p>`;
+  if (imageDataUrl) {
+    html += `<div style="margin:8px 0 10px 0;border:1px solid #e5e7eb;background:#fff;padding:8px;border-radius:8px;width:236px;max-width:100%;">`;
+    html += `<img src="${imageDataUrl}" width="220" height="88" alt="${escapeHtml(title)} signature" style="display:block;width:220px;height:88px;max-width:100%;object-fit:contain;" />`;
+    html += `</div>`;
+  } else if (signature.typedName) {
+    html += `<p style="margin:8px 0 10px 0;font-size:24px;font-family:'Times New Roman', serif;">${escapeHtml(signature.typedName)}</p>`;
   } else {
-    html += `<p style="margin:0 0 10px 0;color:#6b7280;">${labels.unsigned}</p>`;
     html += `<p style="margin:8px 0 10px 0;border-bottom:1px solid #111827;width:220px;"></p>`;
-    html += `<p style="margin:0;"><strong>${labels.date}:</strong> ${labels.dateBlank}</p>`;
   }
+
+  html += `<p style="margin:0 0 4px 0;"><strong>${labels.date}:</strong> ${escapeHtml(formatSignatureDate(signature.createdAt, language))}</p>`;
+  html += `<p style="margin:0 0 4px 0;"><strong>${labels.method}:</strong> ${escapeHtml(normalizeSignatureMethodLabel(signature.method, language))}</p>`;
+  html += `<p style="margin:0;"><strong>${labels.source}:</strong> ${escapeHtml(signature.source || "-")}</p>`;
 
   html += `</div>`;
   return html;
@@ -139,25 +151,75 @@ function buildSignatureSectionHtml(
   language: SupportedLanguage,
   signatures?: ContractExportSignatures,
 ) {
+  const entries = [
+    { title: language === "en" ? "Party A (Sender)" : "甲方（发起方）", signature: signatures?.sender },
+    {
+      title: language === "en" ? "Party B (Counterparty)" : "乙方（对方）",
+      signature: signatures?.counterparty,
+    },
+  ].filter(
+    (entry): entry is {
+      title: string;
+      signature: ContractExportSignatureRecord;
+    } => Boolean(entry.signature),
+  );
+
+  if (entries.length === 0) {
+    return "";
+  }
+
   const labels = {
     title: language === "en" ? "Signature Records" : "电子签署记录",
-    partyA: language === "en" ? "Party A (Sender)" : "甲方（发起方）",
-    partyB: language === "en" ? "Party B (Counterparty)" : "乙方（对方）",
   };
 
   let html = `<div style="margin-top:48px;">`;
   html += `<h2 style="margin:0 0 12px 0;">${labels.title}</h2>`;
-  html += `<div style="display:flex;justify-content:space-between;gap:16px;align-items:stretch;">`;
-  html += buildPartySignatureHtml({
-    language,
-    title: labels.partyA,
-    signature: signatures?.sender,
+  html += `<div style="display:flex;justify-content:flex-start;gap:16px;align-items:stretch;flex-wrap:wrap;">`;
+  entries.forEach((entry) => {
+    html += buildPartySignatureHtml({
+      language,
+      title: entry.title,
+      signature: entry.signature,
+    });
   });
-  html += buildPartySignatureHtml({
-    language,
-    title: labels.partyB,
-    signature: signatures?.counterparty,
-  });
+  html += `</div>`;
+  html += `</div>`;
+  return html;
+}
+
+function buildSealSectionHtml(
+  language: SupportedLanguage,
+  seal?: ContractExportSealOptions,
+) {
+  const imageDataUrl = sanitizeSignatureImageDataUrl(seal?.stamp?.imageDataUrl);
+  if (!imageDataUrl) {
+    return "";
+  }
+
+  const labels = {
+    title: language === "en" ? "Seal Record" : "盖章记录",
+    stampedAt: language === "en" ? "Stamped At" : "盖章时间",
+    stampedBy: language === "en" ? "Stamped By" : "盖章人",
+    source: language === "en" ? "Source" : "来源",
+    fileName: language === "en" ? "Stamp File" : "印章文件",
+    note: language === "en" ? "Note" : "备注",
+  };
+
+  let html = `<div style="margin-top:36px;border:1px solid #fca5a5;border-radius:12px;padding:16px 18px;background:#fff7f7;">`;
+  html += `<h2 style="margin:0 0 10px 0;color:#991b1b;">${labels.title}</h2>`;
+  html += `<div style="display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;">`;
+  html += `<div style="width:184px;height:184px;border:1px dashed #fca5a5;background:#fff;padding:10px;border-radius:8px;display:flex;align-items:center;justify-content:center;">`;
+  html += `<img src="${imageDataUrl}" width="160" height="160" alt="${escapeHtml(labels.title)}" style="display:block;width:160px;height:160px;object-fit:contain;margin:0 auto;" />`;
+  html += `</div>`;
+  html += `<div style="flex:1;min-width:240px;font-size:13px;line-height:1.7;color:#7f1d1d;">`;
+  html += `<p style="margin:0 0 4px 0;"><strong>${labels.stampedAt}:</strong> ${escapeHtml(formatSignatureDate(seal?.stampedAt, language))}</p>`;
+  html += `<p style="margin:0 0 4px 0;"><strong>${labels.stampedBy}:</strong> ${escapeHtml(seal?.stampedBy || "-")}</p>`;
+  html += `<p style="margin:0 0 4px 0;"><strong>${labels.source}:</strong> ${escapeHtml(seal?.stamp?.source || "-")}</p>`;
+  html += `<p style="margin:0 0 4px 0;"><strong>${labels.fileName}:</strong> ${escapeHtml(seal?.stamp?.fileName || "-")}</p>`;
+  if (seal?.note) {
+    html += `<p style="margin:0;"><strong>${labels.note}:</strong> ${escapeHtml(seal.note)}</p>`;
+  }
+  html += `</div>`;
   html += `</div>`;
   html += `</div>`;
   return html;
@@ -351,6 +413,7 @@ export function buildContractHtml(
     language?: SupportedLanguage;
     renderedHtml?: string | null;
     signatures?: ContractExportSignatures;
+    seal?: ContractExportSealOptions;
   },
 ): string {
   const language = options?.language || "zh";
@@ -378,6 +441,7 @@ export function buildContractHtml(
   }
 
   html += buildSignatureSectionHtml(language, options?.signatures);
+  html += buildSealSectionHtml(language, options?.seal);
 
   return html;
 }
@@ -385,16 +449,31 @@ export function buildContractHtml(
 export function buildContractDocumentHtml(
   title: string,
   bodyHtml: string,
+  options?: {
+    language?: SupportedLanguage;
+  },
 ): string {
+  const language = options?.language || "zh";
+  const bodyFontFamily =
+    language === "zh"
+      ? `"MornContractSimHei", "SimHei", "Microsoft YaHei", "PingFang SC", sans-serif`
+      : `"Times New Roman", "Georgia", "MornContractSimHei", "SimHei", "Microsoft YaHei", "PingFang SC", serif`;
+
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${language === "en" ? "en-US" : "zh-CN"}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(title)}</title>
   <style>
+    @font-face {
+      font-family: "MornContractSimHei";
+      src: url("/fonts/simhei.ttf") format("truetype");
+      font-weight: normal;
+      font-style: normal;
+    }
     body {
-      font-family: "SimSun", "Songti SC", serif;
+      font-family: ${bodyFontFamily};
       max-width: 860px;
       margin: 0 auto;
       padding: 40px 24px 56px;
@@ -417,6 +496,7 @@ function buildPdfTextLines(
   contract: ContractContent,
   language: SupportedLanguage,
   signatures?: ContractExportSignatures,
+  seal?: ContractExportSealOptions,
 ) {
   const labels = {
     generatedAt: language === "en" ? "Generated At" : "生成时间",
@@ -430,8 +510,12 @@ function buildPdfTextLines(
     signDate: language === "en" ? "Signed At" : "签署时间",
     method: language === "en" ? "Method" : "签署方式",
     source: language === "en" ? "Source" : "来源",
-    unsigned: language === "en" ? "Pending signature" : "待签署",
-    blankDate: language === "en" ? "_______ / _____ / _____" : "_______年___月___日",
+    sealTitle: language === "en" ? "Seal Record" : "盖章记录",
+    stampedAt: language === "en" ? "Stamped At" : "盖章时间",
+    stampedBy: language === "en" ? "Stamped By" : "盖章人",
+    stampSource: language === "en" ? "Seal Source" : "印章来源",
+    stampFile: language === "en" ? "Seal File" : "印章文件",
+    sealNote: language === "en" ? "Seal Note" : "盖章备注",
   };
   const lines: string[] = [];
 
@@ -472,14 +556,11 @@ function buildPdfTextLines(
     title: string,
     signature: ContractExportSignatureRecord | undefined,
   ) => {
-    lines.push(title);
     if (!signature) {
-      lines.push(`${labels.signer}: ${labels.unsigned}`);
-      lines.push(`${labels.signDate}: ${labels.blankDate}`);
-      lines.push("");
       return;
     }
 
+    lines.push(title);
     lines.push(`${labels.signer}: ${signature.signerName}`);
     lines.push(`${labels.signDate}: ${formatSignatureDate(signature.createdAt, language)}`);
     lines.push(`${labels.method}: ${normalizeSignatureMethodLabel(signature.method, language)}`);
@@ -487,9 +568,25 @@ function buildPdfTextLines(
     lines.push("");
   };
 
-  lines.push(labels.signatures);
-  appendParty(labels.partyA, signatures?.sender);
-  appendParty(labels.partyB, signatures?.counterparty);
+  const hasAnySignature = Boolean(signatures?.sender || signatures?.counterparty);
+  if (hasAnySignature) {
+    lines.push(labels.signatures);
+    appendParty(labels.partyA, signatures?.sender);
+    appendParty(labels.partyB, signatures?.counterparty);
+  }
+
+  const sealImageDataUrl = sanitizeSignatureImageDataUrl(seal?.stamp?.imageDataUrl);
+  if (sealImageDataUrl) {
+    lines.push(labels.sealTitle);
+    lines.push(`${labels.stampedAt}: ${formatSignatureDate(seal?.stampedAt, language)}`);
+    lines.push(`${labels.stampedBy}: ${seal?.stampedBy || "-"}`);
+    lines.push(`${labels.stampSource}: ${seal?.stamp?.source || "-"}`);
+    lines.push(`${labels.stampFile}: ${seal?.stamp?.fileName || "-"}`);
+    if (seal?.note) {
+      lines.push(`${labels.sealNote}: ${seal.note}`);
+    }
+    lines.push("");
+  }
 
   return lines;
 }
@@ -576,10 +673,16 @@ export function buildContractPdfBuffer(
   options?: {
     language?: SupportedLanguage;
     signatures?: ContractExportSignatures;
+    seal?: ContractExportSealOptions;
   },
 ) {
   const streams = buildPdfContentStreams(
-    buildPdfTextLines(contract, options?.language || "zh", options?.signatures),
+    buildPdfTextLines(
+      contract,
+      options?.language || "zh",
+      options?.signatures,
+      options?.seal,
+    ),
   );
   const fontObjectId = 3 + streams.length * 2;
   const descendantFontObjectId = fontObjectId + 1;

@@ -6,6 +6,7 @@ import {
   normalizeContractRecord,
   type UnifiedContractRecord,
 } from "@/lib/data/unified-models";
+import { supabase } from "@/lib/integrations/supabase";
 
 export type ContractListStatus =
   | "draft"
@@ -27,11 +28,13 @@ export interface ContractListItem {
   archivedAt?: string;
   archivedReason?: string;
   signFlowStatus?: string;
+  sealFlowStatus?: "not_started" | "sealed" | "failed";
   reminderCount: number;
 }
 
 export type ContractDetail = UnifiedContractRecord;
 export type ContractExportFormat = "html" | "word" | "pdf";
+export type ContractExportVariant = "signed" | "sealed";
 export type ContractAction =
   | "archive"
   | "unarchive"
@@ -182,6 +185,7 @@ function normalizeContract(raw: Record<string, any>): ContractListItem {
     archivedAt: enhancement.archivedAt,
     archivedReason: enhancement.archivedReason,
     signFlowStatus: enhancement.signFlow.status,
+    sealFlowStatus: enhancement.sealFlow.status,
     reminderCount: enhancement.signFlow.reminderCount,
   };
 }
@@ -192,8 +196,46 @@ function normalizeContractDetail(raw: Record<string, any>): ContractDetail {
 
 async function getAuthHeaders() {
   const headers = await tokenManager.getAuthHeaderAsync();
-  if (!headers) throw new Error("UNAUTHORIZED");
-  return headers;
+  if (headers?.Authorization) {
+    return headers;
+  }
+
+  const sessionHeaders = await getSupabaseSessionHeaders();
+  if (sessionHeaders) {
+    return sessionHeaders;
+  }
+
+  if (headers && Object.keys(headers).length > 0) {
+    return headers;
+  }
+
+  throw new Error("UNAUTHORIZED");
+}
+
+function buildBearerHeaders(accessToken: unknown): Record<string, string> | null {
+  if (typeof accessToken !== "string" || !accessToken.trim()) {
+    return null;
+  }
+
+  return { Authorization: `Bearer ${accessToken.trim()}` };
+}
+
+async function getSupabaseSessionHeaders() {
+  try {
+    const sessionResult = await supabase.auth.getSession();
+    return buildBearerHeaders(sessionResult?.data?.session?.access_token);
+  } catch {
+    return null;
+  }
+}
+
+async function refreshSupabaseSessionHeaders() {
+  try {
+    const refreshResult = await supabase.auth.refreshSession();
+    return buildBearerHeaders(refreshResult?.data?.session?.access_token);
+  } catch {
+    return null;
+  }
 }
 
 async function getAuthHeadersWithRetry(
@@ -242,7 +284,14 @@ async function fetchWithAuthRetry(
   }
 
   await sleep(150);
-  const retryHeaders = await tokenManager.getAuthHeaderAsync();
+  let retryHeaders = await tokenManager.getAuthHeaderAsync();
+  if (!retryHeaders?.Authorization) {
+    retryHeaders =
+      (await refreshSupabaseSessionHeaders()) ||
+      (await getSupabaseSessionHeaders()) ||
+      retryHeaders;
+  }
+
   if (!retryHeaders) {
     return response;
   }
@@ -468,11 +517,15 @@ async function fetchContractExportResponse(
   id: string,
   options?: {
     format?: ContractExportFormat | "pdf";
+    variant?: ContractExportVariant;
   },
 ) {
   const query = new URLSearchParams();
   if (options?.format) {
     query.set("format", options.format);
+  }
+  if (options?.variant) {
+    query.set("variant", options.variant);
   }
 
   const response = await fetchWithAuthRetry(
@@ -490,8 +543,14 @@ async function fetchContractExportResponse(
 export async function downloadContractForCurrentUser(
   id: string,
   format: ContractExportFormat = "html",
+  options?: {
+    variant?: ContractExportVariant;
+  },
 ): Promise<void> {
-  const response = await fetchContractExportResponse(id, { format });
+  const response = await fetchContractExportResponse(id, {
+    format,
+    variant: options?.variant,
+  });
   const blob = await response.blob();
   const fileName = getDownloadFileName(
     response.headers.get("content-disposition"),
@@ -510,4 +569,40 @@ export async function downloadContractForCurrentUser(
 
 export async function exportContractPdfForCurrentUser(id: string): Promise<void> {
   await downloadContractForCurrentUser(id, "pdf");
+}
+
+export interface ContractSealPayload {
+  stampImageDataUrl: string;
+  stampImageMimeType?: string;
+  fileName?: string;
+  source?: string;
+  note?: string;
+  placement?: {
+    page?: number;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    opacity?: number;
+  };
+}
+
+export async function sealContractForCurrentUser(
+  id: string,
+  payload: ContractSealPayload,
+): Promise<ContractDetail> {
+  const response = await fetchWithAuthRetry(`/api/contracts/${id}/seal`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`SEAL_FAILED_${response.status}`);
+  }
+
+  const result = await response.json();
+  return normalizeContractDetail(result?.data?.contract || {});
 }
