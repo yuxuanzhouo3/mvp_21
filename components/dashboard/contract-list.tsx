@@ -422,10 +422,10 @@ export function ContractList() {
 
   return (
     <Card className="border-border/70 bg-card/95">
-      <CardHeader className="space-y-4">
+      <CardHeader className="space-y-4 px-4 py-4 sm:px-6 sm:py-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-lg">{content.title}</CardTitle>
-          <Button size="sm" asChild>
+          <Button size="sm" className="w-full sm:w-auto" asChild>
             <Link href="/dashboard/contracts/new">
               <Plus className="mr-2 h-4 w-4" />
               {content.primaryAction}
@@ -435,13 +435,19 @@ export function ContractList() {
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <Tabs value={filter} onValueChange={(value) => setFilter(value as ContractFilter)}>
-            <TabsList className="grid w-full grid-cols-2 sm:w-auto sm:grid-cols-5">
-              {tabItems.map((tabItem) => (
-                <TabsTrigger key={tabItem.value} value={tabItem.value}>
-                  {tabItem.label} ({counts[tabItem.value]})
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <div className="-mx-1 overflow-x-auto pb-1">
+              <TabsList className="inline-flex h-auto min-w-max gap-1 rounded-xl bg-muted/60 p-1">
+                {tabItems.map((tabItem) => (
+                  <TabsTrigger
+                    key={tabItem.value}
+                    value={tabItem.value}
+                    className="min-w-fit whitespace-nowrap px-3 text-xs sm:text-sm"
+                  >
+                    {tabItem.label} ({counts[tabItem.value]})
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
           </Tabs>
 
           <div className="relative w-full md:w-80">
@@ -450,13 +456,13 @@ export function ContractList() {
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder={content.searchPlaceholder}
-              className="pl-9"
+              className="h-10 pl-9"
             />
           </div>
         </div>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="px-4 pb-4 sm:px-6 sm:pb-6">
         {loading ? (
           <div className="flex items-center justify-center py-16 text-muted-foreground">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -490,124 +496,130 @@ export function ContractList() {
                 contract.sealFlowStatus === "sealed"
                   ? null
                   : getSigningStageLabel(contract.signFlowStatus, isEn);
+              const timestamp = formatDate(
+                contract.createdAt || contract.updatedAt,
+                isEn ? "en-US" : "zh-CN",
+              );
+              const partiesLabel = contract.parties.join(", ") || "-";
+
               return (
                 <div
                   key={contract.id}
-                  className="flex flex-col gap-3 rounded-xl border border-border/70 bg-muted/15 p-4 transition-colors hover:border-primary/40 hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between"
+                  className="rounded-xl border border-border/70 bg-muted/15 p-3 transition-colors hover:border-primary/40 hover:bg-muted/30 sm:p-4"
                 >
-                  <div className="flex min-w-0 items-start gap-3">
-                    <div className="mt-0.5 rounded-lg bg-primary/10 p-2 text-primary">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 rounded-lg bg-primary/10 p-2 text-primary sm:p-2.5">
                       <FileText className="h-4 w-4" />
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-foreground">
-                        {contract.title || content.untitled}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {formatDate(
-                          contract.createdAt || contract.updatedAt,
-                          isEn ? "en-US" : "zh-CN",
-                        )}{" "}
-                        · {contract.parties.join(", ") || "-"}
-                      </p>
-                    </div>
-                  </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2 text-sm font-medium text-foreground sm:text-base">
+                            {contract.title || content.untitled}
+                          </p>
+                          <p className="mt-1 text-[11px] text-muted-foreground sm:text-xs">
+                            {timestamp} · {partiesLabel}
+                          </p>
+                        </div>
 
-                  <div className="flex items-center gap-2 self-end sm:self-center">
-                    {contract.region ? <Badge variant="outline">{contract.region}</Badge> : null}
-                    <Badge className={cn("border", meta.className)}>{meta.label}</Badge>
-                    {stageLabel ? <Badge variant="outline">{stageLabel}</Badge> : null}
-                    {contract.sealFlowStatus === "sealed" ? (
-                      <Badge variant="outline" className="border-red-300 text-red-700">
-                        {isEn ? "Sealed" : "已盖章"}
-                      </Badge>
-                    ) : null}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon-sm" aria-label="Contract actions">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => router.push(`/contracts/${contract.id}?ctx=dashboard`)}
+                            >
+                              <Eye className="mr-2 h-4 w-4" />
+                              {content.viewAction}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={downloadingId === contract.id}
+                              onClick={() => void handleDownload(contract, "pdf")}
+                            >
+                              <Download className="mr-2 h-4 w-4" />
+                              {isEn ? "Download PDF" : "下载 PDF"}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={downloadingId === contract.id}
+                              onClick={() => void handleDownload(contract, "word")}
+                            >
+                              <FileType2 className="mr-2 h-4 w-4" />
+                              {isEn ? "Download Word" : "下载 Word"}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={downloadingId === contract.id}
+                              onClick={() => void handleDownload(contract, "html")}
+                            >
+                              <FileText className="mr-2 h-4 w-4" />
+                              {isEn ? "Download HTML" : "下载 HTML"}
+                            </DropdownMenuItem>
+                            {(contract.signFlowStatus === "completed" || contract.sealFlowStatus === "sealed") ? (
+                              <DropdownMenuItem
+                                disabled={sealingId === contract.id}
+                                onClick={() => setSealTarget(contract)}
+                              >
+                                <ShieldCheck className="mr-2 h-4 w-4" />
+                                {contract.sealFlowStatus === "sealed"
+                                  ? isEn
+                                    ? "Reseal Contract"
+                                    : "重新盖章"
+                                  : isEn
+                                    ? "Seal Contract"
+                                    : "合同盖章"}
+                              </DropdownMenuItem>
+                            ) : null}
+                            {contract.sealFlowStatus === "sealed" ? (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  disabled={downloadingId === contract.id}
+                                  onClick={() => void handleDownload(contract, "pdf", { variant: "sealed" })}
+                                >
+                                  <ShieldCheck className="mr-2 h-4 w-4" />
+                                  {isEn ? "Download Sealed PDF" : "下载已盖章 PDF"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={downloadingId === contract.id}
+                                  onClick={() => void handleDownload(contract, "word", { variant: "sealed" })}
+                                >
+                                  <ShieldCheck className="mr-2 h-4 w-4" />
+                                  {isEn ? "Download Sealed Word" : "下载已盖章 Word"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={downloadingId === contract.id}
+                                  onClick={() => void handleDownload(contract, "html", { variant: "sealed" })}
+                                >
+                                  <ShieldCheck className="mr-2 h-4 w-4" />
+                                  {isEn ? "Download Sealed HTML" : "下载已盖章 HTML"}
+                                </DropdownMenuItem>
+                              </>
+                            ) : null}
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              disabled={deletingId === contract.id}
+                              onClick={() => setDeleteTarget(contract)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              {content.deleteAction}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
 
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm" aria-label="Contract actions">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => router.push(`/contracts/${contract.id}?ctx=dashboard`)}
-                        >
-                          <Eye className="mr-2 h-4 w-4" />
-                          {content.viewAction}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          disabled={downloadingId === contract.id}
-                          onClick={() => void handleDownload(contract, "pdf")}
-                        >
-                          <Download className="mr-2 h-4 w-4" />
-                          {isEn ? "Download PDF" : "下载 PDF"}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          disabled={downloadingId === contract.id}
-                          onClick={() => void handleDownload(contract, "word")}
-                        >
-                          <FileType2 className="mr-2 h-4 w-4" />
-                          {isEn ? "Download Word" : "下载 Word"}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          disabled={downloadingId === contract.id}
-                          onClick={() => void handleDownload(contract, "html")}
-                        >
-                          <FileText className="mr-2 h-4 w-4" />
-                          {isEn ? "Download HTML" : "下载 HTML"}
-                        </DropdownMenuItem>
-                        {(contract.signFlowStatus === "completed" || contract.sealFlowStatus === "sealed") ? (
-                          <DropdownMenuItem
-                            disabled={sealingId === contract.id}
-                            onClick={() => setSealTarget(contract)}
-                          >
-                            <ShieldCheck className="mr-2 h-4 w-4" />
-                            {contract.sealFlowStatus === "sealed"
-                              ? isEn
-                                ? "Reseal Contract"
-                                : "重新盖章"
-                              : isEn
-                                ? "Seal Contract"
-                                : "合同盖章"}
-                          </DropdownMenuItem>
-                        ) : null}
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:mt-3 sm:gap-2">
+                        {contract.region ? <Badge variant="outline">{contract.region}</Badge> : null}
+                        <Badge className={cn("border", meta.className)}>{meta.label}</Badge>
+                        {stageLabel ? <Badge variant="outline">{stageLabel}</Badge> : null}
                         {contract.sealFlowStatus === "sealed" ? (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              disabled={downloadingId === contract.id}
-                              onClick={() => void handleDownload(contract, "pdf", { variant: "sealed" })}
-                            >
-                              <ShieldCheck className="mr-2 h-4 w-4" />
-                              {isEn ? "Download Sealed PDF" : "下载已盖章 PDF"}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={downloadingId === contract.id}
-                              onClick={() => void handleDownload(contract, "word", { variant: "sealed" })}
-                            >
-                              <ShieldCheck className="mr-2 h-4 w-4" />
-                              {isEn ? "Download Sealed Word" : "下载已盖章 Word"}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={downloadingId === contract.id}
-                              onClick={() => void handleDownload(contract, "html", { variant: "sealed" })}
-                            >
-                              <ShieldCheck className="mr-2 h-4 w-4" />
-                              {isEn ? "Download Sealed HTML" : "下载已盖章 HTML"}
-                            </DropdownMenuItem>
-                          </>
+                          <Badge variant="outline" className="border-red-300 text-red-700">
+                            {isEn ? "Sealed" : "已盖章"}
+                          </Badge>
                         ) : null}
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          disabled={deletingId === contract.id}
-                          onClick={() => setDeleteTarget(contract)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          {content.deleteAction}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
